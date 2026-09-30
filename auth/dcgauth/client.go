@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/YMGPwcca/phonelink-linux/dcgheaders"
 )
 
 const (
@@ -25,10 +27,12 @@ type HTTPDoer interface {
 }
 
 type Client struct {
-	BaseURL      string
-	HTTP         HTTPDoer
-	ExtraHeaders http.Header
-	Now          func() time.Time
+	BaseURL             string
+	HTTP                HTTPDoer
+	ClientInfo          dcgheaders.ClientInfo
+	AuthorizationPortal string
+	ExtraHeaders        http.Header
+	Now                 func() time.Time
 }
 
 type NonceResponse struct {
@@ -58,9 +62,10 @@ func NewClient(baseURL string) *Client {
 		baseURL = ProdServiceBase
 	}
 	return &Client{
-		BaseURL: baseURL,
-		HTTP:    http.DefaultClient,
-		Now:     time.Now,
+		BaseURL:             baseURL,
+		HTTP:                http.DefaultClient,
+		AuthorizationPortal: dcgheaders.PortalLegacyMSM,
+		Now:                 time.Now,
 	}
 }
 
@@ -184,6 +189,7 @@ func (c *Client) postJSON(ctx context.Context, msaToken, path string, body, out 
 	req.Header.Set(HeaderUserIdentityToken, msaToken)
 	req.Header.Set("Authorization", "Bearer "+msaToken)
 	req.Header.Set(HeaderAuthorizationType, UserIdentityTypeMSA)
+	c.ClientInfo.ApplyHTTP(req.Header, c.AuthorizationPortal)
 	for key, values := range c.ExtraHeaders {
 		for _, value := range values {
 			req.Header.Add(key, value)

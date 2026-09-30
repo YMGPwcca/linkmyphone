@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/YMGPwcca/phonelink-linux/dcgheaders"
 )
 
 const (
@@ -25,9 +27,11 @@ type HTTPDoer interface {
 }
 
 type Client struct {
-	BaseURL      string
-	HTTP         HTTPDoer
-	ExtraHeaders http.Header
+	BaseURL             string
+	HTTP                HTTPDoer
+	ClientInfo          dcgheaders.ClientInfo
+	AuthorizationPortal string
+	ExtraHeaders        http.Header
 }
 
 type HTTPError struct {
@@ -114,8 +118,9 @@ func NewClient(baseURL string) *Client {
 		baseURL = ProdServiceBase
 	}
 	return &Client{
-		BaseURL: baseURL,
-		HTTP:    http.DefaultClient,
+		BaseURL:             baseURL,
+		HTTP:                http.DefaultClient,
+		AuthorizationPortal: dcgheaders.PortalLegacyMSM,
 	}
 }
 
@@ -220,6 +225,7 @@ func (c *Client) doJSON(
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+msaToken)
 	req.Header.Set("Authorization-Type", "MSA")
+	c.ClientInfo.ApplyHTTP(req.Header, c.AuthorizationPortal)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
