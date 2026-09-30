@@ -97,3 +97,11 @@ func TestExtrasJWTOmitsEmptyClaims(t *testing.T) {
 		t.Fatalf("unexpected Data claim: %#v", payload)
 	}
 }
+
+func TestWAMScope(t *testing.T) {
+	got := WAMScope(LegacyProdMSAScope)
+	want := LegacyProdMSAScope + "&api-version=2.0&clientid=" + MSAAppID
+	if got != want {
+		t.Fatalf("WAMScope=%q want=%q", got, want)
+	}
+}

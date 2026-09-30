@@ -79,6 +79,9 @@ phone clipboard change
 
 - production service base: `https://dcg.microsoft.com/`
 - CrossDevice public MSA client/application id: `ca3b40e4-3001-4842-8f21-49c0045404f8`
+- Windows acquires the MSA token only through WAM: provider `https://login.microsoft.com`, authority `consumers`, `WebTokenRequest(clientId=MSAClientId)` and `GetTokenSilentlyAsync`
+- WAM formats the requested DCG scope as `<scope>&api-version=2.0&clientid=<MsaAppId>`; this is WAM-specific and is not treated as a generic OAuth v2 scope by this implementation
+- if WAM reports `UserInteractionRequired` or `AccountSwitch`, YPP surfaces that status upward; the decompiled YPP layer does not contain an interactive sign-in fallback
 - default relay hub endpoint: `relayhub/`
 - production MSA DCG scope (legacy MSA portal path):
   `service::msatoken.dcg.microsoft.com::MBI_SSL`
