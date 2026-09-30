@@ -336,11 +336,10 @@ func NewClipboardChange(correlationID string) Response {
 	return Response{Status: ResponseClipboardChange, CorrelationID: correlationID}
 }
 
-// NewClipboardChangePublication builds the exact PubSubPayload used by the
-// Windows CrossDevice clipboard publisher: field 1 (Data) contains a serialized
-// ClipboardResponseMessage with status ClipboardChange.
+// NewClipboardChangePublication is kept as a compatibility alias for the
+// Windows/PC publication direction.
 func NewClipboardChangePublication(correlationID string) PubSubPayload {
-	return PubSubPayload{Data: MarshalResponse(NewClipboardChange(correlationID))}
+	return NewPCClipboardChangePublication(correlationID)
 }
 
 func NewStatusRequest(correlationID string) Request {
@@ -349,6 +348,18 @@ func NewStatusRequest(correlationID string) Request {
 
 func NewContentRequest(correlationID string) Request {
 	return Request{Type: RequestContent, CorrelationID: correlationID}
+}
+
+func NewFeatureOnRequest(correlationID string) Request {
+	return Request{Type: RequestFeatureOn, CorrelationID: correlationID}
+}
+
+func NewFeatureOffRequest(correlationID string) Request {
+	return Request{Type: RequestFeatureOff, CorrelationID: correlationID}
+}
+
+func NewFeatureDisableRequest(correlationID string) Request {
+	return Request{Type: RequestFeatureDisable, CorrelationID: correlationID}
 }
 
 func NewFeatureOnResponse(correlationID string) Response {

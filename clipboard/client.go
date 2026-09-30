@@ -107,7 +107,26 @@ func (c *Client) Status(ctx context.Context, correlationID string) (proto.Respon
 }
 
 func (c *Client) PullToLocal(ctx context.Context) error {
-	text, err := c.GetText(ctx, "")
+	return c.pullToLocal(ctx, "")
+}
+
+// HandlePhoneClipboardPublication implements the Windows receive-side clipboard
+// state machine: parse the phone publication from PubSubPayload.Additional,
+// preserve its correlation ID, request CONTENT immediately, then write the
+// returned text to the local clipboard.
+//
+// Windows does not issue a STATUS request here; feature state is synchronized
+// separately with FEATURE_ON/OFF/DISABLE requests.
+func (c *Client) HandlePhoneClipboardPublication(ctx context.Context, publication proto.PubSubPayload) error {
+	correlationID, err := proto.ParsePhoneClipboardChangePublication(publication)
+	if err != nil {
+		return err
+	}
+	return c.pullToLocal(ctx, correlationID)
+}
+
+func (c *Client) pullToLocal(ctx context.Context, correlationID string) error {
+	text, err := c.GetText(ctx, correlationID)
 	if err != nil {
 		return err
 	}
@@ -115,6 +134,22 @@ func (c *Client) PullToLocal(ctx context.Context) error {
 		return errors.New("clipboard: no local clipboard backend")
 	}
 	return c.local.WriteText(ctx, text)
+}
+
+// PushFeatureState mirrors the Windows per-device feature synchronization.
+// The normal enabled state uses RequestFeatureOn; callers may also advertise
+// RequestFeatureOff or RequestFeatureDisable.
+func (c *Client) PushFeatureState(ctx context.Context, state proto.RequestType) (proto.ResponseStatus, error) {
+	switch state {
+	case proto.RequestFeatureOn, proto.RequestFeatureOff, proto.RequestFeatureDisable:
+	default:
+		return proto.ResponseUnspecified, fmt.Errorf("clipboard: invalid feature state request %d", state)
+	}
+	resp, err := c.request(ctx, proto.Request{Type: state})
+	if err != nil {
+		return proto.ResponseUnspecified, err
+	}
+	return resp.Status, nil
 }
 
 func (c *Client) request(ctx context.Context, req proto.Request) (proto.Response, error) {
