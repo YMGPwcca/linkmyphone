@@ -181,7 +181,11 @@ func (p *packer) multiplexPacket(v dcg.MultiplexPacket) error {
 		}
 	}
 	p.str("Raw")
-	p.bin(v.Raw)
+	if v.Raw == nil {
+		p.b = append(p.b, 0xc0)
+	} else {
+		p.bin(v.Raw)
+	}
 	p.str("Type")
 	p.str(v.Type)
 	return nil

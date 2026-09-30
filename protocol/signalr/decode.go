@@ -189,11 +189,17 @@ func packetFromMap(m map[string]any) (dcg.MultiplexPacket, error) {
 		return p, ErrMessagePack
 	}
 	p.Type = t
-	raw, ok := m["Raw"].([]byte)
-	if !ok {
+	rawValue, exists := m["Raw"]
+	if !exists {
 		return p, ErrMessagePack
 	}
-	p.Raw = append([]byte(nil), raw...)
+	if rawValue != nil {
+		raw, ok := rawValue.([]byte)
+		if !ok {
+			return p, ErrMessagePack
+		}
+		p.Raw = append([]byte(nil), raw...)
+	}
 	props, ok := m["Properties"].(map[string]any)
 	if !ok {
 		return p, ErrMessagePack
