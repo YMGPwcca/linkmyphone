@@ -170,12 +170,15 @@ func (c *Client) EnrollDevice(ctx context.Context, msaToken, dcgToken, popDevice
 	if len(request.Certificates) == 0 {
 		return EnrollResponse{}, errors.New("dcg: at least one device certificate is required")
 	}
+	query := map[string]string{
+		"api-version": DeviceManagementAPIVersion,
+	}
+	if popDeviceKey != "" {
+		query["pop-device-key"] = popDeviceKey
+	}
 	var out EnrollResponse
 	err := c.doJSON(ctx, http.MethodPost, "/DeviceAuthProxy/EnrollDevice",
-		map[string]string{
-			"api-version":    DeviceManagementAPIVersion,
-			"pop-device-key": popDeviceKey,
-		}, msaToken, dcgToken, request, &out)
+		query, msaToken, dcgToken, request, &out)
 	return out, err
 }
 
@@ -304,3 +307,4 @@ func MetadataForClipboardPC(clientVersion, displayName, osVersion string) Device
 		CustomData:     "",
 	}
 }
+

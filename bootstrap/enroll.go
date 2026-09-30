@@ -58,6 +58,9 @@ func (e *Enroller) EnrollWithMSAToken(
 	if err != nil {
 		return nil, err
 	}
+	if enrollResponse.AccountCert == "" {
+		return nil, errors.New("bootstrap: EnrollDevice returned an empty account certificate")
+	}
 	return &EnrollResult{
 		Identity:       identity,
 		TrustIdentity:  trustIdentity,

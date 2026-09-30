@@ -111,13 +111,19 @@ phone clipboard change
 - auth requests carry `UserIdentityType: MSA`, `UserIdentityToken`, `Authorization: Bearer <MSA token>`, and `Authorization-Type: MSA`
 - peer discovery uses `GET /DeviceAuthProxy/GetDeviceInfoList?api-version=1.5.0&top=20&filter=` with the MSA bearer token; linked entries other than self provide target DCG client ids
 - async trust maps a DCG id to `trust_<dcgClientId>` and uses peer PKI/SelfSigned certificates from device metadata
+- enrollment account certificate is imported into a local A2D relationship; linked peer metadata becomes AsyncD2D trust with production `dcg_prod_client_id` mapping
+- persistent Linux auth state stores the MSA refresh token, DCG/trust private keys and certificates, DCG `general` token, account certificate/root chain, trust relationships, and a stable logical-device id in a `0600` state file
+- normal restart uses refresh-token acquisition plus `/Auth/SignIn`; it does not create a new DCG identity
+- account-level SignalR bootstrap fetches assigned shards, connects `relayhub/` using the DCG `general` token and exact DCG headers, waits up to 10 seconds for `OnConnected`, and retries another shard on resolved-region mismatch
+- first-run `bootstrap.BootstrapFirstRun` now wires enrollment -> trust sync -> persistence -> account SignalR connection as one pipeline
 
 ## Still required for an end-to-end usable client
 
-- account-certificate trust import after enrollment
-- target `DcgClientId` discovery/trust bootstrap
+- live Microsoft/DCG integration validation of the new first-run bootstrap against a real account and linked phone
+- minimum platform `/SessionValidation` / ContextSource bootstrap required before clipboard traffic
 - Linux native clipboard backend
 - executable/daemon wiring and user configuration
+- reconnect/wake/token-refresh hardening for long-running parity with Phone Link
 
 ## Test
 

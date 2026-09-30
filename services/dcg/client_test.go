@@ -74,6 +74,9 @@ func TestEnrollDeviceWireShape(t *testing.T) {
 		if r.URL.Query().Get("api-version") != "1.5.0" {
 			t.Fatalf("query=%q", r.URL.RawQuery)
 		}
+		if _, ok := r.URL.Query()["pop-device-key"]; ok {
+			t.Fatalf("unexpected empty pop-device-key: %q", r.URL.RawQuery)
+		}
 		if got := r.Header.Get("Dcg-Token"); got != "dcg" {
 			t.Fatalf("Dcg-Token=%q", got)
 		}
