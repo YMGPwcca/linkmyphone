@@ -36,33 +36,7 @@ func NewIdentity(now time.Time) (*Identity, error) {
 	if err != nil {
 		return nil, err
 	}
-	key, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
-	if err != nil {
-		return nil, err
-	}
-	serialLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-	serial, err := rand.Int(rand.Reader, serialLimit)
-	if err != nil {
-		return nil, err
-	}
-	if serial.Sign() == 0 {
-		serial.SetInt64(1)
-	}
-	template := &x509.Certificate{
-		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: deviceID},
-		NotBefore:             now.Add(-DefaultCertificateClockDrift),
-		NotAfter:              now.Add(DefaultCertificateLifetime),
-		KeyUsage:              x509.KeyUsageDigitalSignature,
-		BasicConstraintsValid: true,
-		IsCA:                  false,
-		SignatureAlgorithm:    x509.ECDSAWithSHA384,
-	}
-	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
-	if err != nil {
-		return nil, err
-	}
-	cert, err := x509.ParseCertificate(der)
+	key, cert, der, err := newSigningCertificate(deviceID, now)
 	if err != nil {
 		return nil, err
 	}
@@ -72,6 +46,43 @@ func NewIdentity(now time.Time) (*Identity, error) {
 		Certificate:    cert,
 		CertificateDER: der,
 	}, nil
+}
+
+func newSigningCertificate(commonName string, now time.Time) (*ecdsa.PrivateKey, *x509.Certificate, []byte, error) {
+	if commonName == "" {
+		return nil, nil, nil, errors.New("dcgauth: certificate common name is required")
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	serialLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serial, err := rand.Int(rand.Reader, serialLimit)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	if serial.Sign() == 0 {
+		serial.SetInt64(1)
+	}
+	template := &x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: commonName},
+		NotBefore:             now.Add(-DefaultCertificateClockDrift),
+		NotAfter:              now.Add(DefaultCertificateLifetime),
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+		IsCA:                  false,
+		SignatureAlgorithm:    x509.ECDSAWithSHA384,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return key, cert, der, nil
 }
 
 // SignNonceJWT mirrors CryptoManager.CreateJwtTokenForNonceInner. The token is

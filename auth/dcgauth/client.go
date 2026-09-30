@@ -123,6 +123,13 @@ func (c *Client) BootstrapIdentity(ctx context.Context, msaToken string) (*Ident
 	if err != nil {
 		return nil, TokenResponse{}, err
 	}
+	if token.DeviceID != "" && token.DeviceID != id.DeviceID {
+		return nil, TokenResponse{}, fmt.Errorf(
+			"dcgauth: create identity returned device id %q, want %q",
+			token.DeviceID,
+			id.DeviceID,
+		)
+	}
 	return id, token, nil
 }
 
