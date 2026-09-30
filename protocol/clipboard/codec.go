@@ -330,8 +330,17 @@ func UnmarshalDeviceResourceMessage(b []byte) (DeviceResourceMessage, error) {
 	return m, nil
 }
 
+const ClipboardMessageTag = 9
+
 func NewClipboardChange(correlationID string) Response {
 	return Response{Status: ResponseClipboardChange, CorrelationID: correlationID}
+}
+
+// NewClipboardChangePublication builds the exact PubSubPayload used by the
+// Windows CrossDevice clipboard publisher: field 1 (Data) contains a serialized
+// ClipboardResponseMessage with status ClipboardChange.
+func NewClipboardChangePublication(correlationID string) PubSubPayload {
+	return PubSubPayload{Data: MarshalResponse(NewClipboardChange(correlationID))}
 }
 
 func NewStatusRequest(correlationID string) Request {

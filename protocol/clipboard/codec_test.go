@@ -23,23 +23,25 @@ func TestRequestRoundTrip(t *testing.T) {
 }
 
 func TestClipboardChangePubSub(t *testing.T) {
-	change := MarshalResponse(NewClipboardChange("cid-1"))
-	payload := MarshalPubSubPayload(PubSubPayload{Additional: change})
+	payload := MarshalPubSubPayload(NewClipboardChangePublication("cid-1"))
 
 	decoded, err := UnmarshalPubSubPayload(payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(decoded.Data) != 0 {
-		t.Fatalf("unexpected data: %x", decoded.Data)
+	if len(decoded.Additional) != 0 {
+		t.Fatalf("unexpected additional: %x", decoded.Additional)
 	}
 
-	resp, err := UnmarshalResponse(decoded.Additional)
+	resp, err := UnmarshalResponse(decoded.Data)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if resp.Status != ResponseClipboardChange || resp.CorrelationID != "cid-1" {
 		t.Fatalf("unexpected response: %#v", resp)
+	}
+	if ClipboardMessageTag != 9 {
+		t.Fatalf("clipboard message tag=%d", ClipboardMessageTag)
 	}
 }
 
