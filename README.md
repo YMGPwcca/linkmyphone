@@ -82,6 +82,9 @@ phone clipboard change
 - Windows acquires the MSA token only through WAM: provider `https://login.microsoft.com`, authority `consumers`, `WebTokenRequest(clientId=MSAClientId)` and `GetTokenSilentlyAsync`
 - WAM formats the requested DCG scope as `<scope>&api-version=2.0&clientid=<MsaAppId>`; this is WAM-specific and is not treated as a generic OAuth v2 scope by this implementation
 - if WAM reports `UserInteractionRequired` or `AccountSwitch`, YPP surfaces that status upward; the decompiled YPP layer does not contain an interactive sign-in fallback
+- Linux interoperability path: the same public client id with scope `https://dcg.microsoft.com/DCG.ReadWrite offline_access` was runtime-confirmed against `/consumers/oauth2/v2.0/devicecode` and returned HTTP 200
+- `auth/msa` implements the Microsoft identity-platform device-code flow plus token polling and refresh-token support for that client/scope
+- `auth/bootstrap` connects an acquired MSA access token directly to the source-confirmed DCG identity bootstrap and exposes the resulting DCG `general` services token
 - default relay hub endpoint: `relayhub/`
 - production MSA DCG scope (legacy MSA portal path):
   `service::msatoken.dcg.microsoft.com::MBI_SSL`
@@ -110,7 +113,6 @@ phone clipboard change
 
 ## Still required for an end-to-end usable client
 
-- Linux MSA account/token acquisition flow
 - target `DcgClientId` discovery/trust bootstrap
 - Linux native clipboard backend
 - executable/daemon wiring and user configuration

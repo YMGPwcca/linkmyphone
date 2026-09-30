@@ -48,6 +48,42 @@ type TokenResponse struct {
 	TenantID              string `json:"tenantId,omitempty"`
 }
 
+type AccessToken struct {
+	Token                 string
+	Scope                 string
+	DeviceID              string
+	ExpiresAt             time.Time
+	KeyValidRemainingDays int64
+	TenantID              string
+}
+
+// GeneralAccessToken applies the exact semantics used by the Windows
+// AuthServiceCryptoHelper after CreateIdentity succeeds: the returned service
+// token is stored under the "general" scope for the newly-created DCG device.
+func (r TokenResponse) GeneralAccessToken() (AccessToken, error) {
+	if r.AccessToken == "" {
+		return AccessToken{}, errors.New("dcgauth: token response has no access token")
+	}
+	if r.DeviceID == "" {
+		return AccessToken{}, errors.New("dcgauth: token response has no device id")
+	}
+	if r.EpochExpirationTime == nil {
+		return AccessToken{}, errors.New("dcgauth: token response has no expiration time")
+	}
+	keyDays := int64(-1)
+	if r.KeyValidRemainingDays != nil {
+		keyDays = *r.KeyValidRemainingDays
+	}
+	return AccessToken{
+		Token:                 r.AccessToken,
+		Scope:                 ServicesScopeGeneral,
+		DeviceID:              r.DeviceID,
+		ExpiresAt:             time.Unix(*r.EpochExpirationTime, 0).UTC(),
+		KeyValidRemainingDays: keyDays,
+		TenantID:              r.TenantID,
+	}, nil
+}
+
 type HTTPError struct {
 	StatusCode int
 	Body       string
