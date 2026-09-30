@@ -386,3 +386,71 @@ func onPartnerConnectedFrame(t *testing.T, source, region string) []byte {
 	}
 	return frame
 }
+
+func TestWaitHubConnectedReturnsRegionAndPartners(t *testing.T) {
+	hub := newFakeHub()
+	c := New(hub, Config{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+
+	waitDone := make(chan psignalr.OnConnectedPayload, 1)
+	errDone := make(chan error, 1)
+	go func() {
+		payload, err := c.WaitHubConnected(ctx)
+		if err != nil {
+			errDone <- err
+			return
+		}
+		waitDone <- payload
+	}()
+
+	hub.reads <- onConnectedFrame(t, "westus", []string{"phone-a", "phone-b"})
+
+	select {
+	case err := <-errDone:
+		t.Fatal(err)
+	case payload := <-waitDone:
+		if payload.RegionName != "westus" ||
+			len(payload.Partners) != 2 ||
+			payload.Partners[0] != "phone-a" ||
+			payload.Partners[1] != "phone-b" {
+			t.Fatalf("payload=%#v", payload)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for OnConnected")
+	}
+
+	cached, err := c.WaitHubConnected(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cached.RegionName != "westus" || len(cached.Partners) != 2 {
+		t.Fatalf("cached=%#v", cached)
+	}
+}
+
+func onConnectedFrame(t *testing.T, region string, partners []string) []byte {
+	t.Helper()
+	p := &tinyPacker{}
+	p.array(6)
+	p.integer(1)
+	p.mapLen(0)
+	p.nilValue()
+	p.str(psignalr.TargetOnConnected)
+	p.array(1)
+	p.mapLen(2)
+	p.str("RegionName")
+	p.str(region)
+	p.str("Partners")
+	p.array(len(partners))
+	for _, partner := range partners {
+		p.str(partner)
+	}
+	p.array(0)
+	frame, err := psignalr.Frame(p.b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return frame
+}

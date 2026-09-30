@@ -63,6 +63,8 @@ type Client struct {
 	pending       map[pendingKey]chan dcg.Ack
 	partners      map[string]bool
 	partnerWaiters map[string][]chan struct{}
+	hubConnected  *psignalr.OnConnectedPayload
+	hubWaiters    []chan psignalr.OnConnectedPayload
 
 	received chan Received
 }
@@ -89,9 +91,9 @@ func New(hub Hub, cfg Config) *Client {
 		sequencers:    make(map[string]*dcg.Sequencer),
 		sessions:      make(map[string]string),
 		pending:       make(map[pendingKey]chan dcg.Ack),
-		partners:      make(map[string]bool),
+		partners:       make(map[string]bool),
 		partnerWaiters: make(map[string][]chan struct{}),
-		received:      make(chan Received, 32),
+		received:       make(chan Received, 32),
 	}
 }
 
@@ -131,6 +133,7 @@ func (c *Client) Run(ctx context.Context) error {
 					for _, partner := range connected.Partners {
 						c.markPartnerConnected(partner)
 					}
+					c.markHubConnected(connected)
 					continue
 				case psignalr.TargetOnPartnerConnected:
 					partner, err := psignalr.ParseOnPartnerConnected(inv)
@@ -197,6 +200,26 @@ func (c *Client) PartnerConnected(target string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.partners[target]
+}
+
+func (c *Client) WaitHubConnected(ctx context.Context) (psignalr.OnConnectedPayload, error) {
+	c.mu.Lock()
+	if c.hubConnected != nil {
+		payload := cloneOnConnectedPayload(*c.hubConnected)
+		c.mu.Unlock()
+		return payload, nil
+	}
+	waiter := make(chan psignalr.OnConnectedPayload, 1)
+	c.hubWaiters = append(c.hubWaiters, waiter)
+	c.mu.Unlock()
+	defer c.removeHubWaiter(waiter)
+
+	select {
+	case payload := <-waiter:
+		return payload, nil
+	case <-ctx.Done():
+		return psignalr.OnConnectedPayload{}, ctx.Err()
+	}
 }
 
 func (c *Client) WaitPartnerConnected(ctx context.Context, target string) error {
@@ -359,6 +382,38 @@ func (c *Client) sendPacket(target, connectionSessionID string, trace psignalr.T
 		return err
 	}
 	return c.hub.SendBinary(frame)
+}
+
+func (c *Client) markHubConnected(payload psignalr.OnConnectedPayload) {
+	payload = cloneOnConnectedPayload(payload)
+	c.mu.Lock()
+	c.hubConnected = &payload
+	waiters := append([]chan psignalr.OnConnectedPayload(nil), c.hubWaiters...)
+	c.hubWaiters = nil
+	c.mu.Unlock()
+	for _, waiter := range waiters {
+		select {
+		case waiter <- cloneOnConnectedPayload(payload):
+		default:
+		}
+	}
+}
+
+func (c *Client) removeHubWaiter(waiter chan psignalr.OnConnectedPayload) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i, candidate := range c.hubWaiters {
+		if candidate != waiter {
+			continue
+		}
+		c.hubWaiters = append(c.hubWaiters[:i], c.hubWaiters[i+1:]...)
+		return
+	}
+}
+
+func cloneOnConnectedPayload(payload psignalr.OnConnectedPayload) psignalr.OnConnectedPayload {
+	payload.Partners = append([]string(nil), payload.Partners...)
+	return payload
 }
 
 func (c *Client) markPartnerConnected(target string) {
