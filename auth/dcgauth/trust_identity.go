@@ -43,3 +43,16 @@ func (i *TrustIdentity) CertificateBase64() string {
 	}
 	return base64.StdEncoding.EncodeToString(i.CertificateDER)
 }
+
+func (i *TrustIdentity) SignExtrasJWT(extras Extras, now time.Time) (string, error) {
+	if i == nil || i.ClientID == "" {
+		return "", errors.New("dcgauth: trust identity is required")
+	}
+	authIdentity := &Identity{
+		DeviceID:       i.ClientID,
+		PrivateKey:     i.PrivateKey,
+		Certificate:    i.Certificate,
+		CertificateDER: i.CertificateDER,
+	}
+	return authIdentity.SignExtrasJWT(extras, now)
+}
