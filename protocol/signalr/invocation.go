@@ -10,8 +10,11 @@ import (
 )
 
 const (
-	HubMessageTypeInvocation = 1
-	TargetSendMessageAsync    = "SendMessageAsync"
+	HubMessageTypeInvocation            = 1
+	TargetSendMessageAsync               = "SendMessageAsync"
+	TargetSendSessionBasedMessageAsync   = "SendSessionBasedMessageAsync"
+	TargetOnReceiveMessage               = "OnReceiveMessage"
+	TargetOnReceiveSessionBasedMessage   = "OnReceiveSessionBasedMessage"
 )
 
 type TraceContextPacket struct {
@@ -46,6 +49,42 @@ func MarshalSendMessageAsync(invocationID *string, trace TraceContextPacket, tar
 
 func FrameSendMessageAsync(invocationID *string, trace TraceContextPacket, targetDcgClientID string, packet dcg.MultiplexPacket) ([]byte, error) {
 	body, err := MarshalSendMessageAsync(invocationID, trace, targetDcgClientID, packet)
+	if err != nil {
+		return nil, err
+	}
+	return Frame(body)
+}
+
+// MarshalSendSessionBasedMessageAsync serializes the HubRelay invocation used
+// when a DCG connection session id is present:
+// [1, {}, invocationId, "SendSessionBasedMessageAsync",
+//  [trace, target, packet, connectionSessionId], []].
+func MarshalSendSessionBasedMessageAsync(invocationID *string, trace TraceContextPacket, targetDcgClientID string, packet dcg.MultiplexPacket, connectionSessionID string) ([]byte, error) {
+	if targetDcgClientID == "" {
+		return nil, errors.New("signalr: empty target DCG client id")
+	}
+	if connectionSessionID == "" {
+		return nil, errors.New("signalr: empty connection session id")
+	}
+	p := packer{}
+	p.array(6)
+	p.integer(HubMessageTypeInvocation)
+	p.mapLen(0)
+	p.nullableString(invocationID)
+	p.str(TargetSendSessionBasedMessageAsync)
+	p.array(4)
+	p.trace(trace)
+	p.str(targetDcgClientID)
+	if err := p.multiplexPacket(packet); err != nil {
+		return nil, err
+	}
+	p.str(connectionSessionID)
+	p.array(0)
+	return p.b, nil
+}
+
+func FrameSendSessionBasedMessageAsync(invocationID *string, trace TraceContextPacket, targetDcgClientID string, packet dcg.MultiplexPacket, connectionSessionID string) ([]byte, error) {
+	body, err := MarshalSendSessionBasedMessageAsync(invocationID, trace, targetDcgClientID, packet, connectionSessionID)
 	if err != nil {
 		return nil, err
 	}

@@ -100,3 +100,41 @@ func TestSplitFrames(t *testing.T) {
 		t.Fatalf("frames=%v", frames)
 	}
 }
+
+func TestParseOnReceiveSessionBasedMessage(t *testing.T) {
+	p := packer{}
+	p.array(6)
+	p.integer(1)
+	p.mapLen(0)
+	p.b = append(p.b, 0xc0)
+	p.str(TargetOnReceiveSessionBasedMessage)
+	p.array(4)
+	p.str("source")
+	p.trace(TraceContextPacket{})
+	packet := dcg.ToMultiplexPacket(
+		dcg.Fragment{
+			SequenceNumber: 1, FragmentNumber: 1, FragmentCount: 1,
+			MessageID: 3, Payload: []byte{8},
+			TransportMessageType: int(dcg.TransportMessageTypePlatform),
+			SessionID: "session-2",
+		},
+		int(dcg.MessageTypeFragment),
+	)
+	if err := p.multiplexPacket(packet); err != nil {
+		t.Fatal(err)
+	}
+	p.str("session-2")
+	p.array(0)
+
+	inv, err := ParseInvocation(p.b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, err := ParseOnReceiveSessionBasedMessage(inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.SourceDcgClientID != "source" || msg.ConnectionSessionID != "session-2" {
+		t.Fatalf("msg=%#v", msg)
+	}
+}

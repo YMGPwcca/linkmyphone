@@ -114,10 +114,15 @@ func (c *Client) Run(ctx context.Context) error {
 				if err != nil {
 					return err
 				}
-				if inv.Target != "OnReceiveMessage" {
+				var msg psignalr.ReceiveMessage
+				switch inv.Target {
+				case psignalr.TargetOnReceiveMessage:
+					msg, err = psignalr.ParseOnReceiveMessage(inv)
+				case psignalr.TargetOnReceiveSessionBasedMessage:
+					msg, err = psignalr.ParseOnReceiveSessionBasedMessage(inv)
+				default:
 					continue
 				}
-				msg, err := psignalr.ParseOnReceiveMessage(inv)
 				if err != nil {
 					return err
 				}
@@ -176,7 +181,7 @@ func (c *Client) sendFragment(ctx context.Context, target string, f dcg.Fragment
 
 	packet := dcg.ToMultiplexPacket(f, int(dcg.MessageTypeFragment))
 	for attempt := 0; attempt <= c.ackRetries; attempt++ {
-		if err := c.sendPacket(target, psignalr.TraceContextPacket{}, packet); err != nil {
+		if err := c.sendPacket(target, f.SessionID, psignalr.TraceContextPacket{}, packet); err != nil {
 			return err
 		}
 		timer := time.NewTimer(c.ackTimeout)
@@ -231,7 +236,14 @@ func (c *Client) handlePacket(ctx context.Context, msg psignalr.ReceiveMessage) 
 		if err != nil {
 			return err
 		}
-		if err := c.sendPacket(msg.SourceDcgClientID, msg.Trace, dcg.SuccessAckPacket(f)); err != nil {
+		sessionID := f.SessionID
+		if msg.ConnectionSessionID != "" {
+			if sessionID != "" && sessionID != msg.ConnectionSessionID {
+				return errors.New("relay: Hub session id does not match DCG fragment session id")
+			}
+			sessionID = msg.ConnectionSessionID
+		}
+		if err := c.sendPacket(msg.SourceDcgClientID, sessionID, msg.Trace, dcg.SuccessAckPacket(f)); err != nil {
 			return err
 		}
 		payload, complete, err := c.reassembler.Add(msg.SourceDcgClientID, f)
@@ -256,9 +268,17 @@ func (c *Client) handlePacket(ctx context.Context, msg psignalr.ReceiveMessage) 
 	}
 }
 
-func (c *Client) sendPacket(target string, trace psignalr.TraceContextPacket, packet dcg.MultiplexPacket) error {
+func (c *Client) sendPacket(target, sessionID string, trace psignalr.TraceContextPacket, packet dcg.MultiplexPacket) error {
 	id := strconv.FormatUint(c.invocation.Add(1), 10)
-	frame, err := psignalr.FrameSendMessageAsync(&id, trace, target, packet)
+	var (
+		frame []byte
+		err   error
+	)
+	if sessionID != "" {
+		frame, err = psignalr.FrameSendSessionBasedMessageAsync(&id, trace, target, packet, sessionID)
+	} else {
+		frame, err = psignalr.FrameSendMessageAsync(&id, trace, target, packet)
+	}
 	if err != nil {
 		return err
 	}

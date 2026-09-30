@@ -115,6 +115,12 @@ func TestSendCompletesOnAck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if inv.Target != psignalr.TargetSendSessionBasedMessageAsync || len(inv.Arguments) != 4 {
+		t.Fatalf("unexpected invocation: %#v", inv)
+	}
+	if session, _ := inv.Arguments[3].(string); session != "session" {
+		t.Fatalf("session=%q", session)
+	}
 	packetMap, ok := inv.Arguments[2].(map[string]any)
 	if !ok {
 		t.Fatal("missing packet map")

@@ -21,9 +21,10 @@ type Invocation struct {
 }
 
 type ReceiveMessage struct {
-	SourceDcgClientID string
-	Trace             TraceContextPacket
-	Packet            dcg.MultiplexPacket
+	SourceDcgClientID   string
+	Trace               TraceContextPacket
+	Packet              dcg.MultiplexPacket
+	ConnectionSessionID string
 }
 
 func SplitFrames(payload []byte) ([][]byte, error) {
@@ -106,11 +107,23 @@ func ParseInvocation(body []byte) (Invocation, error) {
 }
 
 func ParseOnReceiveMessage(inv Invocation) (ReceiveMessage, error) {
+	return parseReceiveInvocation(inv, TargetOnReceiveMessage, false)
+}
+
+func ParseOnReceiveSessionBasedMessage(inv Invocation) (ReceiveMessage, error) {
+	return parseReceiveInvocation(inv, TargetOnReceiveSessionBasedMessage, true)
+}
+
+func parseReceiveInvocation(inv Invocation, target string, sessionBased bool) (ReceiveMessage, error) {
 	var out ReceiveMessage
+	wantArgs := 3
+	if sessionBased {
+		wantArgs = 4
+	}
 	if inv.MessageType != HubMessageTypeInvocation ||
-		inv.Target != "OnReceiveMessage" ||
-		len(inv.Arguments) != 3 {
-		return out, errors.New("signalr: not an OnReceiveMessage invocation")
+		inv.Target != target ||
+		len(inv.Arguments) != wantArgs {
+		return out, fmt.Errorf("signalr: not a %s invocation", target)
 	}
 	source, ok := inv.Arguments[0].(string)
 	if !ok || source == "" {
@@ -135,6 +148,13 @@ func ParseOnReceiveMessage(inv Invocation) (ReceiveMessage, error) {
 		return out, err
 	}
 	out.Packet = packet
+	if sessionBased {
+		sessionID, ok := inv.Arguments[3].(string)
+		if !ok || sessionID == "" {
+			return out, ErrMessagePack
+		}
+		out.ConnectionSessionID = sessionID
+	}
 	return out, nil
 }
 
