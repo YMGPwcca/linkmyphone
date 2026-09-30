@@ -77,18 +77,30 @@ phone clipboard change
 
 ## Source-confirmed authentication details
 
+- production service base: `https://dcg.microsoft.com/`
+- default relay hub endpoint: `relayhub/`
 - production MSA DCG scope (legacy MSA portal path):
   `service::msatoken.dcg.microsoft.com::MBI_SSL`
 - first-party migrated scope:
   `https://dcg.microsoft.com/DCG.ReadWrite`
 - services / SignalR access tokens are requested from the established DCG identity with scope `general`
+- identity bootstrap uses auth API version `1.1.0`
+- identity creation is nonce based:
+  - generate a random DCG device id
+  - fetch a nonce for that device id
+  - generate an ECDSA P-384 self-signed certificate with CN=<device id>
+  - sign a JWT containing `Nonce` and base64 DER `Certificate` using ES384
+  - submit that JWT to CreateIdentity and persist the certificate on success
+- sign-in repeats the nonce challenge using the persisted certificate and returns a scoped DCG access token
+- default JWT clock drift and lifetime are 12 hours; default identity certificate lifetime is 365 days
 - SignalR connection headers include DCG logical device/app/session/ring/OS metadata, tracing headers, optional partner id and hub region, and heartbeat frequency
-- local DCG identity creation and token refresh are delegated to `AuthServiceCryptoHelper`, which performs signed-JWT based identity/sign-in flows
+- `auth/dcgauth` contains the source-confirmed production constants and ECDSA/JWT identity primitives
 
 ## Still required for an end-to-end usable client
 
-- reverse and implement `AuthServiceCryptoHelper` signed identity/sign-in requests
-- exact production configuration values such as service base URL, hub endpoint, MSA client/app ids
+- exact Kiota auth HTTP route templates for GenerateNonce/CreateIdentity/SignIn/RotateKeys
+- concrete `MsaClientId` and `MsaAppId` values supplied by the packaged app configuration
+- Linux MSA account/token acquisition flow
 - target `DcgClientId` discovery/trust bootstrap
 - Linux native clipboard backend
 - executable/daemon wiring and user configuration
