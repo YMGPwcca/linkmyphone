@@ -78,3 +78,15 @@ func TestRejectTrailingBytes(t *testing.T) {
 		t.Fatal("expected trailing byte error")
 	}
 }
+
+func TestContextPublishHeaders(t *testing.T) {
+	m := NewContextPublish([]byte{9}, "pub-1")
+	route, ok := m.Header(HeaderRoute)
+	if !ok || route != RouteContextPublish {
+		t.Fatalf("route=(%q,%v)", route, ok)
+	}
+	requestID, ok := m.Header(HeaderRequestID)
+	if !ok || requestID != "pub-1" {
+		t.Fatalf("request id=(%q,%v)", requestID, ok)
+	}
+}

@@ -1,40 +1,91 @@
 # phonelink-linux
 
-Experimental clean-room interoperability work for Microsoft Phone Link / Link to Windows, with an initial focus on clipboard synchronization.
+Clean-room Go implementation targeting Microsoft Phone Link / Link to Windows interoperability on Linux, currently focused on clipboard sync.
 
-## Current scope
+## Implemented
 
-The first implementation target is an offline Go codec for the clipboard protocol. Network transport, authentication, and pairing are intentionally separate layers.
+The repository now includes:
 
-Implemented now:
+- clipboard protobuf-compatible codecs:
+  - `ClipboardRequestMessage`
+  - `ClipboardResponseMessage`
+  - `ClipboardItem`
+  - `PubSubPayload`
+  - Device Resource Manager request/response wrappers
+- clipboard state machine:
+  - `STATUS`
+  - `CONTENT`
+  - `FEATURE_ON` / `FEATURE_OFF` / `FEATURE_DISABLE`
+  - `CLIPBOARD_CHANGE`
+  - Windows-style phone change -> immediate CONTENT pull
+- Platform binary framing:
+  - `/DeviceResourceManager`
+  - `/internal/response`
+  - `/Context/Publish`
+- MSAEP cloud PubSub envelope:
+  - message tag
+  - DCG client id
+  - message id
+  - payload
+  - platform protocol version 1.1
+- DCG:
+  - fragment encode/decode
+  - reassembly
+  - ACK handling
+  - retry/timeout
+  - source-confirmed message type values
+- SignalR / Hub Relay:
+  - MessagePack Hub Protocol framing
+  - `SendMessageAsync`
+  - `SendSessionBasedMessageAsync`
+  - `OnReceiveMessage`
+  - `OnReceiveSessionBasedMessage`
+  - Hub Relay multiplex packets
+  - minimal WebSocket transport
+- clipboard cloud publication:
+  - PC clipboard change -> `PubSubPayload.Data`
+  - MSAEP tag 9
+  - one-way `/Context/Publish`
+- phone clipboard publication receive path:
+  - incoming MSAEP tag 9
+  - parse `PubSubPayload.Additional`
+  - request `CONTENT`
+  - apply text to the local clipboard backend
 
-- `ClipboardRequestMessage`
-- `ClipboardResponseMessage`
-- `ClipboardItem`
-- minimal protobuf `Timestamp`
-- PubSub two-field payload wrapper
-- Device Resource Manager wrapper for `/clipboard`
-- helpers for `CLIPBOARD_CHANGE`, `STATUS`, `CONTENT`, `FEATURE_ON`, and text responses
-- protobuf-compatible marshal/unmarshal without external dependencies
+## Source-confirmed clipboard cloud path
 
-Known protocol constants currently represented in code:
+```text
+local PC clipboard change
+    -> ClipboardResponseMessage(CLIPBOARD_CHANGE)
+    -> PubSubPayload.Data
+    -> MsaepMessage(tag=9)
+    -> PLATFORM /Context/Publish
+    -> DCG PLATFORM fragments
+    -> Hub Relay SignalR
 
-- clipboard resource path: `/clipboard`
-- DRM request type for clipboard reads: `GET = 1`
-- generic DRM resource type used by clipboard: `UNKNOWN = 4`
-- clipboard change response status: `6`
-- feature-on response status: `8`
+phone clipboard change
+    -> Hub Relay
+    -> DCG PLATFORM reassembly
+    -> PLATFORM /Context/Publish
+    -> MsaepMessage(tag=9)
+    -> PubSubPayload.Additional
+    -> CONTENT GET /clipboard
+    -> local clipboard
+```
+
+## Still required for an end-to-end usable client
+
+- Microsoft account / DCG authentication bootstrap
+- local and target `DcgClientId` discovery/provisioning
+- connection/session bootstrap and wake behavior
+- Linux native clipboard backend
+- executable/daemon wiring and user configuration
 
 ## Test
 
 ```bash
+gofmt -w .
 go test ./...
 ```
 
-The package currently lives at:
-
-```text
-protocol/clipboard
-```
-
-Transport over PubSub / DeviceResourceManager / DCG / SignalR is the next layer.
+GitHub Actions is currently configured as manual-only while the account Actions-minute quota is exhausted.

@@ -22,6 +22,7 @@ const (
 
 	ContentTypeBinary          = "application/x-binary"
 	RouteDeviceResourceManager = "/DeviceResourceManager"
+	RouteContextPublish        = "/Context/Publish"
 	RouteInternalResponse      = "/internal/response"
 )
 
@@ -44,6 +45,21 @@ func NewDeviceResourceRequest(payload []byte, requestID string) Message {
 		Headers: []Header{
 			{Key: HeaderContentType, Value: ContentTypeBinary},
 			{Key: HeaderRoute, Value: RouteDeviceResourceManager},
+			{Key: HeaderRejectionVersion, Value: "1"},
+			{Key: HeaderRequestID, Value: requestID},
+		},
+		Payload: append([]byte(nil), payload...),
+	}
+}
+
+// NewContextPublish builds the standard PLATFORM request envelope used by
+// SignalRContextProvider for cloud PubSub publications.
+func NewContextPublish(payload []byte, requestID string) Message {
+	return Message{
+		Version: Version1,
+		Headers: []Header{
+			{Key: HeaderContentType, Value: ContentTypeBinary},
+			{Key: HeaderRoute, Value: RouteContextPublish},
 			{Key: HeaderRejectionVersion, Value: "1"},
 			{Key: HeaderRequestID, Value: requestID},
 		},

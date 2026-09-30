@@ -8,6 +8,7 @@ import (
 
 	proto "github.com/YMGPwcca/phonelink-linux/protocol/clipboard"
 	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
+	"github.com/YMGPwcca/phonelink-linux/protocol/msaep"
 	"github.com/YMGPwcca/phonelink-linux/protocol/platform"
 	"github.com/YMGPwcca/phonelink-linux/transport/relay"
 )
@@ -157,4 +158,60 @@ func TestIncomingContentRequestReturnsLocalClipboard(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 	t.Fatal("no response")
+}
+
+func TestPublishLocalChangeBuildsContextPublishMSAEP(t *testing.T) {
+	fr := newFakeRelay()
+	c := New(fr, &fakeLocal{}, Config{
+		Target: "phone", SessionID: "session", SelfDcgClientID: "desktop-dcg",
+	})
+
+	correlationID, err := c.PublishLocalChange(context.Background(), "clip-cid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if correlationID != "clip-cid" {
+		t.Fatalf("correlation id=%q", correlationID)
+	}
+
+	fr.mu.Lock()
+	if len(fr.sent) != 1 {
+		fr.mu.Unlock()
+		t.Fatalf("sent=%d", len(fr.sent))
+	}
+	sent := fr.sent[0]
+	fr.mu.Unlock()
+
+	if sent.TransportMessageType != dcg.TransportMessageTypePlatform {
+		t.Fatalf("transport type=%d", sent.TransportMessageType)
+	}
+	pm, err := platform.Unmarshal(sent.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	route, _ := pm.Header(platform.HeaderRoute)
+	if route != platform.RouteContextPublish {
+		t.Fatalf("route=%q", route)
+	}
+	env, err := msaep.Unmarshal(pm.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env.MessageTag != int32(proto.ClipboardMessageTag) || env.DcgClientID != "desktop-dcg" {
+		t.Fatalf("envelope=%#v", env)
+	}
+	pubsub, err := proto.UnmarshalPubSubPayload(env.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pubsub.Data) == 0 || len(pubsub.Additional) != 0 {
+		t.Fatalf("pubsub=%#v", pubsub)
+	}
+	change, err := proto.UnmarshalResponse(pubsub.Data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if change.Status != proto.ResponseClipboardChange || change.CorrelationID != "clip-cid" {
+		t.Fatalf("change=%#v", change)
+	}
 }

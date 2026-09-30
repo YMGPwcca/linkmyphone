@@ -12,6 +12,7 @@ import (
 
 	proto "github.com/YMGPwcca/phonelink-linux/protocol/clipboard"
 	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
+	"github.com/YMGPwcca/phonelink-linux/protocol/msaep"
 	"github.com/YMGPwcca/phonelink-linux/protocol/platform"
 	"github.com/YMGPwcca/phonelink-linux/transport/relay"
 )
@@ -29,9 +30,10 @@ type Local interface {
 }
 
 type Config struct {
-	Target         string
-	SessionID      string
-	RequestTimeout time.Duration
+	Target          string
+	SessionID       string
+	SelfDcgClientID string
+	RequestTimeout  time.Duration
 }
 
 type pendingResponse struct {
@@ -46,13 +48,20 @@ type Client struct {
 
 	mu      sync.Mutex
 	pending map[string]chan pendingResponse
+	asyncErr chan error
 }
 
 func New(r Relay, local Local, cfg Config) *Client {
 	if cfg.RequestTimeout <= 0 {
 		cfg.RequestTimeout = DefaultRequestTimeout
 	}
-	return &Client{relay: r, local: local, cfg: cfg, pending: make(map[string]chan pendingResponse)}
+	return &Client{
+		relay: r,
+		local: local,
+		cfg: cfg,
+		pending: make(map[string]chan pendingResponse),
+		asyncErr: make(chan error, 8),
+	}
 }
 
 // Run dispatches PLATFORM messages into request responses and incoming
@@ -62,6 +71,10 @@ func (c *Client) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case err := <-c.asyncErr:
+			if err != nil {
+				return err
+			}
 		case msg, ok := <-c.relay.Received():
 			if !ok {
 				return errors.New("clipboard: relay closed")
@@ -108,6 +121,33 @@ func (c *Client) Status(ctx context.Context, correlationID string) (proto.Respon
 
 func (c *Client) PullToLocal(ctx context.Context) error {
 	return c.pullToLocal(ctx, "")
+}
+
+// PublishLocalChange mirrors the Windows SignalRContextProvider cloud publish
+// path for clipboard tag 9:
+// ClipboardResponseMessage -> PubSubPayload -> MsaepMessage -> /Context/Publish.
+// The platform request is one-way; relay.Send still waits for the DCG fragment ACK.
+func (c *Client) PublishLocalChange(ctx context.Context, correlationID string) (string, error) {
+	if c.cfg.Target == "" || c.cfg.SessionID == "" {
+		return "", errors.New("clipboard: target and session id are required")
+	}
+	if c.cfg.SelfDcgClientID == "" {
+		return "", errors.New("clipboard: self DCG client id is required for PubSub")
+	}
+	if correlationID == "" {
+		correlationID = newID()
+	}
+	pubsub := proto.MarshalPubSubPayload(proto.NewPCClipboardChangePublication(correlationID))
+	envelope := msaep.New(newID(), c.cfg.SelfDcgClientID, int32(proto.ClipboardMessageTag), pubsub)
+	pm := platform.NewContextPublish(msaep.Marshal(envelope), newID())
+	wire, err := platform.Marshal(pm)
+	if err != nil {
+		return "", err
+	}
+	if err := c.relay.Send(ctx, c.cfg.Target, c.cfg.SessionID, dcg.TransportMessageTypePlatform, wire); err != nil {
+		return "", err
+	}
+	return correlationID, nil
 }
 
 // HandlePhoneClipboardPublication implements the Windows receive-side clipboard
@@ -219,9 +259,37 @@ func (c *Client) handlePlatform(ctx context.Context, msg relay.Received) error {
 
 	case platform.RouteDeviceResourceManager:
 		return c.handleIncomingRequest(ctx, msg, pm)
+	case platform.RouteContextPublish:
+		return c.handleIncomingPublication(ctx, pm)
 	default:
 		return nil
 	}
+}
+
+func (c *Client) handleIncomingPublication(ctx context.Context, pm platform.Message) error {
+	envelope, err := msaep.Unmarshal(pm.Payload)
+	if err != nil {
+		return err
+	}
+	if envelope.MessageTag != int32(proto.ClipboardMessageTag) {
+		return nil
+	}
+	publication, err := proto.UnmarshalPubSubPayload(envelope.Payload)
+	if err != nil {
+		return err
+	}
+
+	// Pulling CONTENT waits for a /internal/response, which must be consumed by
+	// this Run loop. Do it asynchronously so the receive loop remains live.
+	go func() {
+		if err := c.HandlePhoneClipboardPublication(ctx, publication); err != nil {
+			select {
+			case c.asyncErr <- err:
+			case <-ctx.Done():
+			}
+		}
+	}()
+	return nil
 }
 
 func (c *Client) handleIncomingRequest(ctx context.Context, msg relay.Received, pm platform.Message) error {
