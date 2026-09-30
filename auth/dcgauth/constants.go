@@ -15,7 +15,12 @@ const (
 	// against the established DCG identity with this scope.
 	ServicesScopeGeneral = "general"
 
-	AuthAPIVersion = "1.1.0"
+	AuthAPIVersion             = "1.1.0"
+	DeviceManagementAPIVersion = "1.5.0"
+
+	// Public CrossDevice Microsoft-account client/application id.
+	MSAClientID = "ca3b40e4-3001-4842-8f21-49c0045404f8"
+	MSAAppID    = MSAClientID
 
 	HeaderUserIdentityType  = "UserIdentityType"
 	HeaderUserIdentityToken = "UserIdentityToken"

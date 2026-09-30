@@ -78,6 +78,7 @@ phone clipboard change
 ## Source-confirmed authentication details
 
 - production service base: `https://dcg.microsoft.com/`
+- CrossDevice public MSA client/application id: `ca3b40e4-3001-4842-8f21-49c0045404f8`
 - default relay hub endpoint: `relayhub/`
 - production MSA DCG scope (legacy MSA portal path):
   `service::msatoken.dcg.microsoft.com::MBI_SSL`
@@ -101,10 +102,11 @@ phone clipboard change
   - `POST /Auth/SignIn?api-version=1.1.0` with `{\"certificateJWT\": ...}`
   - `POST /Auth/RotateKeys?api-version=1.1.0`
 - auth requests carry `UserIdentityType: MSA`, `UserIdentityToken`, `Authorization: Bearer <MSA token>`, and `Authorization-Type: MSA`
+- peer discovery uses `GET /DeviceAuthProxy/GetDeviceInfoList?api-version=1.5.0&top=20&filter=` with the MSA bearer token; linked entries other than self provide target DCG client ids
+- async trust maps a DCG id to `trust_<dcgClientId>` and uses peer PKI/SelfSigned certificates from device metadata
 
 ## Still required for an end-to-end usable client
 
-- concrete `MsaClientId` and `MsaAppId` values supplied by the packaged app configuration
 - Linux MSA account/token acquisition flow
 - target `DcgClientId` discovery/trust bootstrap
 - Linux native clipboard backend
