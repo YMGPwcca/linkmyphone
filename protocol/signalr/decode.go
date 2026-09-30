@@ -27,6 +27,17 @@ type ReceiveMessage struct {
 	ConnectionSessionID string
 }
 
+type OnConnectedPayload struct {
+	RegionName string
+	Partners   []string
+}
+
+type PartnerConnected struct {
+	SourceDcgClientID string
+	Trace             TraceContextPacket
+	Region            string
+}
+
 func SplitFrames(payload []byte) ([][]byte, error) {
 	var frames [][]byte
 	for len(payload) > 0 {
@@ -104,6 +115,87 @@ func ParseInvocation(body []byte) (Invocation, error) {
 		out.StreamIDs = append(out.StreamIDs, s)
 	}
 	return out, nil
+}
+
+func ParseOnConnected(inv Invocation) (OnConnectedPayload, error) {
+	var out OnConnectedPayload
+	if inv.MessageType != HubMessageTypeInvocation ||
+		inv.Target != TargetOnConnected ||
+		len(inv.Arguments) != 1 {
+		return out, errors.New("signalr: not an OnConnected invocation")
+	}
+	m, ok := inv.Arguments[0].(map[string]any)
+	if !ok {
+		return out, ErrMessagePack
+	}
+	if v, ok := m["RegionName"]; ok && v != nil {
+		s, ok := v.(string)
+		if !ok {
+			return out, ErrMessagePack
+		}
+		out.RegionName = s
+	}
+	if v, ok := m["Partners"]; ok && v != nil {
+		items, ok := v.([]any)
+		if !ok {
+			return out, ErrMessagePack
+		}
+		out.Partners = make([]string, 0, len(items))
+		for _, item := range items {
+			s, ok := item.(string)
+			if !ok {
+				return out, ErrMessagePack
+			}
+			out.Partners = append(out.Partners, s)
+		}
+	}
+	return out, nil
+}
+
+func ParseOnPartnerConnected(inv Invocation) (PartnerConnected, error) {
+	var out PartnerConnected
+	if inv.MessageType != HubMessageTypeInvocation ||
+		inv.Target != TargetOnPartnerConnected ||
+		len(inv.Arguments) != 3 {
+		return out, errors.New("signalr: not an OnPartnerConnected invocation")
+	}
+	source, ok := inv.Arguments[0].(string)
+	if !ok || source == "" {
+		return out, ErrMessagePack
+	}
+	out.SourceDcgClientID = source
+	if inv.Arguments[1] != nil {
+		traceMap, ok := inv.Arguments[1].(map[string]any)
+		if !ok {
+			return out, ErrMessagePack
+		}
+		trace, err := traceFromMap(traceMap)
+		if err != nil {
+			return out, err
+		}
+		out.Trace = trace
+	}
+	if inv.Arguments[2] != nil {
+		region, ok := inv.Arguments[2].(string)
+		if !ok {
+			return out, ErrMessagePack
+		}
+		out.Region = region
+	}
+	return out, nil
+}
+
+func ParseOnPartnerDisconnected(inv Invocation) (string, error) {
+	if inv.MessageType != HubMessageTypeInvocation ||
+		inv.Target != TargetOnPartnerDisconnected ||
+		len(inv.Arguments) != 1 {
+		return "", errors.New("signalr: not an OnPartnerDisconnected invocation")
+	}
+	source, ok := inv.Arguments[0].(string)
+	if !ok || source == "" {
+		return "", ErrMessagePack
+	}
+	return source, nil
 }
 
 func ParseOnReceiveMessage(inv Invocation) (ReceiveMessage, error) {

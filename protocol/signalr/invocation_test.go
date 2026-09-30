@@ -99,3 +99,25 @@ func TestSendSessionBasedMessageAsyncShape(t *testing.T) {
 		t.Fatalf("session=%q", got)
 	}
 }
+
+func TestSendConnectedAsyncShape(t *testing.T) {
+	id := "10"
+	body, err := MarshalSendConnectedAsync(&id, TraceContextPacket{}, "phone")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv, err := ParseInvocation(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.Target != TargetSendConnectedAsync || len(inv.Arguments) != 3 {
+		t.Fatalf("inv=%#v", inv)
+	}
+	if target, _ := inv.Arguments[1].(string); target != "phone" {
+		t.Fatalf("target=%q", target)
+	}
+	empty, ok := inv.Arguments[2].(map[string]any)
+	if !ok || len(empty) != 0 {
+		t.Fatalf("third argument=%#v", inv.Arguments[2])
+	}
+}

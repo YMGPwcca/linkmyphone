@@ -10,11 +10,15 @@ import (
 )
 
 const (
-	HubMessageTypeInvocation            = 1
-	TargetSendMessageAsync               = "SendMessageAsync"
-	TargetSendSessionBasedMessageAsync   = "SendSessionBasedMessageAsync"
-	TargetOnReceiveMessage               = "OnReceiveMessage"
-	TargetOnReceiveSessionBasedMessage   = "OnReceiveSessionBasedMessage"
+	HubMessageTypeInvocation          = 1
+	TargetSendMessageAsync             = "SendMessageAsync"
+	TargetSendSessionBasedMessageAsync = "SendSessionBasedMessageAsync"
+	TargetSendConnectedAsync           = "SendConnectedAsync"
+	TargetOnConnected                  = "OnConnected"
+	TargetOnPartnerConnected           = "OnPartnerConnected"
+	TargetOnPartnerDisconnected        = "OnPartnerDisconnected"
+	TargetOnReceiveMessage             = "OnReceiveMessage"
+	TargetOnReceiveSessionBasedMessage = "OnReceiveSessionBasedMessage"
 )
 
 type TraceContextPacket struct {
@@ -86,6 +90,35 @@ func MarshalSendSessionBasedMessageAsync(invocationID *string, trace TraceContex
 
 func FrameSendSessionBasedMessageAsync(invocationID *string, trace TraceContextPacket, targetDcgClientID string, packet dcg.MultiplexPacket, connectionSessionID string) ([]byte, error) {
 	body, err := MarshalSendSessionBasedMessageAsync(invocationID, trace, targetDcgClientID, packet, connectionSessionID)
+	if err != nil {
+		return nil, err
+	}
+	return Frame(body)
+}
+
+// MarshalSendConnectedAsync serializes the Hub Relay partner-presence flush:
+// [1, {}, invocationId, "SendConnectedAsync", [trace, target, {}], []].
+// The empty object is the third argument passed by the Windows client.
+func MarshalSendConnectedAsync(invocationID *string, trace TraceContextPacket, targetDcgClientID string) ([]byte, error) {
+	if targetDcgClientID == "" {
+		return nil, errors.New("signalr: empty target DCG client id")
+	}
+	p := packer{}
+	p.array(6)
+	p.integer(HubMessageTypeInvocation)
+	p.mapLen(0)
+	p.nullableString(invocationID)
+	p.str(TargetSendConnectedAsync)
+	p.array(3)
+	p.trace(trace)
+	p.str(targetDcgClientID)
+	p.mapLen(0)
+	p.array(0)
+	return p.b, nil
+}
+
+func FrameSendConnectedAsync(invocationID *string, trace TraceContextPacket, targetDcgClientID string) ([]byte, error) {
+	body, err := MarshalSendConnectedAsync(invocationID, trace, targetDcgClientID)
 	if err != nil {
 		return nil, err
 	}

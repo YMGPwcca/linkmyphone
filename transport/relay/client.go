@@ -58,9 +58,11 @@ type Client struct {
 	invocation  atomic.Uint64
 
 	mu         sync.Mutex
-	sequencers map[string]*dcg.Sequencer
-	sessions   map[string]string
-	pending    map[pendingKey]chan dcg.Ack
+	sequencers    map[string]*dcg.Sequencer
+	sessions      map[string]string
+	pending       map[pendingKey]chan dcg.Ack
+	partners      map[string]bool
+	partnerWaiters map[string][]chan struct{}
 
 	received chan Received
 }
@@ -84,10 +86,12 @@ func New(hub Hub, cfg Config) *Client {
 		ackTimeout:   cfg.AckTimeout,
 		ackRetries:   cfg.AckRetries,
 		reassembler:  dcg.NewReassembler(32<<20, 4096),
-		sequencers:   make(map[string]*dcg.Sequencer),
-		sessions:     make(map[string]string),
-		pending:      make(map[pendingKey]chan dcg.Ack),
-		received:     make(chan Received, 32),
+		sequencers:    make(map[string]*dcg.Sequencer),
+		sessions:      make(map[string]string),
+		pending:       make(map[pendingKey]chan dcg.Ack),
+		partners:      make(map[string]bool),
+		partnerWaiters: make(map[string][]chan struct{}),
+		received:      make(chan Received, 32),
 	}
 }
 
@@ -119,6 +123,34 @@ func (c *Client) Run(ctx context.Context) error {
 				}
 				var msg psignalr.ReceiveMessage
 				switch inv.Target {
+				case psignalr.TargetOnConnected:
+					connected, err := psignalr.ParseOnConnected(inv)
+					if err != nil {
+						return err
+					}
+					for _, partner := range connected.Partners {
+						c.markPartnerConnected(partner)
+					}
+					continue
+				case psignalr.TargetOnPartnerConnected:
+					partner, err := psignalr.ParseOnPartnerConnected(inv)
+					if err != nil {
+						return err
+					}
+					c.markPartnerConnected(partner.SourceDcgClientID)
+					// Windows answers OnPartnerConnected with SendConnectedAsync so the
+					// partner sees reciprocal presence on the Hub Relay.
+					if err := c.SendConnected(partner.SourceDcgClientID, partner.Trace); err != nil {
+						return err
+					}
+					continue
+				case psignalr.TargetOnPartnerDisconnected:
+					source, err := psignalr.ParseOnPartnerDisconnected(inv)
+					if err != nil {
+						return err
+					}
+					c.markPartnerDisconnected(source)
+					continue
 				case psignalr.TargetOnReceiveMessage:
 					msg, err = psignalr.ParseOnReceiveMessage(inv)
 				case psignalr.TargetOnReceiveSessionBasedMessage:
@@ -129,6 +161,7 @@ func (c *Client) Run(ctx context.Context) error {
 				if err != nil {
 					return err
 				}
+				c.markPartnerConnected(msg.SourceDcgClientID)
 				if err := c.handlePacket(ctx, msg); err != nil {
 					return err
 				}
@@ -145,6 +178,46 @@ func (c *Client) Run(ctx context.Context) error {
 			return ctx.Err()
 		default:
 		}
+	}
+}
+
+func (c *Client) SendConnected(target string, trace psignalr.TraceContextPacket) error {
+	if target == "" {
+		return errors.New("relay: target is required")
+	}
+	id := strconv.FormatUint(c.invocation.Add(1), 10)
+	frame, err := psignalr.FrameSendConnectedAsync(&id, trace, target)
+	if err != nil {
+		return err
+	}
+	return c.hub.SendBinary(frame)
+}
+
+func (c *Client) PartnerConnected(target string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.partners[target]
+}
+
+func (c *Client) WaitPartnerConnected(ctx context.Context, target string) error {
+	if target == "" {
+		return errors.New("relay: target is required")
+	}
+	waiter := make(chan struct{})
+	c.mu.Lock()
+	if c.partners[target] {
+		c.mu.Unlock()
+		return nil
+	}
+	c.partnerWaiters[target] = append(c.partnerWaiters[target], waiter)
+	c.mu.Unlock()
+	defer c.removePartnerWaiter(target, waiter)
+
+	select {
+	case <-waiter:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -286,6 +359,47 @@ func (c *Client) sendPacket(target, connectionSessionID string, trace psignalr.T
 		return err
 	}
 	return c.hub.SendBinary(frame)
+}
+
+func (c *Client) markPartnerConnected(target string) {
+	if target == "" {
+		return
+	}
+	c.mu.Lock()
+	c.partners[target] = true
+	waiters := c.partnerWaiters[target]
+	delete(c.partnerWaiters, target)
+	c.mu.Unlock()
+	for _, waiter := range waiters {
+		close(waiter)
+	}
+}
+
+func (c *Client) markPartnerDisconnected(target string) {
+	if target == "" {
+		return
+	}
+	c.mu.Lock()
+	c.partners[target] = false
+	c.mu.Unlock()
+}
+
+func (c *Client) removePartnerWaiter(target string, waiter chan struct{}) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	waiters := c.partnerWaiters[target]
+	for i, candidate := range waiters {
+		if candidate != waiter {
+			continue
+		}
+		waiters = append(waiters[:i], waiters[i+1:]...)
+		if len(waiters) == 0 {
+			delete(c.partnerWaiters, target)
+		} else {
+			c.partnerWaiters[target] = waiters
+		}
+		return
+	}
 }
 
 func (c *Client) sequencer(target string) *dcg.Sequencer {

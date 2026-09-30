@@ -302,3 +302,87 @@ func TestSessionIDForTargetIsStableAndPerPeer(t *testing.T) {
 		t.Fatalf("expected distinct peer session id: first=%q other=%q", first, other)
 	}
 }
+
+func TestSendConnectedAndPartnerPresence(t *testing.T) {
+	hub := newFakeHub()
+	c := New(hub, Config{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+
+	if err := c.SendConnected("phone", psignalr.TraceContextPacket{}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	var first []byte
+	for time.Now().Before(deadline) {
+		hub.mu.Lock()
+		if len(hub.sent) != 0 {
+			first = append([]byte(nil), hub.sent[0]...)
+		}
+		hub.mu.Unlock()
+		if first != nil {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if first == nil {
+		t.Fatal("no SendConnectedAsync invocation")
+	}
+	frames, err := psignalr.SplitFrames(first)
+	if err != nil || len(frames) != 1 {
+		t.Fatalf("frames=%d err=%v", len(frames), err)
+	}
+	inv, err := psignalr.ParseInvocation(frames[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.Target != psignalr.TargetSendConnectedAsync {
+		t.Fatalf("target=%q", inv.Target)
+	}
+
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- c.WaitPartnerConnected(ctx, "phone")
+	}()
+	hub.reads <- onPartnerConnectedFrame(t, "phone", "westus")
+	select {
+	case err := <-waitDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("partner presence did not unblock waiter")
+	}
+	if !c.PartnerConnected("phone") {
+		t.Fatal("partner should be connected")
+	}
+}
+
+func onPartnerConnectedFrame(t *testing.T, source, region string) []byte {
+	t.Helper()
+	p := &tinyPacker{}
+	p.array(6)
+	p.integer(1)
+	p.mapLen(0)
+	p.nilValue()
+	p.str(psignalr.TargetOnPartnerConnected)
+	p.array(3)
+	p.str(source)
+	p.mapLen(4)
+	p.str("ParentId")
+	p.nilValue()
+	p.str("TraceFlags")
+	p.integer(0)
+	p.str("TraceId")
+	p.nilValue()
+	p.str("TraceState")
+	p.nilValue()
+	p.str(region)
+	p.array(0)
+	frame, err := psignalr.Frame(p.b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return frame
+}

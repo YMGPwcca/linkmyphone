@@ -138,3 +138,87 @@ func TestParseOnReceiveSessionBasedMessage(t *testing.T) {
 		t.Fatalf("msg=%#v", msg)
 	}
 }
+
+func TestParseOnConnected(t *testing.T) {
+	p := packer{}
+	p.array(6)
+	p.integer(HubMessageTypeInvocation)
+	p.mapLen(0)
+	p.b = append(p.b, 0xc0)
+	p.str(TargetOnConnected)
+	p.array(1)
+	p.mapLen(2)
+	p.str("RegionName")
+	p.str("westus")
+	p.str("Partners")
+	p.array(2)
+	p.str("phone-a")
+	p.str("phone-b")
+	p.array(0)
+
+	inv, err := ParseInvocation(p.b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := ParseOnConnected(inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload.RegionName != "westus" ||
+		len(payload.Partners) != 2 ||
+		payload.Partners[1] != "phone-b" {
+		t.Fatalf("payload=%#v", payload)
+	}
+}
+
+func TestParseOnPartnerConnected(t *testing.T) {
+	p := packer{}
+	p.array(6)
+	p.integer(HubMessageTypeInvocation)
+	p.mapLen(0)
+	p.b = append(p.b, 0xc0)
+	p.str(TargetOnPartnerConnected)
+	p.array(3)
+	p.str("phone")
+	p.trace(TraceContextPacket{TraceFlags: 1})
+	p.str("westus")
+	p.array(0)
+
+	inv, err := ParseInvocation(p.b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event, err := ParseOnPartnerConnected(inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.SourceDcgClientID != "phone" ||
+		event.Region != "westus" ||
+		event.Trace.TraceFlags != 1 {
+		t.Fatalf("event=%#v", event)
+	}
+}
+
+func TestParseOnPartnerDisconnected(t *testing.T) {
+	p := packer{}
+	p.array(6)
+	p.integer(HubMessageTypeInvocation)
+	p.mapLen(0)
+	p.b = append(p.b, 0xc0)
+	p.str(TargetOnPartnerDisconnected)
+	p.array(1)
+	p.str("phone")
+	p.array(0)
+
+	inv, err := ParseInvocation(p.b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := ParseOnPartnerDisconnected(inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source != "phone" {
+		t.Fatalf("source=%q", source)
+	}
+}
