@@ -111,3 +111,19 @@ type DeviceResourceMessage struct {
 	Payload      []byte
 	ResourcePath string
 }
+
+
+// DeviceResourceResponseType mirrors DeviceResourceManagerResponseMessageType.
+type DeviceResourceResponseType uint64
+
+const (
+	DeviceResourceResponseUnspecified                  DeviceResourceResponseType = 0
+	DeviceResourceResponseSuccess                      DeviceResourceResponseType = 1
+	DeviceResourceResponseResourceHandlerNotRegistered DeviceResourceResponseType = 2
+)
+
+// DeviceResourceResponse is the payload carried by /internal/response.
+type DeviceResourceResponse struct {
+	Payload      []byte
+	ResponseType DeviceResourceResponseType
+}

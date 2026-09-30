@@ -104,3 +104,16 @@ func TestImageItem(t *testing.T) {
 		t.Fatalf("got %#v", got)
 	}
 }
+
+
+func TestDeviceResourceResponseRoundTrip(t *testing.T) {
+	want := DeviceResourceResponse{Payload: []byte{1, 2, 3}, ResponseType: DeviceResourceResponseSuccess}
+	wire := MarshalDeviceResourceResponse(want)
+	got, err := UnmarshalDeviceResourceResponse(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ResponseType != want.ResponseType || !bytes.Equal(got.Payload, want.Payload) {
+		t.Fatalf("got=%#v want=%#v", got, want)
+	}
+}

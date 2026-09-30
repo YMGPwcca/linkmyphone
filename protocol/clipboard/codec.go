@@ -353,3 +353,47 @@ func NewTextResponse(correlationID, text string, ts *Timestamp) Response {
 func WrapClipboardRequest(req Request) DeviceResourceMessage {
 	return DeviceResourceMessage{ResourceType: DeviceResourceTypeUnknown, RequestType: DeviceResourceRequestGET, Payload: MarshalRequest(req), ResourcePath: ResourcePath}
 }
+
+
+func MarshalDeviceResourceResponse(m DeviceResourceResponse) []byte {
+	var out []byte
+	out = appendBytesField(out, 1, m.Payload)
+	out = appendVarintField(out, 2, uint64(m.ResponseType))
+	return out
+}
+
+func UnmarshalDeviceResourceResponse(b []byte) (DeviceResourceResponse, error) {
+	var m DeviceResourceResponse
+	for i := 0; i < len(b); {
+		key, err := readVarint(b, &i)
+		if err != nil {
+			return m, err
+		}
+		field, wire := key>>3, key&7
+		switch field {
+		case 1:
+			if wire != 2 {
+				return m, ErrMalformed
+			}
+			v, err := readBytes(b, &i)
+			if err != nil {
+				return m, err
+			}
+			m.Payload = append([]byte(nil), v...)
+		case 2:
+			if wire != 0 {
+				return m, ErrMalformed
+			}
+			v, err := readVarint(b, &i)
+			if err != nil {
+				return m, err
+			}
+			m.ResponseType = DeviceResourceResponseType(v)
+		default:
+			if err := skipField(b, &i, wire); err != nil {
+				return m, err
+			}
+		}
+	}
+	return m, nil
+}
