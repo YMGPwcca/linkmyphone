@@ -85,6 +85,7 @@ phone clipboard change
 - Linux interoperability path: the same public client id with scope `https://dcg.microsoft.com/DCG.ReadWrite offline_access` was runtime-confirmed against `/consumers/oauth2/v2.0/devicecode` and returned HTTP 200
 - `auth/msa` implements the Microsoft identity-platform device-code flow plus token polling and refresh-token support for that client/scope
 - `auth/bootstrap` connects an acquired MSA access token directly to the source-confirmed DCG identity bootstrap and exposes the resulting DCG `general` services token
+- `auth/dcgauth` now models device enrollment: `POST /DeviceAuthProxy/EnrollDevice?api-version=1.5.0`, MSA bearer + `Dcg-Token`, Windows-compatible WEA metadata, and the separate `trust_<dcgClientId>` certificate registered as `SelfSigned`
 - default relay hub endpoint: `relayhub/`
 - production MSA DCG scope (legacy MSA portal path):
   `service::msatoken.dcg.microsoft.com::MBI_SSL`
@@ -113,6 +114,7 @@ phone clipboard change
 
 ## Still required for an end-to-end usable client
 
+- account-certificate trust import after enrollment
 - target `DcgClientId` discovery/trust bootstrap
 - Linux native clipboard backend
 - executable/daemon wiring and user configuration
