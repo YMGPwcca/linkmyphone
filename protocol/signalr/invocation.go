@@ -205,6 +205,12 @@ func (p *packer) any(v any) error {
 		p.integer(int64(x))
 	case float64:
 		p.float64(x)
+	case bool:
+		if x {
+			p.b = append(p.b, 0xc3)
+		} else {
+			p.b = append(p.b, 0xc2)
+		}
 	case []byte:
 		p.bin(x)
 	case nil:

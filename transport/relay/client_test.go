@@ -1,0 +1,278 @@
+package relay
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
+	psignalr "github.com/YMGPwcca/phonelink-linux/protocol/signalr"
+)
+
+type fakeHub struct {
+	mu     sync.Mutex
+	sent   [][]byte
+	reads  chan []byte
+	closed chan struct{}
+}
+
+func newFakeHub() *fakeHub {
+	return &fakeHub{reads: make(chan []byte, 8), closed: make(chan struct{})}
+}
+
+func (h *fakeHub) SendBinary(b []byte) error {
+	h.mu.Lock()
+	h.sent = append(h.sent, append([]byte(nil), b...))
+	h.mu.Unlock()
+	return nil
+}
+
+func (h *fakeHub) ReadBinary() ([]byte, error) {
+	select {
+	case b := <-h.reads:
+		return b, nil
+	case <-h.closed:
+		return nil, errors.New("closed")
+	}
+}
+
+func (h *fakeHub) Close() error {
+	close(h.closed)
+	return nil
+}
+
+func TestReceiveFragmentAcksAndReassembles(t *testing.T) {
+	hub := newFakeHub()
+	c := New(hub, Config{FragmentSize: 1024, AckTimeout: time.Second, AckRetries: 1})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+
+	packet := dcg.ToMultiplexPacket(dcg.Fragment{
+		SequenceNumber: 3, FragmentNumber: 1, FragmentCount: 1,
+		MessageID: 7, Payload: []byte("platform"), TransportMessageType: int(dcg.TransportMessageTypePlatform), SessionID: "s",
+	}, int(dcg.MessageTypeFragment))
+	hub.reads <- onReceiveFrame(t, "phone", packet)
+
+	select {
+	case got := <-c.Received():
+		if got.Source != "phone" || got.SessionID != "s" || string(got.Payload) != "platform" {
+			t.Fatalf("got=%#v", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for reassembled message")
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		hub.mu.Lock()
+		n := len(hub.sent)
+		hub.mu.Unlock()
+		if n > 0 {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("no ACK sent")
+}
+
+func TestSendCompletesOnAck(t *testing.T) {
+	hub := newFakeHub()
+	c := New(hub, Config{FragmentSize: 1024, AckTimeout: time.Second, AckRetries: 1})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- c.Send(ctx, "phone", "session", dcg.TransportMessageTypePlatform, []byte("hello"))
+	}()
+
+	var sent []byte
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		hub.mu.Lock()
+		if len(hub.sent) > 0 {
+			sent = append([]byte(nil), hub.sent[0]...)
+		}
+		hub.mu.Unlock()
+		if sent != nil {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if sent == nil {
+		t.Fatal("no fragment sent")
+	}
+
+	frames, err := psignalr.SplitFrames(sent)
+	if err != nil || len(frames) != 1 {
+		t.Fatalf("frames=%d err=%v", len(frames), err)
+	}
+	inv, err := psignalr.ParseInvocation(frames[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	packetMap, ok := inv.Arguments[2].(map[string]any)
+	if !ok {
+		t.Fatal("missing packet map")
+	}
+	packet, err := packetFromMapForTest(packetMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fragment, err := dcg.ParseFragmentPacket(packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub.reads <- onReceiveFrame(t, "phone", dcg.SuccessAckPacket(fragment))
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("send did not complete")
+	}
+}
+
+func onReceiveFrame(t *testing.T, source string, packet dcg.MultiplexPacket) []byte {
+	t.Helper()
+	body := buildOnReceive(t, source, packet)
+	framed, err := psignalr.Frame(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return framed
+}
+
+func buildOnReceive(t *testing.T, source string, packet dcg.MultiplexPacket) []byte {
+	t.Helper()
+	enc := &tinyPacker{}
+	enc.array(6)
+	enc.integer(1)
+	enc.mapLen(0)
+	enc.nilValue()
+	enc.str("OnReceiveMessage")
+	enc.array(3)
+	enc.str(source)
+	enc.mapLen(4)
+	enc.str("ParentId")
+	enc.nilValue()
+	enc.str("TraceFlags")
+	enc.integer(0)
+	enc.str("TraceId")
+	enc.nilValue()
+	enc.str("TraceState")
+	enc.nilValue()
+	enc.packet(packet)
+	enc.array(0)
+	return enc.b
+}
+
+func packetFromMapForTest(m map[string]any) (dcg.MultiplexPacket, error) {
+	p := dcg.MultiplexPacket{}
+	p.Type, _ = m["Type"].(string)
+	p.Properties, _ = m["Properties"].(map[string]any)
+	if raw, ok := m["Raw"].([]byte); ok {
+		p.Raw = raw
+	}
+	if p.Type == "" || p.Properties == nil {
+		return p, errors.New("bad packet")
+	}
+	return p, nil
+}
+
+type tinyPacker struct{ b []byte }
+
+func (p *tinyPacker) array(n int)  { p.b = append(p.b, 0x90|byte(n)) }
+func (p *tinyPacker) mapLen(n int) { p.b = append(p.b, 0x80|byte(n)) }
+func (p *tinyPacker) nilValue()    { p.b = append(p.b, 0xc0) }
+
+func (p *tinyPacker) integer(n int) {
+	if n >= 0 && n < 128 {
+		p.b = append(p.b, byte(n))
+		return
+	}
+	p.b = append(p.b, 0xd2, byte(n>>24), byte(n>>16), byte(n>>8), byte(n))
+}
+
+func (p *tinyPacker) str(s string) {
+	if len(s) < 32 {
+		p.b = append(p.b, 0xa0|byte(len(s)))
+	} else {
+		p.b = append(p.b, 0xd9, byte(len(s)))
+	}
+	p.b = append(p.b, s...)
+}
+
+func (p *tinyPacker) bin(b []byte) {
+	p.b = append(p.b, 0xc4, byte(len(b)))
+	p.b = append(p.b, b...)
+}
+
+func (p *tinyPacker) float64one() {
+	p.b = append(p.b, 0xcb, 0x3f, 0xf0, 0, 0, 0, 0, 0, 0)
+}
+
+func (p *tinyPacker) packet(v dcg.MultiplexPacket) {
+	p.mapLen(3)
+	p.str("Properties")
+	p.mapLen(len(v.Properties))
+	keys := []string{
+		dcg.PropertyVersion, dcg.PropertyType, dcg.PropertySessionID,
+		dcg.PropertySequenceNumber, dcg.PropertySuccess, dcg.PropertyErrorNumber,
+		dcg.PropertyMessageID, dcg.PropertyFragmentID, dcg.PropertyFragmentCount,
+		dcg.PropertyMessageType,
+	}
+	seen := map[string]bool{}
+	for _, k := range keys {
+		x, ok := v.Properties[k]
+		if !ok {
+			continue
+		}
+		seen[k] = true
+		p.str(k)
+		switch y := x.(type) {
+		case string:
+			p.str(y)
+		case int:
+			p.integer(y)
+		case float64:
+			if y == 1 {
+				p.float64one()
+			} else {
+				p.b = append(p.b, 0xcb, 0, 0, 0, 0, 0, 0, 0, 0)
+			}
+		case bool:
+			if y {
+				p.b = append(p.b, 0xc3)
+			} else {
+				p.b = append(p.b, 0xc2)
+			}
+		}
+	}
+	for k, x := range v.Properties {
+		if seen[k] {
+			continue
+		}
+		p.str(k)
+		switch y := x.(type) {
+		case string:
+			p.str(y)
+		case int:
+			p.integer(y)
+		}
+	}
+	p.str("Raw")
+	if v.Raw == nil {
+		p.nilValue()
+	} else {
+		p.bin(v.Raw)
+	}
+	p.str("Type")
+	p.str(v.Type)
+}
