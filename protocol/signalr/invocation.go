@@ -56,7 +56,8 @@ func FrameSendMessageAsync(invocationID *string, trace TraceContextPacket, targe
 }
 
 // MarshalSendSessionBasedMessageAsync serializes the HubRelay invocation used
-// when a DCG connection session id is present:
+// when a Hub Relay connectionSessionId is present. This is distinct from the
+// DCG SessionId carried inside MultiplexPacket.Properties:
 // [1, {}, invocationId, "SendSessionBasedMessageAsync",
 //  [trace, target, packet, connectionSessionId], []].
 func MarshalSendSessionBasedMessageAsync(invocationID *string, trace TraceContextPacket, targetDcgClientID string, packet dcg.MultiplexPacket, connectionSessionID string) ([]byte, error) {

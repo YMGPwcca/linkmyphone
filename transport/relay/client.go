@@ -2,6 +2,7 @@ package relay
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"strconv"
@@ -58,6 +59,7 @@ type Client struct {
 
 	mu         sync.Mutex
 	sequencers map[string]*dcg.Sequencer
+	sessions   map[string]string
 	pending    map[pendingKey]chan dcg.Ack
 
 	received chan Received
@@ -83,6 +85,7 @@ func New(hub Hub, cfg Config) *Client {
 		ackRetries:   cfg.AckRetries,
 		reassembler:  dcg.NewReassembler(32<<20, 4096),
 		sequencers:   make(map[string]*dcg.Sequencer),
+		sessions:     make(map[string]string),
 		pending:      make(map[pendingKey]chan dcg.Ack),
 		received:     make(chan Received, 32),
 	}
@@ -146,8 +149,15 @@ func (c *Client) Run(ctx context.Context) error {
 }
 
 func (c *Client) Send(ctx context.Context, target, sessionID string, transportType dcg.TransportMessageType, payload []byte) error {
-	if target == "" || sessionID == "" {
-		return errors.New("relay: target and session id are required")
+	if target == "" {
+		return errors.New("relay: target is required")
+	}
+	if sessionID == "" {
+		var err error
+		sessionID, err = c.sessionIDForTarget(target)
+		if err != nil {
+			return fmt.Errorf("relay: generate DCG session id: %w", err)
+		}
 	}
 	if transportType != dcg.TransportMessageTypeApp && transportType != dcg.TransportMessageTypePlatform {
 		return errors.New("relay: unsupported transport message type")
@@ -181,7 +191,7 @@ func (c *Client) sendFragment(ctx context.Context, target string, f dcg.Fragment
 
 	packet := dcg.ToMultiplexPacket(f, int(dcg.MessageTypeFragment))
 	for attempt := 0; attempt <= c.ackRetries; attempt++ {
-		if err := c.sendPacket(target, f.SessionID, psignalr.TraceContextPacket{}, packet); err != nil {
+		if err := c.sendPacket(target, "", psignalr.TraceContextPacket{}, packet); err != nil {
 			return err
 		}
 		timer := time.NewTimer(c.ackTimeout)
@@ -236,14 +246,7 @@ func (c *Client) handlePacket(ctx context.Context, msg psignalr.ReceiveMessage) 
 		if err != nil {
 			return err
 		}
-		sessionID := f.SessionID
-		if msg.ConnectionSessionID != "" {
-			if sessionID != "" && sessionID != msg.ConnectionSessionID {
-				return errors.New("relay: Hub session id does not match DCG fragment session id")
-			}
-			sessionID = msg.ConnectionSessionID
-		}
-		if err := c.sendPacket(msg.SourceDcgClientID, sessionID, msg.Trace, dcg.SuccessAckPacket(f)); err != nil {
+		if err := c.sendPacket(msg.SourceDcgClientID, msg.ConnectionSessionID, msg.Trace, dcg.SuccessAckPacket(f)); err != nil {
 			return err
 		}
 		payload, complete, err := c.reassembler.Add(msg.SourceDcgClientID, f)
@@ -268,14 +271,14 @@ func (c *Client) handlePacket(ctx context.Context, msg psignalr.ReceiveMessage) 
 	}
 }
 
-func (c *Client) sendPacket(target, sessionID string, trace psignalr.TraceContextPacket, packet dcg.MultiplexPacket) error {
+func (c *Client) sendPacket(target, connectionSessionID string, trace psignalr.TraceContextPacket, packet dcg.MultiplexPacket) error {
 	id := strconv.FormatUint(c.invocation.Add(1), 10)
 	var (
 		frame []byte
 		err   error
 	)
-	if sessionID != "" {
-		frame, err = psignalr.FrameSendSessionBasedMessageAsync(&id, trace, target, packet, sessionID)
+	if connectionSessionID != "" {
+		frame, err = psignalr.FrameSendSessionBasedMessageAsync(&id, trace, target, packet, connectionSessionID)
 	} else {
 		frame, err = psignalr.FrameSendMessageAsync(&id, trace, target, packet)
 	}
@@ -294,4 +297,25 @@ func (c *Client) sequencer(target string) *dcg.Sequencer {
 		c.sequencers[target] = s
 	}
 	return s
+}
+
+func (c *Client) sessionIDForTarget(target string) (string, error) {
+	if target == "" {
+		return "", errors.New("relay: target is required")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if sessionID := c.sessions[target]; sessionID != "" {
+		return sessionID, nil
+	}
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	sessionID := fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+	c.sessions[target] = sessionID
+	return sessionID, nil
 }

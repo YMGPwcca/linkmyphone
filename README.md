@@ -36,12 +36,14 @@ The repository now includes:
   - source-confirmed message type values
 - SignalR / Hub Relay:
   - MessagePack Hub Protocol framing
-  - `SendMessageAsync`
-  - `SendSessionBasedMessageAsync`
-  - `OnReceiveMessage`
-  - `OnReceiveSessionBasedMessage`
+  - normal PLATFORM traffic uses `SendMessageAsync`
+  - session-based Hub Relay methods remain modeled separately from DCG `SessionId`
+  - `OnReceiveMessage` / `OnReceiveSessionBasedMessage`
   - Hub Relay multiplex packets
   - minimal WebSocket transport
+- DCG session identity:
+  - stable UUID per target DCG client for the lifetime of the relay client
+  - independent from SignalR `connectionSessionId`
 - clipboard cloud publication:
   - PC clipboard change -> `PubSubPayload.Data`
   - MSAEP tag 9
@@ -73,11 +75,21 @@ phone clipboard change
     -> local clipboard
 ```
 
+## Source-confirmed authentication details
+
+- production MSA DCG scope (legacy MSA portal path):
+  `service::msatoken.dcg.microsoft.com::MBI_SSL`
+- first-party migrated scope:
+  `https://dcg.microsoft.com/DCG.ReadWrite`
+- services / SignalR access tokens are requested from the established DCG identity with scope `general`
+- SignalR connection headers include DCG logical device/app/session/ring/OS metadata, tracing headers, optional partner id and hub region, and heartbeat frequency
+- local DCG identity creation and token refresh are delegated to `AuthServiceCryptoHelper`, which performs signed-JWT based identity/sign-in flows
+
 ## Still required for an end-to-end usable client
 
-- Microsoft account / DCG authentication bootstrap
-- local and target `DcgClientId` discovery/provisioning
-- connection/session bootstrap and wake behavior
+- reverse and implement `AuthServiceCryptoHelper` signed identity/sign-in requests
+- exact production configuration values such as service base URL, hub endpoint, MSA client/app ids
+- target `DcgClientId` discovery/trust bootstrap
 - Linux native clipboard backend
 - executable/daemon wiring and user configuration
 

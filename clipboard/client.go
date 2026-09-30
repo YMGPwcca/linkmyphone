@@ -128,8 +128,8 @@ func (c *Client) PullToLocal(ctx context.Context) error {
 // ClipboardResponseMessage -> PubSubPayload -> MsaepMessage -> /Context/Publish.
 // The platform request is one-way; relay.Send still waits for the DCG fragment ACK.
 func (c *Client) PublishLocalChange(ctx context.Context, correlationID string) (string, error) {
-	if c.cfg.Target == "" || c.cfg.SessionID == "" {
-		return "", errors.New("clipboard: target and session id are required")
+	if c.cfg.Target == "" {
+		return "", errors.New("clipboard: target is required")
 	}
 	if c.cfg.SelfDcgClientID == "" {
 		return "", errors.New("clipboard: self DCG client id is required for PubSub")
@@ -193,8 +193,8 @@ func (c *Client) PushFeatureState(ctx context.Context, state proto.RequestType) 
 }
 
 func (c *Client) request(ctx context.Context, req proto.Request) (proto.Response, error) {
-	if c.cfg.Target == "" || c.cfg.SessionID == "" {
-		return proto.Response{}, errors.New("clipboard: target and session id are required")
+	if c.cfg.Target == "" {
+		return proto.Response{}, errors.New("clipboard: target is required")
 	}
 	requestID := newID()
 	inner := proto.MarshalDeviceResourceMessage(proto.WrapClipboardRequest(req))
@@ -302,7 +302,7 @@ func (c *Client) handleIncomingRequest(ctx context.Context, msg relay.Received, 
 		return err
 	}
 	if drm.ResourcePath != proto.ResourcePath || drm.RequestType != proto.DeviceResourceRequestGET {
-		return c.sendResponse(ctx, msg.Source, msg.SessionID, requestID, proto.DeviceResourceResponse{
+		return c.sendResponse(ctx, msg.Source, requestID, proto.DeviceResourceResponse{
 			ResponseType: proto.DeviceResourceResponseResourceHandlerNotRegistered,
 		})
 	}
@@ -328,19 +328,19 @@ func (c *Client) handleIncomingRequest(ctx context.Context, msg relay.Received, 
 	default:
 		response = proto.Response{Status: proto.ResponseInvalidClipboardRequestType, CorrelationID: req.CorrelationID, ErrorType: proto.ErrorReject}
 	}
-	return c.sendResponse(ctx, msg.Source, msg.SessionID, requestID, proto.DeviceResourceResponse{
+	return c.sendResponse(ctx, msg.Source, requestID, proto.DeviceResourceResponse{
 		ResponseType: proto.DeviceResourceResponseSuccess,
 		Payload:      proto.MarshalResponse(response),
 	})
 }
 
-func (c *Client) sendResponse(ctx context.Context, target, sessionID, requestID string, response proto.DeviceResourceResponse) error {
+func (c *Client) sendResponse(ctx context.Context, target, requestID string, response proto.DeviceResourceResponse) error {
 	pm := platform.NewInternalResponse(proto.MarshalDeviceResourceResponse(response), requestID)
 	wire, err := platform.Marshal(pm)
 	if err != nil {
 		return err
 	}
-	return c.relay.Send(ctx, target, sessionID, dcg.TransportMessageTypePlatform, wire)
+	return c.relay.Send(ctx, target, "", dcg.TransportMessageTypePlatform, wire)
 }
 
 func newID() string {

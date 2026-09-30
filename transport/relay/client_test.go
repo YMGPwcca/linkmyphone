@@ -115,11 +115,8 @@ func TestSendCompletesOnAck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if inv.Target != psignalr.TargetSendSessionBasedMessageAsync || len(inv.Arguments) != 4 {
+	if inv.Target != psignalr.TargetSendMessageAsync || len(inv.Arguments) != 3 {
 		t.Fatalf("unexpected invocation: %#v", inv)
-	}
-	if session, _ := inv.Arguments[3].(string); session != "session" {
-		t.Fatalf("session=%q", session)
 	}
 	packetMap, ok := inv.Arguments[2].(map[string]any)
 	if !ok {
@@ -281,4 +278,27 @@ func (p *tinyPacker) packet(v dcg.MultiplexPacket) {
 	}
 	p.str("Type")
 	p.str(v.Type)
+}
+
+func TestSessionIDForTargetIsStableAndPerPeer(t *testing.T) {
+	c := New(newFakeHub(), Config{})
+
+	first, err := c.sessionIDForTarget("phone-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := c.sessionIDForTarget("phone-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := c.sessionIDForTarget("phone-b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == "" || first != again {
+		t.Fatalf("unstable session id: first=%q again=%q", first, again)
+	}
+	if other == "" || other == first {
+		t.Fatalf("expected distinct peer session id: first=%q other=%q", first, other)
+	}
 }
