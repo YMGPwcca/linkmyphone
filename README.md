@@ -94,11 +94,16 @@ phone clipboard change
 - sign-in repeats the nonce challenge using the persisted certificate and returns a scoped DCG access token
 - default JWT clock drift and lifetime are 12 hours; default identity certificate lifetime is 365 days
 - SignalR connection headers include DCG logical device/app/session/ring/OS metadata, tracing headers, optional partner id and hub region, and heartbeat frequency
-- `auth/dcgauth` contains the source-confirmed production constants and ECDSA/JWT identity primitives
+- `auth/dcgauth` contains the source-confirmed production constants, ECDSA/JWT identity primitives, and auth-service HTTP client
+- source-confirmed auth routes:
+  - `POST /Auth/GenerateNonce?api-version=1.1.0` with `{\"deviceId\": ...}`
+  - `POST /Auth/CreateIdentity?api-version=1.1.0` with `{\"certificateJWT\": ...}`
+  - `POST /Auth/SignIn?api-version=1.1.0` with `{\"certificateJWT\": ...}`
+  - `POST /Auth/RotateKeys?api-version=1.1.0`
+- auth requests carry `UserIdentityType: MSA`, `UserIdentityToken`, `Authorization: Bearer <MSA token>`, and `Authorization-Type: MSA`
 
 ## Still required for an end-to-end usable client
 
-- exact Kiota auth HTTP route templates for GenerateNonce/CreateIdentity/SignIn/RotateKeys
 - concrete `MsaClientId` and `MsaAppId` values supplied by the packaged app configuration
 - Linux MSA account/token acquisition flow
 - target `DcgClientId` discovery/trust bootstrap
