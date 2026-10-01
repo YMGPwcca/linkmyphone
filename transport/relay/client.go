@@ -197,6 +197,11 @@ func (c *Client) FlushPartner(ctx context.Context, target string, trace psignalr
 	if target == "" {
 		return errors.New("relay: target is required")
 	}
+	var err error
+	trace, err = psignalr.NormalizeTraceContextPacket(trace)
+	if err != nil {
+		return err
+	}
 	id := strconv.FormatUint(c.invocation.Add(1), 10)
 	completionCh := make(chan psignalr.Completion, 1)
 	c.mu.Lock()
@@ -226,6 +231,11 @@ func (c *Client) FlushPartner(ctx context.Context, target string, trace psignalr
 func (c *Client) SendConnected(target string, trace psignalr.TraceContextPacket) error {
 	if target == "" {
 		return errors.New("relay: target is required")
+	}
+	var err error
+	trace, err = psignalr.NormalizeTraceContextPacket(trace)
+	if err != nil {
+		return err
 	}
 	id := strconv.FormatUint(c.invocation.Add(1), 10)
 	frame, err := psignalr.FrameSendConnectedAsync(&id, trace, target)
@@ -326,10 +336,14 @@ func (c *Client) sendFragment(ctx context.Context, target string, f dcg.Fragment
 
 	packet := dcg.ToMultiplexPacket(f, int(dcg.MessageTypeFragment))
 	for attempt := 0; attempt <= c.ackRetries; attempt++ {
+		trace, traceErr := psignalr.NewTraceContextPacket()
+		if traceErr != nil {
+			return traceErr
+		}
 		invocationID, completionCh, err := c.sendPacketWithCompletion(
 			target,
 			"",
-			psignalr.TraceContextPacket{},
+			trace,
 			packet,
 		)
 		if err != nil {
@@ -452,16 +466,18 @@ func (c *Client) sendPacketWithCompletion(
 	trace psignalr.TraceContextPacket,
 	packet dcg.MultiplexPacket,
 ) (string, <-chan psignalr.Completion, error) {
+	var err error
+	trace, err = psignalr.NormalizeTraceContextPacket(trace)
+	if err != nil {
+		return "", nil, err
+	}
 	id := strconv.FormatUint(c.invocation.Add(1), 10)
 	completionCh := make(chan psignalr.Completion, 1)
 	c.mu.Lock()
 	c.completions[id] = completionCh
 	c.mu.Unlock()
 
-	var (
-		frame []byte
-		err   error
-	)
+	var frame []byte
 	if connectionSessionID != "" {
 		frame, err = psignalr.FrameSendSessionBasedMessageAsync(&id, trace, target, packet, connectionSessionID)
 	} else {
@@ -479,11 +495,13 @@ func (c *Client) sendPacketWithCompletion(
 }
 
 func (c *Client) sendPacket(target, connectionSessionID string, trace psignalr.TraceContextPacket, packet dcg.MultiplexPacket) error {
+	var err error
+	trace, err = psignalr.NormalizeTraceContextPacket(trace)
+	if err != nil {
+		return err
+	}
 	id := strconv.FormatUint(c.invocation.Add(1), 10)
-	var (
-		frame []byte
-		err   error
-	)
+	var frame []byte
 	if connectionSessionID != "" {
 		frame, err = psignalr.FrameSendSessionBasedMessageAsync(&id, trace, target, packet, connectionSessionID)
 	} else {

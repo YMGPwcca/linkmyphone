@@ -119,6 +119,7 @@ func TestSendCompletesOnAck(t *testing.T) {
 	if inv.Target != psignalr.TargetSendMessageAsync || len(inv.Arguments) != 3 {
 		t.Fatalf("unexpected invocation: %#v", inv)
 	}
+	assertValidHubTrace(t, inv.Arguments[0])
 	packetMap, ok := inv.Arguments[2].(map[string]any)
 	if !ok {
 		t.Fatal("missing packet map")
@@ -352,6 +353,7 @@ func TestSendConnectedAndPartnerPresence(t *testing.T) {
 	if inv.Target != psignalr.TargetSendConnectedAsync {
 		t.Fatalf("target=%q", inv.Target)
 	}
+	assertValidHubTrace(t, inv.Arguments[0])
 
 	waitDone := make(chan error, 1)
 	go func() {
@@ -602,4 +604,23 @@ func completionVoidFrame(t *testing.T, invocationID string) []byte {
 		t.Fatal(err)
 	}
 	return frame
+}
+
+func assertValidHubTrace(t *testing.T, raw any) {
+	t.Helper()
+	m, ok := raw.(map[string]any)
+	if !ok {
+		t.Fatalf("trace=%#v (%T)", raw, raw)
+	}
+	traceID, ok := m["TraceId"].(string)
+	if !ok || len(traceID) != 32 {
+		t.Fatalf("TraceId=%#v", m["TraceId"])
+	}
+	parentID, ok := m["ParentId"].(string)
+	if !ok || len(parentID) != 16 {
+		t.Fatalf("ParentId=%#v", m["ParentId"])
+	}
+	if _, ok := m["TraceState"].(map[string]any); !ok {
+		t.Fatalf("TraceState=%#v (%T)", m["TraceState"], m["TraceState"])
+	}
 }

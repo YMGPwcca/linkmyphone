@@ -138,6 +138,7 @@ The first live Linux bootstrap probe against the Microsoft production services h
 - DCG Hub Relay fragment `MessageType` uses the internal Windows `TransportMessageType` enum (`App=0`, `Platform=1`, `Unknown=2`), not the protobuf enum (`App=1`, `Platform=2`); the Linux transport now uses the Hub values in both directions.
 - Windows sends Hub Relay packets with SignalR `InvokeAsync`, so Linux now tracks the matching Hub `Completion` for each DCG fragment send; diagnostics distinguish a Hub rejection from a Hub-accepted packet that never receives a peer DCG ACK.
 - Windows' wake path performs a pre-wake `SendConnectedAsync` flush and waits for its Hub Completion before Dispatcher/Wake; Linux now mirrors that ordering instead of waiting until `OnPartnerConnected` to send reciprocal presence.
+- Windows sends every Hub Relay operation with a non-null Hub Relay trace context (`TraceId` 32 hex chars, `ParentId` 16 hex chars, non-null `TraceState`); Linux now generates/normalizes the same shape for fragment, ACK, and partner-presence sends. An empty trace object can make the receiver fail before DCG packet processing and therefore before it emits an ACK.
 
 The remaining live validation point is reaching Hub Relay `OnConnected` after that transport fix.
 
