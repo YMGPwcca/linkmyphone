@@ -128,7 +128,7 @@ func runClipboardSync(ctx context.Context, args []string) error {
 
 	cfg := clipboardfeature.DefaultConfig()
 	pollInterval := cfg.PollInterval()
-	fs.DurationVar(&pollInterval, "poll-interval", pollInterval, "local clipboard polling interval")
+	fs.DurationVar(&pollInterval, "poll-interval", pollInterval, "fallback clipboard polling interval when native watching is unavailable")
 	fs.BoolVar(&cfg.PublishInitial, "publish-initial", false, "publish the current Linux clipboard immediately after startup")
 	if err := fs.Parse(args); err != nil {
 		return err

@@ -13,7 +13,72 @@ import (
 	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
 )
 
-const remoteClipboardSettleWindow = 3 * time.Second
+const (
+	remoteClipboardSettleWindow  = 3 * time.Second
+	nativeClipboardClearDebounce = 100 * time.Millisecond
+)
+
+type localTextWatcher interface {
+	SupportsWatch() bool
+	WatchText(context.Context, func(clipclient.NativeTextEvent) error) error
+}
+
+type nativeClearDebouncer struct {
+	duration time.Duration
+	timer    *time.Timer
+	channel  <-chan time.Time
+	pending  bool
+}
+
+func (d *nativeClearDebouncer) Schedule() {
+	if d.duration <= 0 {
+		d.duration = nativeClipboardClearDebounce
+	}
+	if d.timer == nil {
+		d.timer = time.NewTimer(d.duration)
+	} else {
+		d.stopTimer()
+		d.timer.Reset(d.duration)
+	}
+	d.pending = true
+	d.channel = d.timer.C
+}
+
+func (d *nativeClearDebouncer) Cancel() {
+	d.pending = false
+	d.channel = nil
+	d.stopTimer()
+}
+
+func (d *nativeClearDebouncer) C() <-chan time.Time {
+	return d.channel
+}
+
+func (d *nativeClearDebouncer) Fire() bool {
+	if !d.pending {
+		d.channel = nil
+		return false
+	}
+	d.pending = false
+	d.channel = nil
+	return true
+}
+
+func (d *nativeClearDebouncer) Stop() {
+	d.Cancel()
+}
+
+func (d *nativeClearDebouncer) stopTimer() {
+	if d.timer == nil {
+		return
+	}
+	if !d.timer.Stop() {
+		select {
+		case <-d.timer.C:
+		default:
+		}
+	}
+}
 
 type trackedLocalClipboard struct {
 	base clipclient.Local
@@ -199,6 +264,25 @@ func discardQueuedPublishesBefore(queue chan publishJob, generation uint64) {
 	}
 }
 
+func queueLatestNativeTextEvent(
+	queue chan clipclient.NativeTextEvent,
+	event clipclient.NativeTextEvent,
+) {
+	select {
+	case queue <- event:
+		return
+	default:
+	}
+	select {
+	case <-queue:
+	default:
+	}
+	select {
+	case queue <- event:
+	default:
+	}
+}
+
 func queueLatestRemoteApply(
 	queue chan clipclient.RemoteApplyEvent,
 	event clipclient.RemoteApplyEvent,
@@ -226,8 +310,71 @@ func (i *instance) run(ctx context.Context, clientErr <-chan error) {
 		defer i.endpoint.Close()
 	}
 
-	ticker := time.NewTicker(i.cfg.PollInterval())
-	defer ticker.Stop()
+	localEvents := make(chan clipclient.NativeTextEvent, 1)
+	var watchErr <-chan error
+	var pollTicker *time.Ticker
+	var pollC <-chan time.Time
+	clearDebouncer := nativeClearDebouncer{
+		duration: nativeClipboardClearDebounce,
+	}
+
+	startPolling := func(reason error) {
+		if pollTicker != nil {
+			return
+		}
+		pollTicker = time.NewTicker(i.cfg.PollInterval())
+		pollC = pollTicker.C
+		fields := map[string]string{
+			"mode":          "poll",
+			"poll_interval": i.cfg.PollInterval().String(),
+		}
+		if reason != nil {
+			fields["watch_error"] = reason.Error()
+			kernel.Report(i.reporter, kernel.Event{
+				ModuleID: i.moduleID,
+				Level:    "warning",
+				Message:  "native clipboard watch unavailable; using polling fallback",
+				Fields:   fields,
+			})
+			return
+		}
+		kernel.Report(i.reporter, kernel.Event{
+			ModuleID: i.moduleID,
+			Level:    "info",
+			Message:  "local clipboard observer ready",
+			Fields:   fields,
+		})
+	}
+	defer func() {
+		if pollTicker != nil {
+			pollTicker.Stop()
+		}
+		clearDebouncer.Stop()
+	}()
+
+	if i.watcher != nil && i.watcher.SupportsWatch() {
+		watchResult := make(chan error, 1)
+		watchErr = watchResult
+		go func() {
+			watchResult <- i.watcher.WatchText(
+				ctx,
+				func(event clipclient.NativeTextEvent) error {
+					queueLatestNativeTextEvent(localEvents, event)
+					return nil
+				},
+			)
+		}()
+		kernel.Report(i.reporter, kernel.Event{
+			ModuleID: i.moduleID,
+			Level:    "info",
+			Message:  "local clipboard observer ready",
+			Fields: map[string]string{
+				"mode": "wl-paste-watch",
+			},
+		})
+	} else {
+		startPolling(nil)
+	}
 
 	for {
 		select {
@@ -240,6 +387,33 @@ func (i *instance) run(ctx context.Context, clientErr <-chan error) {
 			}
 			i.fail(err)
 			return
+
+		case err := <-watchErr:
+			watchErr = nil
+			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
+				return
+			}
+			if err == nil {
+				err = errors.New("native clipboard watcher exited unexpectedly")
+			}
+			startPolling(err)
+
+		case event := <-localEvents:
+			if event.State == "nil" {
+				// A Wayland selection handoff can transiently publish a NULL
+				// offer between the old owner disappearing and the new owner
+				// advertising data. Delay an empty publication briefly so a
+				// following data/sensitive event can supersede that transient.
+				clearDebouncer.Schedule()
+				continue
+			}
+			clearDebouncer.Cancel()
+			i.observeLocalText(event.Text)
+
+		case <-clearDebouncer.C():
+			if clearDebouncer.Fire() {
+				i.observeLocalText("")
+			}
 
 		case result, ok := <-i.publishResults:
 			if !ok {
@@ -279,22 +453,26 @@ func (i *instance) run(ctx context.Context, clientErr <-chan error) {
 				},
 			})
 
-		case <-ticker.C:
+		case <-pollC:
 			text, err := i.local.ReadText(ctx)
 			if err != nil {
 				i.fail(fmt.Errorf("clipboard module: poll Linux clipboard: %w", err))
 				return
 			}
-			if !i.local.MarkIfChanged(text) {
-				continue
-			}
-			generation := i.client.ReserveLocalGeneration()
-			queueLatestPublish(i.publishQueue, publishJob{
-				generation: generation,
-				text:       text,
-			})
+			i.observeLocalText(text)
 		}
 	}
+}
+
+func (i *instance) observeLocalText(text string) {
+	if !i.local.MarkIfChanged(text) {
+		return
+	}
+	generation := i.client.ReserveLocalGeneration()
+	queueLatestPublish(i.publishQueue, publishJob{
+		generation: generation,
+		text:       text,
+	})
 }
 
 func (i *instance) fail(err error) {

@@ -137,7 +137,6 @@ phone clipboard change
 
 ## Still required for an end-to-end usable client
 
-- event-driven Wayland clipboard watching instead of polling
 - service/daemon packaging
 - reconnect/wake/token-refresh hardening for long-running parity with Phone Link
 
@@ -167,9 +166,11 @@ The first live Linux bootstrap probe against the Microsoft production services h
 - after delete + create, the new module entry starts a fresh epoch sequence at 1 by design; this is distinct from restarting the same registry entry, where the epoch increases monotonically;
 - the live runtime control socket was observed at the hashed XDG path (`/run/user/<uid>/phonelink-linux/<store-hash>.sock`) and the entire disable -> enable -> config update -> delete -> create sequence completed while the original `phonelink-linux run` process remained connected to the same S23;
 - final Ctrl+C after the live CRUD sequence shut the recreated clipboard module down cleanly with `module stopped`;
-- the modular/control-plane branch passed targeted stress tests plus full `go test ./...` and `go test -race ./...` after the lifecycle, router, generation, Unix-socket, and live-reconcile changes.
+- the modular/control-plane branch passed targeted stress tests plus full `go test ./...` and `go test -race ./...` after the lifecycle, router, generation, Unix-socket, and live-reconcile changes;
+- event-driven Wayland clipboard observation was live-validated with `wl-paste --watch`: consecutive Linux copies produced immediate single publications without transient empty values, a genuine `wl-copy --clear` produced exactly one empty publication after nil debounce, phone-to-Linux writes remained non-echoing, and Ctrl+C shut the module down cleanly without entering polling fallback;
+- the event-driven watcher changes passed 50x targeted tests, 50x targeted race tests, full `go test ./...`, and full `go test -race ./...`.
 
-The modular runtime and live feature CRUD path are now validated end to end. Remaining runtime work is focused on event-driven local clipboard observation, service packaging, and long-running reconnect/token-refresh resilience.
+The modular runtime, live feature CRUD, and normal Wayland event-driven clipboard path are now validated end to end. Remaining runtime work is focused on service packaging and long-running reconnect/token-refresh resilience.
 
 ## Bootstrap probe
 
@@ -382,13 +383,15 @@ Startup does **not** publish the clipboard that was already present before the p
 go run ./cmd/phonelink-linux clipboard-sync --publish-initial
 ```
 
-The local clipboard is polled every 500 ms by default:
+On Wayland, the module now uses `wl-paste --watch` as the primary local observer. The watcher launches a hidden helper command in the same `phonelink-linux` executable for each selection event; clipboard bytes are transferred through stdin and framed back to the parent process without invoking a shell. wl-clipboard reports NULL/no-selection transitions as `CLIPBOARD_STATE=nil`. Because compositor ownership handoff can briefly emit `nil` before the next data offer, the module debounces nil events for 100 ms: a following data/sensitive event cancels the transient clear, while a genuine clear still publishes an empty clipboard after the debounce window. The watcher runs in its own process group so terminal Ctrl+C is handled by the module lifecycle first instead of racing the child process.
+
+If native watching is unavailable or exits (for example because the compositor does not support the required data-control protocol), the module automatically falls back to polling. X11 backends also use polling. The fallback interval is 500 ms by default:
 
 ```bash
 go run ./cmd/phonelink-linux clipboard-sync --poll-interval 250ms
 ```
 
-Clipboard contents are never printed by the command; diagnostics report only direction, byte count, and shortened correlation ids.
+`poll_interval_ms` therefore controls fallback polling rather than normal Wayland observation. Clipboard contents are never printed by the command; diagnostics report only observer mode, direction, byte count, and shortened correlation ids.
 
 Outbound text is snapshotted by correlation id. If the Linux clipboard changes again before Android requests CONTENT, the older request still receives the exact text associated with its own publication instead of the newer clipboard value.
 

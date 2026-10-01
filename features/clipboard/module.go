@@ -81,16 +81,17 @@ func (m *Module) Start(
 		},
 	})
 	instance := &instance{
-		moduleID:       m.manifest.ID,
-		cfg:            cfg,
-		reporter:       reporter,
-		client:         client,
-		local:          local,
-		endpoint:       endpoint,
-		remoteApplied:  remoteApplied,
-		cancel:         cancel,
-		done:           make(chan struct{}),
-		errors:         make(chan error, 1),
+		moduleID:          m.manifest.ID,
+		cfg:               cfg,
+		reporter:          reporter,
+		client:            client,
+		local:             local,
+		watcher:           native,
+		endpoint:          endpoint,
+		remoteApplied:     remoteApplied,
+		cancel:            cancel,
+		done:              make(chan struct{}),
+		errors:            make(chan error, 1),
 		requestTimeout:    cfg.RequestTimeout(),
 		featureOffTimeout: defaultFeatureOffTimeout,
 	}
@@ -168,10 +169,11 @@ type instance struct {
 	cfg      Config
 	reporter kernel.Reporter
 
-	client         *clipclient.Client
-	local          *trackedLocalClipboard
-	endpoint       *phonehost.Endpoint
-	remoteApplied  chan clipclient.RemoteApplyEvent
+	client        *clipclient.Client
+	local         *trackedLocalClipboard
+	watcher       localTextWatcher
+	endpoint      *phonehost.Endpoint
+	remoteApplied chan clipclient.RemoteApplyEvent
 
 	publishQueue   chan publishJob
 	publishResults <-chan publishResult

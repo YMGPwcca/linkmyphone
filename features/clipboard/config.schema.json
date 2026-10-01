@@ -6,6 +6,7 @@
   "additionalProperties": false,
   "properties": {
     "poll_interval_ms": {
+      "description": "Polling interval used when native event watching is unavailable or fails.",
       "type": "integer",
       "minimum": 50,
       "maximum": 60000,

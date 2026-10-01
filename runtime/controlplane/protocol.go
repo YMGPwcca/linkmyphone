@@ -35,22 +35,22 @@ var (
 )
 
 type Request struct {
-	Version   int                  `json:"version"`
-	Operation Operation            `json:"operation"`
-	ID        string               `json:"id,omitempty"`
+	Version   int                   `json:"version"`
+	Operation Operation             `json:"operation"`
+	ID        string                `json:"id,omitempty"`
 	Record    *kernel.FeatureRecord `json:"record,omitempty"`
-	Enabled   *bool                `json:"enabled,omitempty"`
-	Config    *json.RawMessage     `json:"config,omitempty"`
+	Enabled   *bool                 `json:"enabled,omitempty"`
+	Config    *json.RawMessage      `json:"config,omitempty"`
 }
 
 type Response struct {
-	Version   int                   `json:"version"`
-	OK        bool                  `json:"ok"`
-	Error     string                `json:"error,omitempty"`
-	Record    *kernel.FeatureRecord `json:"record,omitempty"`
+	Version   int                    `json:"version"`
+	OK        bool                   `json:"ok"`
+	Error     string                 `json:"error,omitempty"`
+	Record    *kernel.FeatureRecord  `json:"record,omitempty"`
 	Records   []kernel.FeatureRecord `json:"records,omitempty"`
-	Snapshot  *kernel.Snapshot      `json:"snapshot,omitempty"`
-	Snapshots []kernel.Snapshot     `json:"snapshots,omitempty"`
+	Snapshot  *kernel.Snapshot       `json:"snapshot,omitempty"`
+	Snapshots []kernel.Snapshot      `json:"snapshots,omitempty"`
 }
 
 type Handler interface {

@@ -59,7 +59,7 @@ func DecodeConfig(raw json.RawMessage) (Config, error) {
 
 func (c Config) Validate() error {
 	if c.PollIntervalMS < 50 || c.PollIntervalMS > 60000 {
-		return errors.New("clipboard module: poll_interval_ms must be between 50 and 60000")
+		return errors.New("clipboard module: fallback poll_interval_ms must be between 50 and 60000")
 	}
 	if c.RequestTimeoutMS < 100 || c.RequestTimeoutMS > 120000 {
 		return errors.New("clipboard module: request_timeout_ms must be between 100 and 120000")

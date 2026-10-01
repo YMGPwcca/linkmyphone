@@ -22,6 +22,7 @@ type NativeLocal struct {
 	backend string
 	read    commandSpec
 	write   commandSpec
+	watch   commandSpec
 }
 
 func DetectNativeLocal() (*NativeLocal, error) {
@@ -33,6 +34,10 @@ func (l *NativeLocal) BackendName() string {
 		return ""
 	}
 	return l.backend
+}
+
+func (l *NativeLocal) SupportsWatch() bool {
+	return l != nil && l.watch.name != ""
 }
 
 func (l *NativeLocal) ReadText(ctx context.Context) (string, error) {
@@ -100,6 +105,10 @@ func detectNativeLocal(
 				name: "wl-copy",
 				args: []string{"--type", "text/plain;charset=utf-8"},
 			},
+			watch: commandSpec{
+				name: "wl-paste",
+				args: []string{"--type", "text", "--watch"},
+			},
 		}, nil
 	}
 
@@ -137,25 +146,29 @@ func detectNativeLocal(
 	if has("wl-paste") && has("wl-copy") {
 		return &NativeLocal{
 			backend: "wl-clipboard",
-			read: commandSpec{name: "wl-paste", args: []string{"--no-newline", "--type", "text"}},
+			read:    commandSpec{name: "wl-paste", args: []string{"--no-newline", "--type", "text"}},
 			write: commandSpec{
 				name: "wl-copy",
 				args: []string{"--type", "text/plain;charset=utf-8"},
+			},
+			watch: commandSpec{
+				name: "wl-paste",
+				args: []string{"--type", "text", "--watch"},
 			},
 		}, nil
 	}
 	if has("xclip") {
 		return &NativeLocal{
 			backend: "xclip",
-			read: commandSpec{name: "xclip", args: []string{"-selection", "clipboard", "-out", "-target", "UTF8_STRING"}},
-			write: commandSpec{name: "xclip", args: []string{"-selection", "clipboard", "-in"}},
+			read:    commandSpec{name: "xclip", args: []string{"-selection", "clipboard", "-out", "-target", "UTF8_STRING"}},
+			write:   commandSpec{name: "xclip", args: []string{"-selection", "clipboard", "-in"}},
 		}, nil
 	}
 	if has("xsel") {
 		return &NativeLocal{
 			backend: "xsel",
-			read: commandSpec{name: "xsel", args: []string{"--clipboard", "--output"}},
-			write: commandSpec{name: "xsel", args: []string{"--clipboard", "--input"}},
+			read:    commandSpec{name: "xsel", args: []string{"--clipboard", "--output"}},
+			write:   commandSpec{name: "xsel", args: []string{"--clipboard", "--input"}},
 		}, nil
 	}
 

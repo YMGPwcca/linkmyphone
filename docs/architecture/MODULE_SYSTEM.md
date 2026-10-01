@@ -161,6 +161,8 @@ The control path has been validated against a production S23 while one `phonelin
 
 Epochs are per registry entry. Restarting an existing entry increments its epoch; deleting that entry and creating a new one intentionally begins a fresh epoch sequence at 1.
 
+The Wayland observer path has also been live-validated against the production clipboard module: normal local copies arrive through `wl-paste --watch` without polling-interval latency, transient nil ownership gaps do not publish false clears, an explicit clipboard clear still produces one empty publication, and process shutdown does not misclassify lifecycle cancellation as watcher failure.
+
 ## Safe feature removal
 
 Removing a feature implementation must not require editing kernel or phone-host business logic.
@@ -185,9 +187,10 @@ The owner of mutable state is explicit:
 - feature receive queue: feature-scoped endpoint;
 - clipboard request dispatch: `clipboard.Client`;
 - clipboard cross-device ordering: one generation domain in `clipboard.Client`;
-- native clipboard echo suppression: `features/clipboard`.
+- native clipboard observation and echo suppression: `features/clipboard`;
+- Wayland event source: `clipboard.NativeLocal.WatchText` using `wl-paste --watch`; transient `CLIPBOARD_STATE=nil` ownership gaps are debounced before entering the generation domain; X11 and failed Wayland watches fall back to bounded polling inside the clipboard feature.
 
-Clipboard local and phone changes share a generation sequence once observed by the runtime. A phone publication tombstones older outbound snapshots; stale CONTENT requests are rejected rather than answered with unrelated current text. A newer observed local event prevents an older phone response from overwriting it. The current Wayland watcher still polls, so a compositor-local change that occurs but has not yet been observed cannot participate in ordering until the next poll.
+Clipboard local and phone changes share a generation sequence once observed by the runtime. A phone publication tombstones older outbound snapshots; stale CONTENT requests are rejected rather than answered with unrelated current text. A newer observed local event prevents an older phone response from overwriting it. On Wayland, local changes are observed from `wl-paste --watch` events rather than a periodic read loop; the only remaining observation boundary is the compositor/watcher delivery itself. Polling is reserved for X11 backends and Wayland watch failure fallback.
 
 ## Adding a feature
 

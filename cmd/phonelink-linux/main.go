@@ -15,6 +15,7 @@ import (
 	"github.com/YMGPwcca/phonelink-linux/auth/msa"
 	authstate "github.com/YMGPwcca/phonelink-linux/auth/state"
 	"github.com/YMGPwcca/phonelink-linux/bootstrap"
+	clipclient "github.com/YMGPwcca/phonelink-linux/clipboard"
 	"github.com/YMGPwcca/phonelink-linux/dcgheaders"
 	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
 )
@@ -26,6 +27,18 @@ const (
 )
 
 func main() {
+	if len(os.Args) >= 2 && os.Args[1] == clipclient.NativeWatchHelperCommand {
+		if err := clipclient.RunNativeWatchHelper(
+			os.Stdin,
+			os.Stdout,
+			os.Getenv("CLIPBOARD_STATE"),
+		); err != nil {
+			fmt.Fprintf(os.Stderr, "clipboard watch helper: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 

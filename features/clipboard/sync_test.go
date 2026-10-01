@@ -180,3 +180,83 @@ func TestTrackedLocalClipboardSerializesReadDuringRemoteWrite(t *testing.T) {
 		t.Fatal("read did not finish")
 	}
 }
+
+func TestNativeTextEventQueueKeepsLatestSelection(t *testing.T) {
+	queue := make(chan clipclient.NativeTextEvent, 1)
+	queueLatestNativeTextEvent(queue, clipclient.NativeTextEvent{
+		Text:  "one",
+		State: "data",
+	})
+	queueLatestNativeTextEvent(queue, clipclient.NativeTextEvent{
+		Text:  "two",
+		State: "data",
+	})
+	queueLatestNativeTextEvent(queue, clipclient.NativeTextEvent{
+		Text:  "",
+		State: "nil",
+	})
+
+	select {
+	case event := <-queue:
+		if event.Text != "" || event.State != "nil" {
+			t.Fatalf("event=%#v", event)
+		}
+	default:
+		t.Fatal("expected latest native clipboard event")
+	}
+}
+
+func TestNativeClearDebouncerCancelsTransientNilBeforeData(t *testing.T) {
+	debouncer := nativeClearDebouncer{duration: 10 * time.Millisecond}
+	defer debouncer.Stop()
+
+	debouncer.Schedule()
+	debouncer.Cancel()
+
+	select {
+	case <-debouncer.C():
+		t.Fatal("transient nil event survived cancellation")
+	case <-time.After(20 * time.Millisecond):
+	}
+	if debouncer.Fire() {
+		t.Fatal("canceled transient nil event remained pending")
+	}
+}
+
+func TestNativeClearDebouncerEmitsGenuineClear(t *testing.T) {
+	debouncer := nativeClearDebouncer{duration: 5 * time.Millisecond}
+	defer debouncer.Stop()
+
+	debouncer.Schedule()
+	select {
+	case <-debouncer.C():
+	case <-time.After(time.Second):
+		t.Fatal("genuine nil event did not reach debounce deadline")
+	}
+	if !debouncer.Fire() {
+		t.Fatal("genuine nil event was not pending at deadline")
+	}
+	if debouncer.Fire() {
+		t.Fatal("clear event fired more than once")
+	}
+}
+
+func TestNativeClearDebouncerResetsOnRepeatedNil(t *testing.T) {
+	debouncer := nativeClearDebouncer{duration: 20 * time.Millisecond}
+	defer debouncer.Stop()
+
+	debouncer.Schedule()
+	time.Sleep(10 * time.Millisecond)
+	debouncer.Schedule()
+
+	select {
+	case <-debouncer.C():
+		t.Fatal("repeated nil did not reset debounce deadline")
+	case <-time.After(12 * time.Millisecond):
+	}
+	select {
+	case <-debouncer.C():
+	case <-time.After(time.Second):
+		t.Fatal("reset debounce deadline did not eventually fire")
+	}
+}

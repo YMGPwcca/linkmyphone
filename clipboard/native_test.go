@@ -36,6 +36,9 @@ func TestDetectNativeLocalPrefersWayland(t *testing.T) {
 	if local.BackendName() != "wl-clipboard" {
 		t.Fatalf("backend=%q", local.BackendName())
 	}
+	if !local.SupportsWatch() {
+		t.Fatal("Wayland wl-clipboard backend should support event watching")
+	}
 }
 
 func TestDetectNativeLocalFallsBackToXclip(t *testing.T) {
@@ -62,6 +65,9 @@ func TestDetectNativeLocalFallsBackToXclip(t *testing.T) {
 	if local.BackendName() != "xclip" {
 		t.Fatalf("backend=%q", local.BackendName())
 	}
+	if local.SupportsWatch() {
+		t.Fatal("xclip backend unexpectedly reports native watch support")
+	}
 }
 
 func TestDetectNativeLocalFallsBackToXsel(t *testing.T) {
@@ -87,6 +93,9 @@ func TestDetectNativeLocalFallsBackToXsel(t *testing.T) {
 	}
 	if local.BackendName() != "xsel" {
 		t.Fatalf("backend=%q", local.BackendName())
+	}
+	if local.SupportsWatch() {
+		t.Fatal("xsel backend unexpectedly reports native watch support")
 	}
 }
 
