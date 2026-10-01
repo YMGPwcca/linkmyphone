@@ -59,6 +59,8 @@ func main() {
 		err = runFeatureCommand(os.Args[2:])
 	case "run":
 		err = runRuntime(ctx, os.Args[2:])
+	case "service":
+		err = runServiceCommand(os.Args[2:])
 	case "clipboard-sync":
 		err = runClipboardSync(ctx, os.Args[2:])
 	case "help", "-h", "--help":
@@ -84,6 +86,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  phonelink-linux session-probe [options]")
 	fmt.Fprintln(os.Stderr, "  phonelink-linux feature <subcommand> [options]")
 	fmt.Fprintln(os.Stderr, "  phonelink-linux run [options]")
+	fmt.Fprintln(os.Stderr, "  phonelink-linux service <subcommand> [options]")
 	fmt.Fprintln(os.Stderr, "  phonelink-linux clipboard-sync [options]")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "bootstrap-probe validates Microsoft login, DCG enrollment/state,")
@@ -94,6 +97,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "the peer capability/version response without dumping raw payloads.")
 	fmt.Fprintln(os.Stderr, "feature manages the persistent modular feature registry (CRUD + enable/disable).")
 	fmt.Fprintln(os.Stderr, "run opens one Phone Link host session and starts all enabled feature modules.")
+	fmt.Fprintln(os.Stderr, "service installs and manages the systemd --user daemon.")
 	fmt.Fprintln(os.Stderr, "clipboard-sync is a compatibility alias for the phonelink.clipboard module.")
 }
 

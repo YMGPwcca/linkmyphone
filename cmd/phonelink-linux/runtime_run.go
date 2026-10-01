@@ -18,6 +18,7 @@ import (
 	"github.com/YMGPwcca/phonelink-linux/runtime/controlplane"
 	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
 	"github.com/YMGPwcca/phonelink-linux/runtime/phonehost"
+	"github.com/YMGPwcca/phonelink-linux/runtime/systemdnotify"
 )
 
 type runtimeHostOptions struct {
@@ -202,6 +203,14 @@ func runManagedFeatureRuntime(
 	// Register teardown before loading desired state so a partial startup
 	// failure still revokes any modules that already reached Ready.
 	defer func() {
+		if err := systemdnotify.Stopping("Phone Link Linux runtime stopping"); err != nil {
+			kernel.Report(reporter, kernel.Event{
+				ModuleID: "runtime.systemd",
+				Level:    "warning",
+				Message:  "systemd stopping notification failed",
+				Fields:   map[string]string{"error": err.Error()},
+			})
+		}
 		switchHandler.Set(controlplane.HandlerFunc(
 			func(controlplane.Request) controlplane.Response {
 				return controlplane.Failure(errors.New("runtime is stopping"))
@@ -224,6 +233,9 @@ func runManagedFeatureRuntime(
 		return err
 	}
 	switchHandler.Set(controller)
+	if err := systemdnotify.Ready("Phone Link Linux runtime ready"); err != nil {
+		return fmt.Errorf("notify systemd readiness: %w", err)
+	}
 
 	printRuntimeState(registry)
 	fmt.Printf("[runtime] Control socket: %s\n", socketPath)

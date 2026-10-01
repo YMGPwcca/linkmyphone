@@ -47,6 +47,9 @@ func (l *NativeLocal) ReadText(ctx context.Context) (string, error) {
 	cmd := exec.CommandContext(ctx, l.read.name, l.read.args...)
 	out, err := cmd.Output()
 	if err != nil {
+		if nativeReadIsEmptyClipboard(l.backend, err) {
+			return "", nil
+		}
 		return "", nativeCommandError("read", l.backend, err)
 	}
 	if len(out) > MaxNativeClipboardTextBytes {
@@ -175,6 +178,17 @@ func detectNativeLocal(
 	return nil, errors.New(
 		"clipboard: no supported Linux clipboard backend found; install wl-clipboard, xclip, or xsel",
 	)
+}
+
+func nativeReadIsEmptyClipboard(backend string, err error) bool {
+	if backend != "wl-clipboard" {
+		return false
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return false
+	}
+	return strings.TrimSpace(string(exitErr.Stderr)) == "Nothing is copied"
 }
 
 func nativeCommandError(operation, backend string, err error) error {

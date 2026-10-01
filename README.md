@@ -71,6 +71,12 @@ The repository now includes:
   - snapshots outbound text by correlation id so CONTENT replies match the advertised change
   - uses one cross-device generation domain so newer observed local/phone changes supersede stale protocol work deterministically
 - `clipboard-sync` remains as a compatibility alias that starts the same `phonelink.clipboard` module through the modular lifecycle
+- systemd user-service packaging:
+  - self-installs the current executable to `~/.local/bin/phonelink-linux`
+  - installs/enables `phonelink-linux.service` under the user systemd manager
+  - follows `graphical-session.target`
+  - uses bounded `Restart=on-failure` recovery and lifecycle-safe `KillMode=mixed`
+  - exposes start/stop/restart/status/logs/environment-import/uninstall CLI helpers
 
 ## Source-confirmed clipboard cloud path
 
@@ -137,7 +143,6 @@ phone clipboard change
 
 ## Still required for an end-to-end usable client
 
-- service/daemon packaging
 - reconnect/wake/token-refresh hardening for long-running parity with Phone Link
 
 ## Production bootstrap validation
@@ -168,9 +173,16 @@ The first live Linux bootstrap probe against the Microsoft production services h
 - final Ctrl+C after the live CRUD sequence shut the recreated clipboard module down cleanly with `module stopped`;
 - the modular/control-plane branch passed targeted stress tests plus full `go test ./...` and `go test -race ./...` after the lifecycle, router, generation, Unix-socket, and live-reconcile changes;
 - event-driven Wayland clipboard observation was live-validated with `wl-paste --watch`: consecutive Linux copies produced immediate single publications without transient empty values, a genuine `wl-copy --clear` produced exactly one empty publication after nil debounce, phone-to-Linux writes remained non-echoing, and Ctrl+C shut the module down cleanly without entering polling fallback;
-- the event-driven watcher changes passed 50x targeted tests, 50x targeted race tests, full `go test ./...`, and full `go test -race ./...`.
+- the event-driven watcher changes passed 50x targeted tests, 50x targeted race tests, full `go test ./...`, and full `go test -race ./...`;
+- the systemd user-service install/start path was live-validated on CachyOS/Wayland: installation copied the binary and unit, `Type=notify` held startup until the runtime reached Ready, the service became `active (running)`, the live feature control socket remained reachable, and the Wayland watcher ran inside the service cgroup;
+- startup with no existing Wayland clipboard selection was live-validated after normalizing wl-clipboard's `Nothing is copied` result to an empty text state; the clipboard module reached Ready and `wl-paste --watch` stayed active;
+- the systemd packaging changes and empty-clipboard fix passed 50x targeted tests, 50x targeted race tests, full `go test ./...`, and full `go test -race ./...`;
+- systemd restart was live-validated: the service returned to `active (running)` with `Phone Link Linux runtime ready`, the clipboard module reached Ready, `wl-paste --watch` was recreated inside the service cgroup, and live feature CRUD was immediately available;
+- explicit service stop/start was live-validated: stop exited with status 0, the clipboard module emitted `module stopped`, the Phone Link watcher process was fully removed while unrelated cliphist watchers remained, and a subsequent start recreated the runtime, watcher, capabilities, and live control socket successfully;
+- graphical-session logout/login was live-validated: logout stopped the service cleanly with status 0 and `module stopped`, login started the enabled unit automatically, `WAYLAND_DISPLAY` and `XDG_RUNTIME_DIR` were correct for the new session, and the runtime returned to Ready with `wl-paste --watch` plus live CRUD;
+- feature CLI calls made while the service was still `activating` returned the explicit `runtime is starting; retry the feature command` response instead of falling back to offline desired-state edits; once `READY=1` was sent, the same command immediately returned live state.
 
-The modular runtime, live feature CRUD, and normal Wayland event-driven clipboard path are now validated end to end. Remaining runtime work is focused on service packaging and long-running reconnect/token-refresh resilience.
+The modular runtime, live feature CRUD, normal Wayland event-driven clipboard path, and full systemd user-service lifecycle are now validated end to end. Remaining runtime work is focused on long-running reconnect, peer wake, and token-refresh resilience.
 
 ## Bootstrap probe
 
@@ -366,6 +378,27 @@ The same commands work both offline and against a running daemon. When `run` is 
 During live updates, enabled modules are stopped before configuration changes and restarted afterward. Enable/disable maps directly to Start/Stop, delete revokes the live module before removing persistence, and failed persistence triggers runtime rollback. The socket exists throughout daemon startup so commands cannot silently fall back offline while the process is still booting.
 
 If a feature implementation is removed from the build, a stale disabled record remains readable, disable-able, and delete-able. It cannot be enabled or reconfigured until the implementation is present again.
+
+## systemd user service
+
+The modular runtime can install itself as a `systemd --user` service:
+
+```bash
+go run ./cmd/phonelink-linux service install
+```
+
+By default this installs the executable to `~/.local/bin/phonelink-linux`, writes the user unit, imports the current graphical-session environment, reloads systemd, clears failed/start-limit state, enables the service, and restarts it onto the freshly installed binary. An empty Wayland clipboard is treated as a valid empty text state rather than a startup failure. The running daemon keeps the same Unix control plane, so `feature list/get/create/update/enable/disable/delete` continue to reconcile live state.
+
+Useful commands:
+
+```bash
+~/.local/bin/phonelink-linux service status
+~/.local/bin/phonelink-linux service logs --follow
+~/.local/bin/phonelink-linux service restart
+~/.local/bin/phonelink-linux service uninstall
+```
+
+See [`docs/operations/SYSTEMD.md`](docs/operations/SYSTEMD.md) for lifecycle, environment, logging, and uninstall details.
 
 ## Continuous Linux clipboard sync
 
