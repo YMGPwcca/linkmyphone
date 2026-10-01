@@ -57,15 +57,20 @@ The repository now includes:
   - Wayland via `wl-paste` / `wl-copy`
   - X11 fallback via `xclip` or `xsel`
   - direct process execution without a shell
-- continuous `clipboard-sync` command:
-  - resumes the persisted DCG identity
-  - wakes/selects the Android peer
-  - validates the PLATFORM session
-  - advertises clipboard `FEATURE_ON`
-  - publishes Linux clipboard changes
-  - applies phone clipboard publications locally
+- modular runtime:
+  - business-agnostic `runtime/kernel` for strict manifests, lifecycle, dependencies, epochs, live capabilities, and desired-state CRUD
+  - shared `runtime/phonehost` owns authentication, trust, wake, SessionValidation, and the sole raw relay receive loop
+  - feature-scoped bounded message endpoints prevent modules from stealing each other's relay traffic
+  - build composition is isolated in `features/catalog.go`
+  - persisted feature state defaults to `~/.config/phonelink-linux/features.json`
+- `phonelink.clipboard` feature module:
+  - owns the native Linux clipboard, clipboard protocol client, workers, generation conflict arbitration, and diagnostics
+  - advertises live text read/write/bidirectional capabilities only while Ready
+  - publishes Linux clipboard changes and applies phone clipboard publications
   - suppresses immediate phone -> Linux -> phone echo loops
   - snapshots outbound text by correlation id so CONTENT replies match the advertised change
+  - uses one cross-device generation domain so newer local/phone changes supersede stale work deterministically
+- `clipboard-sync` remains as a compatibility alias that starts the same `phonelink.clipboard` module through the modular lifecycle
 
 ## Source-confirmed clipboard cloud path
 
@@ -132,8 +137,9 @@ phone clipboard change
 
 ## Still required for an end-to-end usable client
 
-- live validation of the new continuous `clipboard-sync` command in both directions
-- service/daemon packaging and user configuration
+- live validation of the new modular `feature` + `run` composition path against the already-confirmed clipboard protocol
+- event-driven Wayland clipboard watching instead of polling
+- service/daemon packaging and a local runtime control bridge for applying desired-state CRUD without restart
 - reconnect/wake/token-refresh hardening for long-running parity with Phone Link
 
 ## Production bootstrap validation
@@ -153,9 +159,12 @@ The first live Linux bootstrap probe against the Microsoft production services h
 - with that trace shape fixed, the production S23 accepts a Linux PLATFORM `/SessionValidation` request and returns `/internal/response` with `SessionValidation`, `PersistentMessageChannel`, and `NanoTransportPreference`; the observed versions were PersistentMessagingChannel 14 and NanoTransportPreference 3.
 - a production S23 accepts the Linux clipboard tag-9 `/Context/Publish` publication and issues `GET /clipboard` using the published `CLIPBOARD_CHANGE` correlation id;
 - the observed S23 state machine advances through `STATUS -> FEATURE_ON -> CONTENT` when STATUS is present, and can also request CONTENT directly on a later run;
-- returning a successful text/plain CONTENT response was live-validated end to end: the explicit Linux probe text appeared in the S23 clipboard and was pasteable on the phone.
+- returning a successful text/plain CONTENT response was live-validated end to end: the explicit Linux probe text appeared in the S23 clipboard and was pasteable on the phone;
+- continuous native text synchronization was live-validated in both directions on Wayland with an S23;
+- the `wl-copy` fork/pipe latency bug was fixed, phone-to-Linux logging became immediate, and reflected clipboard echo was eliminated;
+- the pre-modular continuous path passed both `go test ./...` and `go test -race ./...`.
 
-The next live validation point is continuous two-way synchronization using the native Linux clipboard backend.
+The next live validation point is the same confirmed clipboard behavior through the new modular host/router/feature lifecycle.
 
 ## Bootstrap probe
 
@@ -307,15 +316,58 @@ When Android requests CONTENT, the probe returns a normal successful text/plain 
 
 A timeout after the DCG acknowledgement is recorded as an observation rather than a transport failure. If STATUS was already observed, the result also records that FEATURE_ON was sent and that no CONTENT follow-up arrived before the probe timeout.
 
+## Modular feature runtime
+
+Feature manifests and lifecycle rules are documented in [`docs/architecture/MODULE_SYSTEM.md`](docs/architecture/MODULE_SYSTEM.md). Version 1 supports built-in modules with strict manifests; the kernel intentionally contains no clipboard-specific behavior.
+
+Inspect available and installed features:
+
+```bash
+go run ./cmd/phonelink-linux feature list
+go run ./cmd/phonelink-linux feature get phonelink.clipboard
+```
+
+Create an enabled clipboard feature record using its default configuration:
+
+```bash
+go run ./cmd/phonelink-linux feature create --enabled phonelink.clipboard
+```
+
+Replace its configuration:
+
+```bash
+go run ./cmd/phonelink-linux feature update \
+  --config '{"poll_interval_ms":250,"request_timeout_ms":10000,"publish_initial":false}' \
+  phonelink.clipboard
+```
+
+Desired-state CRUD is generic:
+
+```bash
+go run ./cmd/phonelink-linux feature disable phonelink.clipboard
+go run ./cmd/phonelink-linux feature enable phonelink.clipboard
+go run ./cmd/phonelink-linux feature delete phonelink.clipboard
+```
+
+Then start all enabled modules over one shared Phone Link host session:
+
+```bash
+go run ./cmd/phonelink-linux run
+```
+
+The persistent CRUD commands update desired state. The current CLI applies that state when `run` starts; the in-process kernel already exposes live Create/Read/Update/Delete/Start/Stop lifecycle operations so a future local control bridge can apply the same model without changing feature contracts.
+
+If a feature implementation is removed from the build, a stale disabled record remains readable, disable-able, and delete-able. It cannot be enabled or reconfigured until the implementation is present again.
+
 ## Continuous Linux clipboard sync
 
-After bootstrap has produced persistent state, run:
+The recommended path is the modular `feature create --enabled` + `run` flow above. For compatibility and focused testing, the old command name still starts exactly the same module:
 
 ```bash
 go run ./cmd/phonelink-linux clipboard-sync
 ```
 
-The command auto-detects a native Linux text clipboard provider. On Wayland it prefers `wl-clipboard`; on X11 it falls back to `xclip` and then `xsel`. Install at least one supported provider before running the command.
+The module auto-detects a native Linux text clipboard provider. On Wayland it prefers `wl-clipboard`; on X11 it falls back to `xclip` and then `xsel`. Install at least one supported provider before running the command.
 
 Startup does **not** publish the clipboard that was already present before the process started. Only subsequent local clipboard changes are published by default. To intentionally send the current clipboard immediately:
 
@@ -346,6 +398,7 @@ On Wayland, `wl-copy` forks by default to keep serving the selection. Native wri
 ```bash
 gofmt -w .
 go test ./...
+go test -race ./...
 ```
 
 GitHub Actions is currently configured as manual-only while the account Actions-minute quota is exhausted.
