@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	clipclient "github.com/YMGPwcca/phonelink-linux/clipboard"
@@ -116,7 +115,7 @@ func (m *Module) Start(
 	}
 
 	if cfg.PublishInitial {
-		generation := instance.generation.Add(1)
+		generation := client.ReserveLocalGeneration()
 		correlationID, err := client.PublishLocalTextGeneration(
 			ctx,
 			initialText,
@@ -149,7 +148,6 @@ type instance struct {
 	client *clipclient.Client
 	local  *trackedLocalClipboard
 
-	generation atomic.Uint64
 
 	publishQueue   chan publishJob
 	publishResults <-chan publishResult

@@ -248,9 +248,11 @@ func (i *instance) run(ctx context.Context, clientErr <-chan error) {
 			})
 
 		case event := <-i.local.remoteWrite:
-			generation := i.generation.Add(1)
+			// The phone publication reserved the shared generation before its
+			// CONTENT pull. Drop any local jobs that were still waiting; an
+			// already in-flight older job is rejected by the client's floor.
 			discardQueuedPublishes(i.publishQueue)
-			i.client.SupersedeLocalPublications(generation)
+			generation := i.client.CurrentGeneration()
 			kernel.Report(i.reporter, kernel.Event{
 				ModuleID: i.moduleID,
 				Level:    "sync",
@@ -270,7 +272,7 @@ func (i *instance) run(ctx context.Context, clientErr <-chan error) {
 			if !i.local.MarkIfChanged(text) {
 				continue
 			}
-			generation := i.generation.Add(1)
+			generation := i.client.ReserveLocalGeneration()
 			queueLatestPublish(i.publishQueue, publishJob{
 				generation: generation,
 				text:       text,

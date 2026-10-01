@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	proto "github.com/YMGPwcca/phonelink-linux/protocol/clipboard"
@@ -56,8 +57,8 @@ type pendingResponse struct {
 }
 
 type phonePublication struct {
-	source      string
-	publication proto.PubSubPayload
+	correlationID string
+	generation    uint64
 }
 
 type incomingRequest struct {
@@ -74,6 +75,7 @@ type Client struct {
 	pending          map[string]chan pendingResponse
 	published        map[string]publishedSnapshot
 	publicationFloor uint64
+	generation       atomic.Uint64
 	asyncErr         chan error
 	incomingRequests chan incomingRequest
 
@@ -159,7 +161,7 @@ func (c *Client) Status(ctx context.Context, correlationID string) (proto.Respon
 }
 
 func (c *Client) PullToLocal(ctx context.Context) error {
-	return c.pullToLocal(ctx, "")
+	return c.pullToLocal(ctx, "", 0)
 }
 
 // PublishLocalChange mirrors the Windows SignalRContextProvider cloud publish
@@ -209,7 +211,24 @@ func (c *Client) PublishLocalTextGeneration(
 	if generation == 0 {
 		return "", errors.New("clipboard: publication generation must be positive")
 	}
+	c.observeGeneration(generation)
 	return c.publishLocalText(ctx, text, correlationID, generation, true)
+}
+
+// ReserveLocalGeneration records a newly observed local clipboard change.
+// Reserving immediately (before the publisher worker sends it) gives local and
+// phone changes one ordering domain and invalidates older outbound snapshots.
+func (c *Client) ReserveLocalGeneration() uint64 {
+	generation := c.generation.Add(1)
+	c.advancePublicationFloor(generation)
+	return generation
+}
+
+// CurrentGeneration returns the latest observed clipboard generation. It is
+// intended for diagnostics; ordering decisions must reserve/compare inside the
+// client rather than deriving a new generation from this value.
+func (c *Client) CurrentGeneration() uint64 {
+	return c.generation.Load()
 }
 
 // SupersedeLocalPublications invalidates versioned local snapshots older than
@@ -220,6 +239,23 @@ func (c *Client) SupersedeLocalPublications(generation uint64) {
 	if generation == 0 {
 		return
 	}
+	c.observeGeneration(generation)
+	c.advancePublicationFloor(generation)
+}
+
+func (c *Client) observeGeneration(generation uint64) {
+	for {
+		current := c.generation.Load()
+		if generation <= current {
+			return
+		}
+		if c.generation.CompareAndSwap(current, generation) {
+			return
+		}
+	}
+}
+
+func (c *Client) advancePublicationFloor(generation uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if generation <= c.publicationFloor {
@@ -294,7 +330,9 @@ func (c *Client) HandlePhoneClipboardPublication(ctx context.Context, publicatio
 	if err != nil {
 		return err
 	}
-	return c.pullToLocal(ctx, correlationID)
+	generation := c.generation.Add(1)
+	c.advancePublicationFloor(generation)
+	return c.pullToLocal(ctx, correlationID, generation)
 }
 
 func (c *Client) prunePublishedLocked(now time.Time) {
@@ -319,7 +357,7 @@ func (c *Client) prunePublishedLocked(now time.Time) {
 	}
 }
 
-func (c *Client) pullToLocal(ctx context.Context, correlationID string) error {
+func (c *Client) pullToLocal(ctx context.Context, correlationID string, generation uint64) error {
 	text, err := c.GetText(ctx, correlationID)
 	if err != nil {
 		return err
@@ -329,6 +367,9 @@ func (c *Client) pullToLocal(ctx context.Context, correlationID string) error {
 	}
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if generation != 0 && c.generation.Load() != generation {
+		return nil
 	}
 
 	// Android may publish the same text back after applying a desktop-originated
@@ -465,10 +506,16 @@ func (c *Client) handleIncomingPublication(
 	if err != nil {
 		return err
 	}
+	correlationID, err := proto.ParsePhoneClipboardChangePublication(publication)
+	if err != nil {
+		return err
+	}
+	generation := c.generation.Add(1)
+	c.advancePublicationFloor(generation)
 
 	c.enqueuePhonePublication(phonePublication{
-		source:      msg.Source,
-		publication: publication,
+		correlationID: correlationID,
+		generation:    generation,
 	})
 	return nil
 }
@@ -507,9 +554,10 @@ func (c *Client) runPhonePublicationWorker(ctx context.Context) {
 			c.phonePullCancel = cancel
 			c.publicationMu.Unlock()
 
-			err := c.HandlePhoneClipboardPublication(
+			err := c.pullToLocal(
 				pullCtx,
-				publication.publication,
+				publication.correlationID,
+				publication.generation,
 			)
 			cancel()
 
