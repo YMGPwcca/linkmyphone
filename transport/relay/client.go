@@ -466,6 +466,8 @@ func (c *Client) handlePacket(ctx context.Context, msg psignalr.ReceiveMessage) 
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()
+		default:
+			return errors.New("relay: application receive queue is full")
 		}
 	default:
 		return nil

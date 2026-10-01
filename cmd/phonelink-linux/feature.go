@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/YMGPwcca/phonelink-linux/features"
@@ -100,7 +101,13 @@ func runFeatureList(args []string) error {
 		)
 		delete(installed, definition.Manifest.ID)
 	}
-	for id, record := range installed {
+	unknownIDs := make([]string, 0, len(installed))
+	for id := range installed {
+		unknownIDs = append(unknownIDs, id)
+	}
+	sort.Strings(unknownIDs)
+	for _, id := range unknownIDs {
+		record := installed[id]
 		fmt.Printf("%s unknown installed=true enabled=%t\n", id, record.Enabled)
 	}
 	return nil
@@ -120,22 +127,24 @@ func runFeatureGet(args []string) error {
 		return errors.New("feature get requires exactly one ID")
 	}
 	id := fs.Arg(0)
-	definition, err := features.Find(id)
-	if err != nil {
-		return err
-	}
 	store, err := kernel.OpenFeatureStore(*statePath)
 	if err != nil {
 		return err
 	}
 	record, readErr := store.Read(id)
+	definition, definitionErr := features.Find(id)
+	if readErr != nil && definitionErr != nil {
+		return readErr
+	}
 
 	payload := struct {
-		Manifest  kernel.Manifest       `json:"manifest"`
+		Manifest  *kernel.Manifest      `json:"manifest,omitempty"`
 		Installed bool                  `json:"installed"`
 		Record    *kernel.FeatureRecord `json:"record,omitempty"`
-	}{
-		Manifest: definition.Manifest,
+	}{}
+	if definitionErr == nil {
+		manifest := definition.Manifest
+		payload.Manifest = &manifest
 	}
 	if readErr == nil {
 		payload.Installed = true
@@ -217,10 +226,6 @@ func runFeatureUpdate(args []string) error {
 		return errors.New("feature update requires --enabled and/or --config")
 	}
 	id := fs.Arg(0)
-	definition, err := features.Find(id)
-	if err != nil {
-		return err
-	}
 
 	var enabled *bool
 	if enabledText != "" {
@@ -236,8 +241,16 @@ func runFeatureUpdate(args []string) error {
 		enabled = &value
 	}
 
+	definition, definitionErr := features.Find(id)
+	if enabled != nil && *enabled && definitionErr != nil {
+		return fmt.Errorf("cannot enable unavailable feature %s: %w", id, definitionErr)
+	}
+
 	var config *json.RawMessage
 	if configText != "" {
+		if definitionErr != nil {
+			return fmt.Errorf("cannot update config for unavailable feature %s: %w", id, definitionErr)
+		}
 		raw := json.RawMessage(configText)
 		if err := definition.Validate(raw); err != nil {
 			return err
@@ -271,9 +284,6 @@ func runFeatureDelete(args []string) error {
 		return errors.New("feature delete requires exactly one ID")
 	}
 	id := fs.Arg(0)
-	if _, err := features.Find(id); err != nil {
-		return err
-	}
 	store, err := kernel.OpenFeatureStore(*statePath)
 	if err != nil {
 		return err
@@ -303,8 +313,10 @@ func runFeatureToggle(args []string, enabled bool) error {
 		return fmt.Errorf("%s requires exactly one ID", name)
 	}
 	id := fs.Arg(0)
-	if _, err := features.Find(id); err != nil {
-		return err
+	if enabled {
+		if _, err := features.Find(id); err != nil {
+			return fmt.Errorf("cannot enable unavailable feature %s: %w", id, err)
+		}
 	}
 	store, err := kernel.OpenFeatureStore(*statePath)
 	if err != nil {

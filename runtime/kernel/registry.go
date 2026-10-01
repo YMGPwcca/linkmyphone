@@ -75,6 +75,7 @@ type Registry struct {
 	capabilities *CapabilityRegistry
 	reporter     Reporter
 	errors       chan RuntimeError
+	startOrder   []string
 }
 
 func NewRegistry(reporter Reporter) *Registry {
@@ -264,10 +265,13 @@ func (r *Registry) StartEnabled(ctx context.Context) error {
 }
 
 func (r *Registry) StopAll(ctx context.Context) error {
-	snapshots := r.List()
+	r.mu.RLock()
+	order := append([]string(nil), r.startOrder...)
+	r.mu.RUnlock()
+
 	var errs []error
-	for i := len(snapshots) - 1; i >= 0; i-- {
-		if err := r.Stop(ctx, snapshots[i].ID); err != nil {
+	for i := len(order) - 1; i >= 0; i-- {
+		if err := r.Stop(ctx, order[i]); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -283,9 +287,14 @@ func (r *Registry) startEntry(ctx context.Context, entry *registryEntry) error {
 		r.mu.Unlock()
 		return fmt.Errorf("kernel: module %s is disabled", entry.manifest.ID)
 	}
-	if entry.instance != nil && entry.state == StateReady {
+	if entry.instance != nil {
+		if entry.state == StateReady {
+			r.mu.Unlock()
+			return nil
+		}
+		state := entry.state
 		r.mu.Unlock()
-		return nil
+		return fmt.Errorf("kernel: module %s has a live instance in state %s; stop it before restart", entry.manifest.ID, state)
 	}
 	if entry.state == StateStarting || entry.state == StateStopping {
 		state := entry.state
@@ -349,6 +358,8 @@ func (r *Registry) startEntry(ctx context.Context, entry *registryEntry) error {
 	}
 	entry.instance = instance
 	entry.state = StateReady
+	r.removeStartOrderLocked(entry.manifest.ID)
+	r.startOrder = append(r.startOrder, entry.manifest.ID)
 	r.mu.Unlock()
 
 	go r.monitorInstance(entry, epoch, instance)
@@ -377,6 +388,7 @@ func (r *Registry) stopEntry(ctx context.Context, entry *registryEntry) error {
 	entry.epoch++
 	entry.state = StateStopping
 	entry.instance = nil
+	r.removeStartOrderLocked(entry.manifest.ID)
 	r.mu.Unlock()
 
 	r.capabilities.RemoveProvider(entry.manifest.ID)
@@ -414,7 +426,7 @@ func (r *Registry) monitorInstance(entry *registryEntry, epoch uint64, instance 
 	}
 
 	r.mu.Lock()
-	if entry.epoch != epoch || entry.instance != instance {
+	if entry.epoch != epoch {
 		r.mu.Unlock()
 		return
 	}
@@ -427,6 +439,16 @@ func (r *Registry) monitorInstance(entry *registryEntry, epoch uint64, instance 
 	select {
 	case r.errors <- runtimeErr:
 	default:
+	}
+}
+
+func (r *Registry) removeStartOrderLocked(id string) {
+	for index, candidate := range r.startOrder {
+		if candidate != id {
+			continue
+		}
+		r.startOrder = append(r.startOrder[:index], r.startOrder[index+1:]...)
+		return
 	}
 }
 

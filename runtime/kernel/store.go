@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 )
 
 const featureStoreSchemaVersion = 1
@@ -30,6 +31,7 @@ type featureStoreFile struct {
 }
 
 type FeatureStore struct {
+	mu      sync.RWMutex
 	path    string
 	records map[string]FeatureRecord
 }
@@ -94,11 +96,13 @@ func (s *FeatureStore) Create(record FeatureRecord) error {
 	if err := validateFeatureRecord(record); err != nil {
 		return err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if _, exists := s.records[record.ID]; exists {
 		return fmt.Errorf("%w: %s", ErrFeatureExists, record.ID)
 	}
 	s.records[record.ID] = cloneFeatureRecord(record)
-	if err := s.save(); err != nil {
+	if err := s.saveLocked(); err != nil {
 		delete(s.records, record.ID)
 		return err
 	}
@@ -106,6 +110,8 @@ func (s *FeatureStore) Create(record FeatureRecord) error {
 }
 
 func (s *FeatureStore) Read(id string) (FeatureRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	record, exists := s.records[id]
 	if !exists {
 		return FeatureRecord{}, fmt.Errorf("%w: %s", ErrFeatureNotFound, id)
@@ -114,6 +120,12 @@ func (s *FeatureStore) Read(id string) (FeatureRecord, error) {
 }
 
 func (s *FeatureStore) List() []FeatureRecord {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.listLocked()
+}
+
+func (s *FeatureStore) listLocked() []FeatureRecord {
 	records := make([]FeatureRecord, 0, len(s.records))
 	for _, record := range s.records {
 		records = append(records, cloneFeatureRecord(record))
@@ -125,6 +137,8 @@ func (s *FeatureStore) List() []FeatureRecord {
 }
 
 func (s *FeatureStore) Update(id string, enabled *bool, config *json.RawMessage) (FeatureRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	record, exists := s.records[id]
 	if !exists {
 		return FeatureRecord{}, fmt.Errorf("%w: %s", ErrFeatureNotFound, id)
@@ -140,7 +154,7 @@ func (s *FeatureStore) Update(id string, enabled *bool, config *json.RawMessage)
 		return FeatureRecord{}, err
 	}
 	s.records[id] = record
-	if err := s.save(); err != nil {
+	if err := s.saveLocked(); err != nil {
 		s.records[id] = before
 		return FeatureRecord{}, err
 	}
@@ -148,19 +162,21 @@ func (s *FeatureStore) Update(id string, enabled *bool, config *json.RawMessage)
 }
 
 func (s *FeatureStore) Delete(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	record, exists := s.records[id]
 	if !exists {
 		return fmt.Errorf("%w: %s", ErrFeatureNotFound, id)
 	}
 	delete(s.records, id)
-	if err := s.save(); err != nil {
+	if err := s.saveLocked(); err != nil {
 		s.records[id] = record
 		return err
 	}
 	return nil
 }
 
-func (s *FeatureStore) save() error {
+func (s *FeatureStore) saveLocked() error {
 	dir := filepath.Dir(s.path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("kernel: create feature store directory: %w", err)
@@ -168,7 +184,7 @@ func (s *FeatureStore) save() error {
 
 	file := featureStoreFile{
 		SchemaVersion: featureStoreSchemaVersion,
-		Features:      s.List(),
+		Features:      s.listLocked(),
 	}
 	data, err := json.MarshalIndent(file, "", "  ")
 	if err != nil {
@@ -220,6 +236,9 @@ func validateFeatureRecord(record FeatureRecord) error {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&value); err != nil {
 		return fmt.Errorf("kernel: feature %s config must be a JSON object: %w", record.ID, err)
+	}
+	if value == nil {
+		return fmt.Errorf("kernel: feature %s config must be a JSON object, not null", record.ID)
 	}
 	var extra any
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
