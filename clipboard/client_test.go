@@ -275,3 +275,89 @@ func TestPublishLocalTextSnapshotsContentByCorrelation(t *testing.T) {
 	}
 	t.Fatal("no CONTENT response")
 }
+
+type countingLocal struct {
+	text   string
+	writes int
+}
+
+func (l *countingLocal) ReadText(context.Context) (string, error) {
+	return l.text, nil
+}
+
+func (l *countingLocal) WriteText(_ context.Context, text string) error {
+	l.text = text
+	l.writes++
+	return nil
+}
+
+func TestPullToLocalSkipsIdenticalReflectedText(t *testing.T) {
+	fr := newFakeRelay()
+	local := &countingLocal{text: "same text"}
+	c := New(fr, local, Config{
+		Target: "phone",
+		SessionID: "session",
+		RequestTimeout: time.Second,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- c.PullToLocal(ctx)
+	}()
+
+	var request relay.Received
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		fr.mu.Lock()
+		if len(fr.sent) != 0 {
+			request = fr.sent[0]
+		}
+		fr.mu.Unlock()
+		if request.Payload != nil {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if request.Payload == nil {
+		t.Fatal("no CONTENT request")
+	}
+	pm, err := platform.Unmarshal(request.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestID, _ := pm.Header(platform.HeaderRequestID)
+	response := proto.NewTextResponse("", "same text", nil)
+	drm := proto.DeviceResourceResponse{
+		ResponseType: proto.DeviceResourceResponseSuccess,
+		Payload:      proto.MarshalResponse(response),
+	}
+	reply := platform.NewInternalResponse(
+		proto.MarshalDeviceResourceResponse(drm),
+		requestID,
+	)
+	wire, err := platform.Marshal(reply)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr.recv <- relay.Received{
+		Source: "phone",
+		SessionID: "session",
+		TransportMessageType: dcg.TransportMessageTypePlatform,
+		Payload: wire,
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+		if local.writes != 0 {
+			t.Fatalf("writes=%d", local.writes)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timeout")
+	}
+}

@@ -232,6 +232,15 @@ func (c *Client) pullToLocal(ctx context.Context, correlationID string) error {
 	if c.local == nil {
 		return errors.New("clipboard: no local clipboard backend")
 	}
+
+	// Android may publish the same text back after applying a desktop-originated
+	// clipboard update. Avoid rewriting an already-identical local clipboard:
+	// it is both unnecessary and can otherwise look like a phone-originated
+	// change to the local watcher.
+	current, readErr := c.local.ReadText(ctx)
+	if readErr == nil && current == text {
+		return nil
+	}
 	return c.local.WriteText(ctx, text)
 }
 

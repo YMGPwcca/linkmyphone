@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,7 +20,10 @@ import (
 	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
 )
 
-const defaultClipboardPollInterval = 500 * time.Millisecond
+const (
+	defaultClipboardPollInterval = 500 * time.Millisecond
+	remoteClipboardSettleWindow  = 3 * time.Second
+)
 
 type clipboardSyncOptions struct {
 	statePath      string
@@ -38,17 +42,22 @@ type clipboardSyncOptions struct {
 type trackedLocalClipboard struct {
 	base clipclient.Local
 
-	mu          sync.Mutex
-	last        string
+	writeMu sync.Mutex
+	mu      sync.Mutex
+
+	lastHash    [32]byte
 	initialized bool
+	applying    bool
+	suppress    map[[32]byte]time.Time
 	remoteWrite chan int
 }
 
 func newTrackedLocalClipboard(base clipclient.Local, initial string) *trackedLocalClipboard {
 	return &trackedLocalClipboard{
 		base:        base,
-		last:        initial,
+		lastHash:    sha256.Sum256([]byte(initial)),
 		initialized: true,
+		suppress:    make(map[[32]byte]time.Time),
 		remoteWrite: make(chan int, 8),
 	}
 }
@@ -58,13 +67,34 @@ func (l *trackedLocalClipboard) ReadText(ctx context.Context) (string, error) {
 }
 
 func (l *trackedLocalClipboard) WriteText(ctx context.Context, text string) error {
-	if err := l.base.WriteText(ctx, text); err != nil {
+	l.writeMu.Lock()
+	defer l.writeMu.Unlock()
+
+	nextHash := sha256.Sum256([]byte(text))
+	now := time.Now()
+
+	l.mu.Lock()
+	l.pruneSuppressedLocked(now)
+	l.applying = true
+	if l.initialized {
+		l.suppress[l.lastHash] = now.Add(remoteClipboardSettleWindow)
+	}
+	l.suppress[nextHash] = now.Add(remoteClipboardSettleWindow)
+	l.mu.Unlock()
+
+	err := l.base.WriteText(ctx, text)
+
+	l.mu.Lock()
+	l.applying = false
+	if err == nil {
+		l.lastHash = nextHash
+		l.initialized = true
+	}
+	l.mu.Unlock()
+	if err != nil {
 		return err
 	}
-	l.mu.Lock()
-	l.last = text
-	l.initialized = true
-	l.mu.Unlock()
+
 	select {
 	case l.remoteWrite <- len([]byte(text)):
 	default:
@@ -73,14 +103,92 @@ func (l *trackedLocalClipboard) WriteText(ctx context.Context, text string) erro
 }
 
 func (l *trackedLocalClipboard) MarkIfChanged(text string) bool {
+	hash := sha256.Sum256([]byte(text))
+	now := time.Now()
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.initialized && l.last == text {
+	l.pruneSuppressedLocked(now)
+
+	if l.applying {
 		return false
 	}
-	l.last = text
+	if until, ok := l.suppress[hash]; ok && now.Before(until) {
+		l.lastHash = hash
+		l.initialized = true
+		delete(l.suppress, hash)
+		return false
+	}
+	if l.initialized && l.lastHash == hash {
+		return false
+	}
+	l.lastHash = hash
 	l.initialized = true
 	return true
+}
+
+func (l *trackedLocalClipboard) pruneSuppressedLocked(now time.Time) {
+	for hash, until := range l.suppress {
+		if !now.Before(until) {
+			delete(l.suppress, hash)
+		}
+	}
+}
+
+type clipboardPublishResult struct {
+	size          int
+	correlationID string
+	err           error
+}
+
+func startClipboardPublisher(
+	ctx context.Context,
+	client *clipclient.Client,
+) (chan string, <-chan clipboardPublishResult) {
+	queue := make(chan string, 1)
+	results := make(chan clipboardPublishResult, 4)
+
+	go func() {
+		defer close(results)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case text := <-queue:
+				correlationID, err := client.PublishLocalText(ctx, text, "")
+				result := clipboardPublishResult{
+					size:          len([]byte(text)),
+					correlationID: correlationID,
+					err:           err,
+				}
+				select {
+				case results <- result:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	return queue, results
+}
+
+func queueLatestClipboardText(queue chan string, text string) {
+	select {
+	case queue <- text:
+		return
+	default:
+	}
+
+	select {
+	case <-queue:
+	default:
+	}
+
+	select {
+	case queue <- text:
+	default:
+	}
 }
 
 func runClipboardSync(ctx context.Context, args []string) error {
@@ -278,6 +386,8 @@ func runClipboardSync(ctx context.Context, args []string) error {
 		)
 	}
 
+	publishQueue, publishResults := startClipboardPublisher(ctx, client)
+
 	fmt.Printf("[5/5] Clipboard sync: RUNNING (poll %s)\n", opts.pollInterval)
 	fmt.Println()
 	fmt.Println("[OK] Copy text on Linux or on the phone. Press Ctrl+C to stop.")
@@ -296,6 +406,19 @@ func runClipboardSync(ctx context.Context, args []string) error {
 			}
 			return fmt.Errorf("clipboard receive loop: %w", err)
 
+		case result, ok := <-publishResults:
+			if !ok {
+				return nil
+			}
+			if result.err != nil {
+				return fmt.Errorf("publish Linux clipboard: %w", result.err)
+			}
+			fmt.Printf(
+				"[sync] Linux -> phone: published text (%d bytes / correlation %s)\n",
+				result.size,
+				shortID(result.correlationID),
+			)
+
 		case size := <-local.remoteWrite:
 			fmt.Printf("[sync] phone -> Linux: applied text (%d bytes)\n", size)
 
@@ -307,15 +430,7 @@ func runClipboardSync(ctx context.Context, args []string) error {
 			if !local.MarkIfChanged(text) {
 				continue
 			}
-			correlationID, err := client.PublishLocalText(ctx, text, "")
-			if err != nil {
-				return fmt.Errorf("publish Linux clipboard: %w", err)
-			}
-			fmt.Printf(
-				"[sync] Linux -> phone: published text (%d bytes / correlation %s)\n",
-				len([]byte(text)),
-				shortID(correlationID),
-			)
+			queueLatestClipboardText(publishQueue, text)
 		}
 	}
 }

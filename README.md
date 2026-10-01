@@ -333,7 +333,11 @@ Clipboard contents are never printed by the command; diagnostics report only dir
 
 Outbound text is snapshotted by correlation id. If the Linux clipboard changes again before Android requests CONTENT, the older request still receives the exact text associated with its own publication instead of the newer clipboard value.
 
-Phone-originated writes update the local tracking baseline before polling resumes, preventing the same text from being immediately published back to the phone.
+Phone-originated writes are protected by an origin barrier before the native clipboard mutation begins. During the short compositor-settle window, both the previous local value and the incoming remote value are suppressed from outbound publication, closing the poll-vs-`wl-copy` race.
+
+Android can also reflect a desktop-originated clipboard value back through its own publication path. Before applying phone CONTENT, the client compares it with the current Linux clipboard and skips an identical value entirely, so reflected desktop text does not produce a fake `phone -> Linux` event.
+
+Outbound `/Context/Publish` calls run on a separate publisher worker. Waiting for a DCG ACK therefore no longer blocks receive-side logging or phone-to-Linux clipboard handling. Pending rapid local changes are coalesced to the newest text while one publication is in flight.
 
 ## Test
 

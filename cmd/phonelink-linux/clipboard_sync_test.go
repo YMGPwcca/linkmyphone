@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"sync"
 	"testing"
+	"time"
 
 	clipclient "github.com/YMGPwcca/phonelink-linux/clipboard"
 )
@@ -48,5 +50,88 @@ func TestTrackedLocalClipboardSuppressesRemoteEcho(t *testing.T) {
 		}
 	default:
 		t.Fatal("expected remote write notification")
+	}
+}
+
+type blockingSyncLocal struct {
+	mu      sync.Mutex
+	text    string
+	started chan struct{}
+	release chan struct{}
+}
+
+func (l *blockingSyncLocal) ReadText(context.Context) (string, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.text, nil
+}
+
+func (l *blockingSyncLocal) WriteText(_ context.Context, text string) error {
+	select {
+	case <-l.started:
+	default:
+		close(l.started)
+	}
+	<-l.release
+	l.mu.Lock()
+	l.text = text
+	l.mu.Unlock()
+	return nil
+}
+
+func TestTrackedLocalClipboardSuppressesPollRaceDuringRemoteWrite(t *testing.T) {
+	base := &blockingSyncLocal{
+		text:    "old local",
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	tracked := newTrackedLocalClipboard(base, "old local")
+
+	done := make(chan error, 1)
+	go func() {
+		done <- tracked.WriteText(context.Background(), "from phone")
+	}()
+
+	select {
+	case <-base.started:
+	case <-time.After(time.Second):
+		t.Fatal("remote write did not start")
+	}
+
+	if tracked.MarkIfChanged("old local") {
+		t.Fatal("old clipboard observed during remote write must not be published")
+	}
+	if tracked.MarkIfChanged("from phone") {
+		t.Fatal("remote target observed during remote write must not be published")
+	}
+
+	close(base.release)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("remote write did not finish")
+	}
+
+	if tracked.MarkIfChanged("from phone") {
+		t.Fatal("applied remote clipboard must not be published back")
+	}
+}
+
+func TestQueueLatestClipboardTextCoalescesPendingChanges(t *testing.T) {
+	queue := make(chan string, 1)
+	queueLatestClipboardText(queue, "first")
+	queueLatestClipboardText(queue, "second")
+	queueLatestClipboardText(queue, "third")
+
+	select {
+	case got := <-queue:
+		if got != "third" {
+			t.Fatalf("queued=%q", got)
+		}
+	default:
+		t.Fatal("expected queued clipboard text")
 	}
 }
