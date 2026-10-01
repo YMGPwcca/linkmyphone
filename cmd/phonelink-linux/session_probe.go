@@ -32,6 +32,7 @@ type sessionProbeOptions struct {
 	requestTimeout time.Duration
 	contextProbe   bool
 	contextTimeout time.Duration
+	contextText    string
 }
 
 func runSessionProbe(ctx context.Context, args []string) error {
@@ -54,6 +55,7 @@ func runSessionProbe(ctx context.Context, args []string) error {
 	fs.DurationVar(&opts.requestTimeout, "request-timeout", bootstrap.DefaultSessionValidationTimeout, "time to wait for /SessionValidation response")
 	fs.BoolVar(&opts.contextProbe, "context-probe", false, "publish a source-confirmed clipboard ContextSource probe after SessionValidation")
 	fs.DurationVar(&opts.contextTimeout, "context-timeout", bootstrap.DefaultContextProbeTimeout, "time to observe the Android PLATFORM reaction to /Context/Publish")
+	fs.StringVar(&opts.contextText, "context-text", "", "explicit probe text to return if Android requests clipboard CONTENT; omitted by default")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -62,6 +64,9 @@ func runSessionProbe(ctx context.Context, args []string) error {
 	}
 	if opts.signalrTimeout <= 0 || opts.wakeTimeout <= 0 || opts.wakeTTL <= 0 || opts.requestTimeout <= 0 || opts.contextTimeout <= 0 {
 		return errors.New("all timeout/TTL values must be positive")
+	}
+	if opts.contextText != "" && !opts.contextProbe {
+		return errors.New("--context-text requires --context-probe")
 	}
 
 	fmt.Println("Phone Link Linux SessionValidation probe")
@@ -198,12 +203,18 @@ func runSessionProbe(ctx context.Context, args []string) error {
 
 	fmt.Println()
 	fmt.Println("[context] Sending clipboard tag 9 through PLATFORM /Context/Publish...")
-	contextResult, err := bootstrap.ProbeClipboardContextPublish(
+	contextOptions := bootstrap.ContextProbeOptions{
+		Timeout: opts.contextTimeout,
+	}
+	if opts.contextText != "" {
+		contextOptions.ContentText = &opts.contextText
+	}
+	contextResult, err := bootstrap.ProbeClipboardContextPublishWithOptions(
 		ctx,
 		cloud.Relay,
 		target.ID,
 		resumed.Identity.DeviceID,
-		opts.contextTimeout,
+		contextOptions,
 	)
 	if err != nil {
 		return fmt.Errorf("ContextSource probe: %w", err)
@@ -241,7 +252,12 @@ func runSessionProbe(ctx context.Context, args []string) error {
 		if contextResult.StatusFeatureOnSent {
 			fmt.Println("[context] STATUS response: FEATURE_ON")
 		}
-		if contextResult.ContentDeclined {
+		if contextResult.ContentSent {
+			fmt.Printf("[context] CONTENT response: text/plain sent (%d bytes).\n", contextResult.ContentTextBytes)
+			fmt.Println()
+			fmt.Println("[OK] S23 requested CONTENT and DCG acknowledged the explicit text response.")
+			fmt.Println("[verify] Paste on the phone to confirm the Android clipboard applied the probe text.")
+		} else if contextResult.ContentDeclined {
 			fmt.Println("[context] CONTENT response: ResourceHandlerNotRegistered; no clipboard content was sent.")
 			fmt.Println()
 			fmt.Println("[OK] S23 advanced from STATUS to CONTENT; clipboard pull handshake is live.")

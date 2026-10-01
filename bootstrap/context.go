@@ -13,7 +13,15 @@ import (
 	"github.com/YMGPwcca/phonelink-linux/protocol/platform"
 )
 
-const DefaultContextProbeTimeout = 8 * time.Second
+const (
+	DefaultContextProbeTimeout = 8 * time.Second
+	MaxContextProbeTextBytes   = 4096
+)
+
+type ContextProbeOptions struct {
+	Timeout     time.Duration
+	ContentText *string
+}
 
 type ContextProbeClipboardRequest struct {
 	Headers                   []platform.Header
@@ -34,6 +42,8 @@ type ContextProbeResult struct {
 	ClipboardRequests   []ContextProbeClipboardRequest
 	StatusFeatureOnSent bool
 	ContentDeclined     bool
+	ContentSent         bool
+	ContentTextBytes    int
 }
 
 // ProbeClipboardContextPublish sends the source-confirmed Windows clipboard
@@ -42,13 +52,32 @@ type ContextProbeResult struct {
 // CLIPBOARD_CHANGE publication starts with /clipboard STATUS using the same
 // correlation id. The probe answers STATUS with FEATURE_ON, matching the normal
 // Windows-side resource handler, then keeps observing for CONTENT. CONTENT is
-// answered with ResourceHandlerNotRegistered so no clipboard content is sent.
+// answered with ResourceHandlerNotRegistered by default so no clipboard
+// content is sent. When ContentText is explicitly supplied, the probe instead
+// returns a normal text/plain clipboard response to validate PC-to-phone
+// clipboard delivery end to end.
 func ProbeClipboardContextPublish(
 	ctx context.Context,
 	r SessionValidationRelay,
 	targetDcgClientID string,
 	selfDcgClientID string,
 	timeout time.Duration,
+) (ContextProbeResult, error) {
+	return ProbeClipboardContextPublishWithOptions(
+		ctx,
+		r,
+		targetDcgClientID,
+		selfDcgClientID,
+		ContextProbeOptions{Timeout: timeout},
+	)
+}
+
+func ProbeClipboardContextPublishWithOptions(
+	ctx context.Context,
+	r SessionValidationRelay,
+	targetDcgClientID string,
+	selfDcgClientID string,
+	opts ContextProbeOptions,
 ) (ContextProbeResult, error) {
 	var out ContextProbeResult
 	if r == nil {
@@ -60,8 +89,14 @@ func ProbeClipboardContextPublish(
 	if selfDcgClientID == "" {
 		return out, errors.New("bootstrap: context probe self DCG client id is required")
 	}
-	if timeout <= 0 {
-		timeout = DefaultContextProbeTimeout
+	if opts.Timeout <= 0 {
+		opts.Timeout = DefaultContextProbeTimeout
+	}
+	if opts.ContentText != nil && len([]byte(*opts.ContentText)) > MaxContextProbeTextBytes {
+		return out, fmt.Errorf(
+			"bootstrap: context probe text exceeds %d bytes",
+			MaxContextProbeTextBytes,
+		)
 	}
 
 	requestID, err := newContextProbeID()
@@ -104,7 +139,7 @@ func ProbeClipboardContextPublish(
 		return out, fmt.Errorf("bootstrap: send Context/Publish probe: %w", err)
 	}
 
-	waitCtx, cancel := context.WithTimeout(ctx, timeout)
+	waitCtx, cancel := context.WithTimeout(ctx, opts.Timeout)
 	defer cancel()
 
 	for {
@@ -189,7 +224,32 @@ func ProbeClipboardContextPublish(
 					continue
 
 				case clipproto.RequestContent:
-					if hasRequestID && incomingRequestID != "" {
+					if !hasRequestID || incomingRequestID == "" {
+						return out, errors.New("bootstrap: Context probe CONTENT missing request id")
+					}
+					if opts.ContentText != nil {
+						response := clipproto.DeviceResourceResponse{
+							ResponseType: clipproto.DeviceResourceResponseSuccess,
+							Payload: clipproto.MarshalResponse(
+								clipproto.NewTextResponse(
+									req.CorrelationID,
+									*opts.ContentText,
+									nil,
+								),
+							),
+						}
+						if err := sendContextProbeDRMResponse(
+							ctx,
+							r,
+							incoming.Source,
+							incomingRequestID,
+							response,
+						); err != nil {
+							return out, err
+						}
+						out.ContentSent = true
+						out.ContentTextBytes = len([]byte(*opts.ContentText))
+					} else {
 						response := clipproto.DeviceResourceResponse{
 							ResponseType: clipproto.DeviceResourceResponseResourceHandlerNotRegistered,
 						}

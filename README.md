@@ -119,7 +119,7 @@ phone clipboard change
 
 ## Still required for an end-to-end usable client
 
-- live validation of the clipboard STATUS -> FEATURE_ON -> CONTENT continuation after the now-confirmed ContextSource publication path
+- live validation that Android applies the explicit text returned to a confirmed CONTENT request
 - Linux native clipboard backend
 - executable/daemon wiring and user configuration
 - reconnect/wake/token-refresh hardening for long-running parity with Phone Link
@@ -279,6 +279,17 @@ Useful override:
 ```bash
 go run ./cmd/phonelink-linux session-probe --context-probe --context-timeout 15s
 ```
+
+To validate the final PC-to-phone CONTENT response without wiring the Linux clipboard backend yet, explicitly provide non-sensitive probe text:
+
+```bash
+go run ./cmd/phonelink-linux session-probe \
+  --context-probe \
+  --context-timeout 15s \
+  --context-text "phonelink-linux probe"
+```
+
+When Android requests CONTENT, the probe returns a normal successful text/plain clipboard response with the same correlation id. The CLI reports only the byte count, not the text itself. Probe text is limited to 4096 bytes and the option is rejected unless `--context-probe` is also present. Because command-line arguments may be stored in shell history, do not use sensitive text.
 
 A timeout after the DCG acknowledgement is recorded as an observation rather than a transport failure. If STATUS was already observed, the result also records that FEATURE_ON was sent and that no CONTENT follow-up arrived before the probe timeout.
 

@@ -372,3 +372,176 @@ func TestProbeClipboardContextPublishTimeoutIsObservation(t *testing.T) {
 		t.Fatalf("result=%#v", got)
 	}
 }
+
+func TestProbeClipboardContextPublishSendsExplicitTextContent(t *testing.T) {
+	fr := newSessionFakeRelay()
+	textValue := "phonelink-linux probe text"
+	type result struct {
+		value ContextProbeResult
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		got, err := ProbeClipboardContextPublishWithOptions(
+			context.Background(),
+			fr,
+			"phone",
+			"desktop",
+			ContextProbeOptions{
+				Timeout:     time.Second,
+				ContentText: &textValue,
+			},
+		)
+		done <- result{value: got, err: err}
+	}()
+
+	var correlationID string
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		fr.mu.Lock()
+		if len(fr.sent) != 0 {
+			pm, err := platform.Unmarshal(fr.sent[0].Payload)
+			if err == nil {
+				envelope, err := msaep.Unmarshal(pm.Payload)
+				if err == nil {
+					pubsub, err := clipproto.UnmarshalPubSubPayload(envelope.Payload)
+					if err == nil {
+						change, err := clipproto.UnmarshalResponse(pubsub.Data)
+						if err == nil {
+							correlationID = change.CorrelationID
+						}
+					}
+				}
+			}
+		}
+		fr.mu.Unlock()
+		if correlationID != "" {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if correlationID == "" {
+		t.Fatal("no publication correlation id")
+	}
+
+	statusPayload := clipproto.MarshalDeviceResourceMessage(
+		clipproto.WrapClipboardRequest(
+			clipproto.NewStatusRequest(correlationID),
+		),
+	)
+	statusRequest := platform.NewDeviceResourceRequest(statusPayload, "phone-status")
+	statusWire, err := platform.Marshal(statusRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr.recv <- relay.Received{
+		Source:               "phone",
+		TransportMessageType: dcg.TransportMessageTypePlatform,
+		Payload:              statusWire,
+	}
+
+	deadline = time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		fr.mu.Lock()
+		n := len(fr.sent)
+		fr.mu.Unlock()
+		if n >= 2 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	contentPayload := clipproto.MarshalDeviceResourceMessage(
+		clipproto.WrapClipboardRequest(
+			clipproto.NewContentRequest(correlationID),
+		),
+	)
+	contentRequest := platform.NewDeviceResourceRequest(contentPayload, "phone-content")
+	contentWire, err := platform.Marshal(contentRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr.recv <- relay.Received{
+		Source:               "phone",
+		TransportMessageType: dcg.TransportMessageTypePlatform,
+		Payload:              contentWire,
+	}
+
+	select {
+	case got := <-done:
+		if got.err != nil {
+			t.Fatal(got.err)
+		}
+		if !got.value.StatusFeatureOnSent ||
+			!got.value.ContentSent ||
+			got.value.ContentDeclined ||
+			got.value.ContentTextBytes != len([]byte(textValue)) {
+			t.Fatalf("result=%#v", got.value)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out")
+	}
+
+	var contentReply relay.Received
+	deadline = time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		fr.mu.Lock()
+		if len(fr.sent) >= 3 {
+			contentReply = fr.sent[2]
+		}
+		fr.mu.Unlock()
+		if contentReply.Payload != nil {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if contentReply.Payload == nil {
+		t.Fatal("no CONTENT text response")
+	}
+
+	replyMessage, err := platform.Unmarshal(contentReply.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalRequestID, _ := replyMessage.Header(platform.HeaderOriginalRequestID)
+	if originalRequestID != "phone-content" {
+		t.Fatalf("original request id=%q", originalRequestID)
+	}
+	drmResponse, err := clipproto.UnmarshalDeviceResourceResponse(replyMessage.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if drmResponse.ResponseType != clipproto.DeviceResourceResponseSuccess {
+		t.Fatalf("DRM response=%#v", drmResponse)
+	}
+	clipboardResponse, err := clipproto.UnmarshalResponse(drmResponse.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if clipboardResponse.Status != clipproto.ResponseOK ||
+		clipboardResponse.CorrelationID != correlationID ||
+		len(clipboardResponse.Items) != 1 ||
+		clipboardResponse.Items[0].Type != clipproto.ItemTextPlain ||
+		clipboardResponse.Items[0].Text == nil ||
+		*clipboardResponse.Items[0].Text != textValue {
+		t.Fatalf("clipboard response=%#v", clipboardResponse)
+	}
+}
+
+func TestProbeClipboardContextPublishRejectsOversizedExplicitText(t *testing.T) {
+	fr := newSessionFakeRelay()
+	textValue := string(make([]byte, MaxContextProbeTextBytes+1))
+	_, err := ProbeClipboardContextPublishWithOptions(
+		context.Background(),
+		fr,
+		"phone",
+		"desktop",
+		ContextProbeOptions{
+			Timeout:     time.Second,
+			ContentText: &textValue,
+		},
+	)
+	if err == nil {
+		t.Fatal("expected oversized text error")
+	}
+}
