@@ -130,6 +130,17 @@ func TestSendCompletesOnAck(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if fragment.TransportMessageType != int(dcg.TransportMessageTypePlatform) {
+		t.Fatalf("Hub Relay MessageType=%d want Platform=%d", fragment.TransportMessageType, dcg.TransportMessageTypePlatform)
+	}
+	raw, ok := packet.Properties[dcg.PropertyMessageType]
+	if !ok {
+		t.Fatal("wire MessageType missing")
+	}
+	wireMessageType, ok := raw.(int64)
+	if !ok || wireMessageType != int64(dcg.TransportMessageTypePlatform) {
+		t.Fatalf("wire MessageType=%#v (%T) want=%d", raw, raw, dcg.TransportMessageTypePlatform)
+	}
 	hub.reads <- onReceiveFrame(t, "phone", dcg.SuccessAckPacket(fragment))
 
 	select {

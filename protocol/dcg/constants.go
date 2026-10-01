@@ -1,6 +1,7 @@
 package dcg
 
-// MessageType values are read directly from ProtoDcgMessageType in the APK.
+// MessageType values match both the DCG Hub Relay packet enum and
+// ProtoDcgMessageType.
 type MessageType int
 
 const (
@@ -12,11 +13,19 @@ const (
 	MessageTypePresenceResponse     MessageType = 5
 )
 
-// TransportMessageType values are read directly from ProtoTransportMessageType.
+// TransportMessageType here models the Hub Relay multiplex-packet value used by
+// DCGFragmentMessage.ToHubRelayMultiplexPacket, not ProtoTransportMessageType.
+//
+// Windows has two distinct enums:
+//   TransportMessageType:      App=0, Platform=1, Unknown=2
+//   ProtoTransportMessageType: Unspecified=0, App=1, Platform=2
+//
+// SignalR/Hub Relay packets use the first enum. Proto values must not be copied
+// directly into MultiplexPacket.Properties["MessageType"].
 type TransportMessageType int
 
 const (
-	TransportMessageTypeUnspecified TransportMessageType = 0
-	TransportMessageTypeApp         TransportMessageType = 1
-	TransportMessageTypePlatform    TransportMessageType = 2
+	TransportMessageTypeApp      TransportMessageType = 0
+	TransportMessageTypePlatform TransportMessageType = 1
+	TransportMessageTypeUnknown  TransportMessageType = 2
 )

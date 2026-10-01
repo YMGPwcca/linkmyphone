@@ -135,6 +135,7 @@ The first live Linux bootstrap probe against the Microsoft production services h
 - DeviceInfoList returns linked Windows and Android peers and trust sync succeeds;
 - the account receives an assigned SignalR shard;
 - the production SignalR service can return its JSON handshake response in a **binary WebSocket message**, so the transport accepts both text and binary handshake messages and preserves any first Hub payload coalesced after the record separator.
+- DCG Hub Relay fragment `MessageType` uses the internal Windows `TransportMessageType` enum (`App=0`, `Platform=1`, `Unknown=2`), not the protobuf enum (`App=1`, `Platform=2`); the Linux transport now uses the Hub values in both directions.
 
 The remaining live validation point is reaching Hub Relay `OnConnected` after that transport fix.
 

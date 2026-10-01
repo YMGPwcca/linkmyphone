@@ -11,7 +11,7 @@ func TestFragmentPacketRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.SequenceNumber != 3 || got.MessageID != 77 || got.TransportMessageType != 2 || !bytes.Equal(got.Payload, []byte("ab")) {
+	if got.SequenceNumber != 3 || got.MessageID != 77 || got.TransportMessageType != int(TransportMessageTypePlatform) || !bytes.Equal(got.Payload, []byte("ab")) {
 		t.Fatalf("got=%#v", got)
 	}
 }
@@ -32,7 +32,7 @@ func TestSuccessAckPacket(t *testing.T) {
 
 func TestReassembler(t *testing.T) {
 	r := NewReassembler(1024, 10)
-	a := Fragment{FragmentNumber: 2, FragmentCount: 2, MessageID: 1, Payload: []byte("world"), TransportMessageType: 2, SessionID: "s"}
+	a := Fragment{FragmentNumber: 2, FragmentCount: 2, MessageID: 1, Payload: []byte("world"), TransportMessageType: int(TransportMessageTypePlatform), SessionID: "s"}
 	b := a
 	b.FragmentNumber = 1
 	b.Payload = []byte("hello ")
@@ -42,5 +42,17 @@ func TestReassembler(t *testing.T) {
 	p, ok, err := r.Add("peer", b)
 	if err != nil || !ok || string(p) != "hello world" {
 		t.Fatalf("p=%q ok=%v err=%v", p, ok, err)
+	}
+}
+
+func TestHubRelayTransportMessageTypeWireValues(t *testing.T) {
+	if got := int(TransportMessageTypeApp); got != 0 {
+		t.Fatalf("App=%d want=0", got)
+	}
+	if got := int(TransportMessageTypePlatform); got != 1 {
+		t.Fatalf("Platform=%d want=1", got)
+	}
+	if got := int(TransportMessageTypeUnknown); got != 2 {
+		t.Fatalf("Unknown=%d want=2", got)
 	}
 }
