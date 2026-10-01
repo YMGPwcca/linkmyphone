@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -79,6 +80,32 @@ func TestEnsurePeerOnlineWakesAndWaitsForPresence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	flushResult := make(chan error, 1)
+	go func() {
+		select {
+		case frame := <-hub.sent:
+			frames, err := psignalr.SplitFrames(frame)
+			if err != nil || len(frames) != 1 {
+				flushResult <- err
+				return
+			}
+			inv, err := psignalr.ParseInvocation(frames[0])
+			if err != nil {
+				flushResult <- err
+				return
+			}
+			if inv.Target != psignalr.TargetSendConnectedAsync || inv.InvocationID == nil {
+				flushResult <- errors.New("expected pre-wake SendConnectedAsync")
+				return
+			}
+			hub.reads <- hubCompletionVoidFrame(t, *inv.InvocationID)
+			flushResult <- nil
+		case <-time.After(time.Second):
+			flushResult <- errors.New("timed out waiting for pre-wake SendConnectedAsync")
+		}
+	}()
+
 	woke, err := EnsurePeerOnline(
 		context.Background(),
 		cloud,
@@ -101,6 +128,9 @@ func TestEnsurePeerOnlineWakesAndWaitsForPresence(t *testing.T) {
 	}
 	if wakeCalls != 1 {
 		t.Fatalf("wakeCalls=%d", wakeCalls)
+	}
+	if err := <-flushResult; err != nil {
+		t.Fatal(err)
 	}
 	if !cloud.Relay.PartnerConnected("phone") {
 		t.Fatal("phone should be present after OnPartnerConnected")
@@ -172,6 +202,18 @@ func hubOnPartnerConnectedFrame(t *testing.T, source, region string) []byte {
 	body = appendMPString(body, region)
 	body = append(body, 0x90)
 
+	frame, err := psignalr.Frame(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return frame
+}
+
+func hubCompletionVoidFrame(t *testing.T, invocationID string) []byte {
+	t.Helper()
+	body := []byte{0x94, 0x03, 0x80}
+	body = appendMPString(body, invocationID)
+	body = append(body, byte(psignalr.CompletionResultVoid))
 	frame, err := psignalr.Frame(body)
 	if err != nil {
 		t.Fatal(err)

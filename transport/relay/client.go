@@ -193,6 +193,36 @@ func (c *Client) Run(ctx context.Context) error {
 	}
 }
 
+func (c *Client) FlushPartner(ctx context.Context, target string, trace psignalr.TraceContextPacket) error {
+	if target == "" {
+		return errors.New("relay: target is required")
+	}
+	id := strconv.FormatUint(c.invocation.Add(1), 10)
+	completionCh := make(chan psignalr.Completion, 1)
+	c.mu.Lock()
+	c.completions[id] = completionCh
+	c.mu.Unlock()
+	defer c.removeCompletionWaiter(id)
+
+	frame, err := psignalr.FrameSendConnectedAsync(&id, trace, target)
+	if err != nil {
+		return err
+	}
+	if err := c.hub.SendBinary(frame); err != nil {
+		return err
+	}
+
+	select {
+	case completion := <-completionCh:
+		if completion.Error != "" {
+			return fmt.Errorf("relay: Hub rejected SendConnectedAsync: %s", completion.Error)
+		}
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("relay: SendConnectedAsync completion: %w", ctx.Err())
+	}
+}
+
 func (c *Client) SendConnected(target string, trace psignalr.TraceContextPacket) error {
 	if target == "" {
 		return errors.New("relay: target is required")

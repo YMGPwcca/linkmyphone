@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
+	psignalr "github.com/YMGPwcca/phonelink-linux/protocol/signalr"
 	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
 )
 
 const (
-	DefaultPeerWakeTimeout = 45 * time.Second
-	DefaultPeerWakeTTL     = 60 * time.Second
+	DefaultPeerWakeTimeout  = 45 * time.Second
+	DefaultPeerWakeTTL      = 60 * time.Second
+	DefaultPartnerFlushTimeout = 10 * time.Second
 )
 
 type PeerOnlineOptions struct {
@@ -53,6 +55,17 @@ func EnsurePeerOnline(
 	}
 	if cloud.Relay.PartnerConnected(targetDcgClientID) {
 		return false, nil
+	}
+
+	// Windows flushes the Hub partner mapping with SendConnectedAsync before
+	// issuing a wake. This is not just a reciprocal response to
+	// OnPartnerConnected; WakePartnerAndWaitForConnectionInternalAsync calls
+	// FlushConnectionAsync first and awaits the Hub Completion.
+	flushCtx, flushCancel := context.WithTimeout(ctx, DefaultPartnerFlushTimeout)
+	err := cloud.Relay.FlushPartner(flushCtx, targetDcgClientID, psignalr.TraceContextPacket{})
+	flushCancel()
+	if err != nil {
+		return false, fmt.Errorf("bootstrap: flush partner before wake: %w", err)
 	}
 
 	timeout := options.Timeout

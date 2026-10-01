@@ -18,20 +18,25 @@ import (
 
 type cloudFakeHub struct {
 	reads     chan []byte
+	sent      chan []byte
 	closed    chan struct{}
 	closeOnce sync.Once
 }
 
 func newCloudFakeHub(frame []byte) *cloudFakeHub {
 	h := &cloudFakeHub{
-		reads:  make(chan []byte, 1),
+		reads:  make(chan []byte, 8),
+		sent:   make(chan []byte, 16),
 		closed: make(chan struct{}),
 	}
 	h.reads <- frame
 	return h
 }
 
-func (h *cloudFakeHub) SendBinary([]byte) error { return nil }
+func (h *cloudFakeHub) SendBinary(payload []byte) error {
+	h.sent <- append([]byte(nil), payload...)
+	return nil
+}
 
 func (h *cloudFakeHub) ReadBinary() ([]byte, error) {
 	select {

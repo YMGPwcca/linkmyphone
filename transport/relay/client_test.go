@@ -535,3 +535,71 @@ func completionErrorFrame(t *testing.T, invocationID, message string) []byte {
 	}
 	return frame
 }
+
+func TestFlushPartnerWaitsForHubCompletion(t *testing.T) {
+	hub := newFakeHub()
+	c := New(hub, Config{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+
+	done := make(chan error, 1)
+	go func() {
+		flushCtx, flushCancel := context.WithTimeout(ctx, time.Second)
+		defer flushCancel()
+		done <- c.FlushPartner(flushCtx, "phone", psignalr.TraceContextPacket{})
+	}()
+
+	var sent []byte
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		hub.mu.Lock()
+		if len(hub.sent) > 0 {
+			sent = append([]byte(nil), hub.sent[0]...)
+		}
+		hub.mu.Unlock()
+		if sent != nil {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if sent == nil {
+		t.Fatal("no SendConnectedAsync invocation")
+	}
+	frames, err := psignalr.SplitFrames(sent)
+	if err != nil || len(frames) != 1 {
+		t.Fatalf("frames=%d err=%v", len(frames), err)
+	}
+	inv, err := psignalr.ParseInvocation(frames[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.Target != psignalr.TargetSendConnectedAsync || inv.InvocationID == nil {
+		t.Fatalf("invocation=%#v", inv)
+	}
+	hub.reads <- completionVoidFrame(t, *inv.InvocationID)
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("FlushPartner did not complete")
+	}
+}
+
+func completionVoidFrame(t *testing.T, invocationID string) []byte {
+	t.Helper()
+	p := &tinyPacker{}
+	p.array(4)
+	p.integer(psignalr.HubMessageTypeCompletion)
+	p.mapLen(0)
+	p.str(invocationID)
+	p.integer(psignalr.CompletionResultVoid)
+	frame, err := psignalr.Frame(p.b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return frame
+}
