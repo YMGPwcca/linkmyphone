@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
@@ -15,7 +16,6 @@ import (
 	"github.com/YMGPwcca/phonelink-linux/dcgheaders"
 	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
 	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
-	"github.com/YMGPwcca/phonelink-linux/transport/relay"
 )
 
 const (
@@ -38,30 +38,46 @@ type Config struct {
 
 type Session struct {
 	cloud           *bootstrap.CloudRelay
+	router          *Router
+	cancel          context.CancelFunc
+	errors          chan error
+	closeOnce       sync.Once
+	closeErr        error
 	Target          servicedcg.DeviceInfo
 	SelfDcgClientID string
 	Region          string
 }
 
-func (s *Session) Relay() *relay.Client {
-	if s == nil || s.cloud == nil {
-		return nil
+func (s *Session) Subscribe(name string, matcher Matcher, queueSize int) (*Endpoint, error) {
+	if s == nil || s.router == nil {
+		return nil, errors.New("phonehost: session router is unavailable")
 	}
-	return s.cloud.Relay
+	return s.router.Subscribe(name, matcher, queueSize)
 }
 
 func (s *Session) Errors() <-chan error {
-	if s == nil || s.cloud == nil {
+	if s == nil {
 		return nil
 	}
-	return s.cloud.Errors()
+	return s.errors
 }
 
 func (s *Session) Close() error {
-	if s == nil || s.cloud == nil {
+	if s == nil {
 		return nil
 	}
-	return s.cloud.Close()
+	s.closeOnce.Do(func() {
+		if s.cancel != nil {
+			s.cancel()
+		}
+		if s.router != nil {
+			s.router.Close()
+		}
+		if s.cloud != nil {
+			s.closeErr = s.cloud.Close()
+		}
+	})
+	return s.closeErr
 }
 
 func Open(ctx context.Context, cfg Config, reporter kernel.Reporter) (*Session, error) {
@@ -189,13 +205,48 @@ func Open(ctx context.Context, cfg Config, reporter kernel.Reporter) (*Session, 
 	}
 	report(reporter, "PLATFORM session ready", nil)
 
-	ok = true
-	return &Session{
+	runCtx, runCancel := context.WithCancel(context.Background())
+	session := &Session{
 		cloud:           cloud,
+		cancel:          runCancel,
+		errors:          make(chan error, 8),
 		Target:          target,
 		SelfDcgClientID: resumed.Identity.DeviceID,
 		Region:          cloud.Region,
-	}, nil
+	}
+	session.router = newRouter(cloud.Relay, session.reportRuntimeError)
+
+	go func() {
+		if err := session.router.Run(runCtx); err != nil && !errors.Is(err, context.Canceled) {
+			session.reportRuntimeError(err)
+		}
+	}()
+	go func() {
+		select {
+		case <-runCtx.Done():
+			return
+		case err, ok := <-cloud.Errors():
+			if !ok {
+				return
+			}
+			if err != nil && !errors.Is(err, context.Canceled) {
+				session.reportRuntimeError(fmt.Errorf("phonehost: Hub Relay: %w", err))
+			}
+		}
+	}()
+
+	ok = true
+	return session, nil
+}
+
+func (s *Session) reportRuntimeError(err error) {
+	if s == nil || err == nil {
+		return
+	}
+	select {
+	case s.errors <- err:
+	default:
+	}
 }
 
 func normalizeConfig(cfg *Config) error {

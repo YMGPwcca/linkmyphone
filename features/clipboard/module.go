@@ -20,7 +20,7 @@ type Module struct {
 }
 
 func New(session *phonehost.Session) (*Module, error) {
-	if session == nil || session.Relay() == nil {
+	if session == nil {
 		return nil, errors.New("clipboard module: phone host session is required")
 	}
 	manifest, err := Manifest()
@@ -59,7 +59,11 @@ func (m *Module) Start(
 	}
 
 	local := newTrackedLocalClipboard(native, initialText)
-	client := clipclient.New(m.session.Relay(), local, clipclient.Config{
+	endpoint, err := m.session.Subscribe(m.manifest.ID, matchesMessage, phonehost.DefaultSubscriptionQueue)
+	if err != nil {
+		return nil, fmt.Errorf("clipboard module: subscribe transport: %w", err)
+	}
+	client := clipclient.New(endpoint, local, clipclient.Config{
 		Target:          m.session.Target.ID,
 		SelfDcgClientID: m.session.SelfDcgClientID,
 		RequestTimeout:  cfg.RequestTimeout(),
@@ -72,6 +76,7 @@ func (m *Module) Start(
 		reporter:       reporter,
 		client:         client,
 		local:          local,
+		endpoint:       endpoint,
 		cancel:         cancel,
 		done:           make(chan struct{}),
 		errors:         make(chan error, 1),
@@ -124,6 +129,7 @@ func (m *Module) Start(
 		)
 		if err != nil {
 			cancel()
+			endpoint.Close()
 			return nil, fmt.Errorf("clipboard module: publish initial clipboard: %w", err)
 		}
 		kernel.Report(reporter, kernel.Event{
@@ -145,8 +151,9 @@ type instance struct {
 	cfg      Config
 	reporter kernel.Reporter
 
-	client *clipclient.Client
-	local  *trackedLocalClipboard
+	client   *clipclient.Client
+	local    *trackedLocalClipboard
+	endpoint *phonehost.Endpoint
 
 
 	publishQueue   chan publishJob
@@ -187,6 +194,9 @@ func (i *instance) Stop(ctx context.Context) error {
 		}
 		cancel()
 		i.cancel()
+		if i.endpoint != nil {
+			i.endpoint.Close()
+		}
 	})
 
 	select {
