@@ -82,6 +82,7 @@ type Client struct {
 	pending          map[string]chan pendingResponse
 	published        map[string]publishedSnapshot
 	publicationFloor uint64
+	generationMu     sync.Mutex
 	generation       atomic.Uint64
 	asyncErr         chan error
 	incomingRequests chan incomingRequest
@@ -224,8 +225,11 @@ func (c *Client) PublishLocalTextGeneration(
 
 // ReserveLocalGeneration records a newly observed local clipboard change.
 // Reserving immediately (before the publisher worker sends it) gives local and
-// phone changes one ordering domain and invalidates older outbound snapshots.
+// phone changes one ordering domain. It deliberately keeps older local
+// snapshots alive because Android may still request their correlation IDs.
 func (c *Client) ReserveLocalGeneration() uint64 {
+	c.generationMu.Lock()
+	defer c.generationMu.Unlock()
 	return c.generation.Add(1)
 }
 
@@ -236,19 +240,26 @@ func (c *Client) CurrentGeneration() uint64 {
 	return c.generation.Load()
 }
 
-// SupersedeLocalPublications invalidates versioned local snapshots older than
-// generation. If an old Context/Publish is already in flight and Android later
-// asks CONTENT for it, the request falls back to the current local clipboard,
-// allowing the newer phone-originated value to win deterministically.
+// SupersedeLocalPublications tombstones versioned local snapshots older than
+// generation. If an old Context/Publish is already in flight, a later CONTENT
+// request is rejected instead of being answered with unrelated current text.
 func (c *Client) SupersedeLocalPublications(generation uint64) {
 	if generation == 0 {
 		return
 	}
-	c.observeGeneration(generation)
+	c.generationMu.Lock()
+	defer c.generationMu.Unlock()
+	c.observeGenerationLocked(generation)
 	c.advancePublicationFloor(generation)
 }
 
 func (c *Client) observeGeneration(generation uint64) {
+	c.generationMu.Lock()
+	defer c.generationMu.Unlock()
+	c.observeGenerationLocked(generation)
+}
+
+func (c *Client) observeGenerationLocked(generation uint64) {
 	for {
 		current := c.generation.Load()
 		if generation <= current {
@@ -258,6 +269,14 @@ func (c *Client) observeGeneration(generation uint64) {
 			return
 		}
 	}
+}
+
+func (c *Client) reserveRemoteGeneration() uint64 {
+	c.generationMu.Lock()
+	defer c.generationMu.Unlock()
+	generation := c.generation.Add(1)
+	c.advancePublicationFloor(generation)
+	return generation
 }
 
 func (c *Client) advancePublicationFloor(generation uint64) {
@@ -338,8 +357,7 @@ func (c *Client) HandlePhoneClipboardPublication(ctx context.Context, publicatio
 	if err != nil {
 		return err
 	}
-	generation := c.generation.Add(1)
-	c.advancePublicationFloor(generation)
+	generation := c.reserveRemoteGeneration()
 	return c.pullToLocal(ctx, correlationID, generation)
 }
 
@@ -376,8 +394,13 @@ func (c *Client) pullToLocal(ctx context.Context, correlationID string, generati
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if generation != 0 && c.generation.Load() != generation {
-		return nil
+
+	if generation != 0 {
+		c.generationMu.Lock()
+		defer c.generationMu.Unlock()
+		if c.generation.Load() != generation {
+			return nil
+		}
 	}
 
 	// Android may publish the same text back after applying a desktop-originated
@@ -527,8 +550,7 @@ func (c *Client) handleIncomingPublication(
 	if err != nil {
 		return err
 	}
-	generation := c.generation.Add(1)
-	c.advancePublicationFloor(generation)
+	generation := c.reserveRemoteGeneration()
 
 	c.enqueuePhonePublication(phonePublication{
 		correlationID: correlationID,

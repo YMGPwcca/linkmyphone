@@ -69,12 +69,17 @@ func TestFeatureStoreRejectsNonObjectConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = store.Create(FeatureRecord{
-		ID:      "phonelink.clipboard",
-		Enabled: true,
-		Config:  json.RawMessage(`["bad"]`),
-	})
-	if err == nil {
-		t.Fatal("expected config validation error")
+	for _, config := range []json.RawMessage{
+		json.RawMessage(`["bad"]`),
+		json.RawMessage(`null`),
+	} {
+		err = store.Create(FeatureRecord{
+			ID:      "phonelink.clipboard",
+			Enabled: true,
+			Config:  config,
+		})
+		if err == nil {
+			t.Fatalf("expected config validation error for %s", config)
+		}
 	}
 }

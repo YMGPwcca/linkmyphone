@@ -208,3 +208,37 @@ func TestRegistrySurfacesCurrentInstanceFailure(t *testing.T) {
 		t.Fatalf("snapshot=%#v", snapshot)
 	}
 }
+
+func TestRegistryRejectsStoppingRequiredProviderWhileDependentReady(t *testing.T) {
+	provider := &fakeModule{manifest: testManifest(t, "phonelink.provider", "test.provider")}
+	consumer := &fakeModule{manifest: testManifest(
+		t,
+		"phonelink.consumer",
+		"test.consumer",
+		Dependency{ID: "phonelink.provider", MinimumVersion: "1.0.0"},
+	)}
+
+	registry := NewRegistry(nil)
+	for _, module := range []*fakeModule{consumer, provider} {
+		if err := registry.Create(module, FeatureRecord{
+			ID:      module.manifest.ID,
+			Enabled: true,
+			Config:  json.RawMessage(`{}`),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := registry.StartEnabled(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := registry.Stop(context.Background(), provider.manifest.ID); err == nil {
+		t.Fatal("expected provider stop to be blocked by ready dependent")
+	}
+	if err := registry.Stop(context.Background(), consumer.manifest.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Stop(context.Background(), provider.manifest.ID); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -175,6 +175,34 @@ func runFeatureRuntime(
 	records []kernel.FeatureRecord,
 ) (runErr error) {
 	reporter := consoleReporter{}
+
+	type preparedFeature struct {
+		record     kernel.FeatureRecord
+		definition features.Definition
+	}
+	prepared := make([]preparedFeature, 0, len(records))
+	for _, record := range records {
+		definition, err := features.Find(record.ID)
+		if err != nil {
+			if !record.Enabled {
+				kernel.Report(reporter, kernel.Event{
+					ModuleID: record.ID,
+					Level:    "warning",
+					Message:  "disabled feature implementation is unavailable; record retained for CRUD",
+				})
+				continue
+			}
+			return fmt.Errorf("enabled feature %s is unavailable: %w", record.ID, err)
+		}
+		if err := definition.Validate(record.Config); err != nil {
+			return fmt.Errorf("validate feature %s: %w", record.ID, err)
+		}
+		prepared = append(prepared, preparedFeature{
+			record:     record,
+			definition: definition,
+		})
+	}
+
 	session, err := phonehost.Open(ctx, hostConfig, reporter)
 	if err != nil {
 		return err
@@ -182,26 +210,18 @@ func runFeatureRuntime(
 	defer session.Close()
 
 	registry := kernel.NewRegistry(reporter)
-	for _, record := range records {
-		definition, err := features.Find(record.ID)
+	for _, item := range prepared {
+		module, err := item.definition.Build(session)
 		if err != nil {
-			return err
+			return fmt.Errorf("build feature %s: %w", item.record.ID, err)
 		}
-		if err := definition.Validate(record.Config); err != nil {
-			return fmt.Errorf("validate feature %s: %w", record.ID, err)
-		}
-		module, err := definition.Build(session)
-		if err != nil {
-			return fmt.Errorf("build feature %s: %w", record.ID, err)
-		}
-		if err := registry.Create(module, record); err != nil {
+		if err := registry.Create(module, item.record); err != nil {
 			return err
 		}
 	}
 
-	if err := registry.StartEnabled(ctx); err != nil {
-		return err
-	}
+	// Register cleanup before starting any module so a partial StartEnabled
+	// failure still stops the subset that already reached Ready.
 	defer func() {
 		stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -209,6 +229,9 @@ func runFeatureRuntime(
 			runErr = err
 		}
 	}()
+	if err := registry.StartEnabled(ctx); err != nil {
+		return err
+	}
 
 	ready := registry.List()
 	fmt.Println()
@@ -245,7 +268,7 @@ func runFeatureRuntime(
 			if err == nil || errors.Is(err, context.Canceled) {
 				return nil
 			}
-			return fmt.Errorf("Hub Relay read loop: %w", err)
+			return fmt.Errorf("Phone Link host: %w", err)
 		case runtimeErr := <-registry.Errors():
 			return runtimeErr
 		}

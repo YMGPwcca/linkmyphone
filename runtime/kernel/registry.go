@@ -184,7 +184,7 @@ func (r *Registry) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	if err := r.stopEntry(ctx, entry); err != nil {
+	if err := r.stopEntry(ctx, entry, true); err != nil {
 		return err
 	}
 	entry.opMu.Lock()
@@ -213,7 +213,7 @@ func (r *Registry) Stop(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	return r.stopEntry(ctx, entry)
+	return r.stopEntry(ctx, entry, true)
 }
 
 func (r *Registry) StartEnabled(ctx context.Context) error {
@@ -271,7 +271,12 @@ func (r *Registry) StopAll(ctx context.Context) error {
 
 	var errs []error
 	for i := len(order) - 1; i >= 0; i-- {
-		if err := r.Stop(ctx, order[i]); err != nil {
+		entry, err := r.entry(order[i])
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if err := r.stopEntry(ctx, entry, false); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -371,11 +376,26 @@ func (r *Registry) startEntry(ctx context.Context, entry *registryEntry) error {
 	return nil
 }
 
-func (r *Registry) stopEntry(ctx context.Context, entry *registryEntry) error {
+func (r *Registry) stopEntry(
+	ctx context.Context,
+	entry *registryEntry,
+	enforceDependents bool,
+) error {
 	entry.opMu.Lock()
 	defer entry.opMu.Unlock()
 
 	r.mu.Lock()
+	if enforceDependents {
+		dependents := r.activeRequiredDependentsLocked(entry.manifest.ID)
+		if len(dependents) != 0 {
+			r.mu.Unlock()
+			return fmt.Errorf(
+				"kernel: module %s is required by active modules: %s",
+				entry.manifest.ID,
+				strings.Join(dependents, ", "),
+			)
+		}
+	}
 	instance := entry.instance
 	if instance == nil {
 		if entry.state != StateFailed {
@@ -440,6 +460,23 @@ func (r *Registry) monitorInstance(entry *registryEntry, epoch uint64, instance 
 	case r.errors <- runtimeErr:
 	default:
 	}
+}
+
+func (r *Registry) activeRequiredDependentsLocked(providerID string) []string {
+	dependents := make([]string, 0)
+	for id, candidate := range r.entries {
+		if id == providerID || candidate.instance == nil {
+			continue
+		}
+		for _, dependency := range candidate.manifest.Dependencies.Required {
+			if dependency.ID == providerID {
+				dependents = append(dependents, id)
+				break
+			}
+		}
+	}
+	sort.Strings(dependents)
+	return dependents
 }
 
 func (r *Registry) removeStartOrderLocked(id string) {

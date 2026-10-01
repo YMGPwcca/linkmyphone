@@ -895,3 +895,38 @@ func TestCanceledSendWaitingOnTargetGateNeverHitsWire(t *testing.T) {
 		t.Fatal("first send did not complete")
 	}
 }
+
+func TestApplicationReceiveBackpressureFailsFast(t *testing.T) {
+	hub := newFakeHub()
+	c := New(hub, Config{})
+	for i := 0; i < cap(c.received); i++ {
+		c.received <- Received{}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- c.Run(ctx)
+	}()
+
+	packet := dcg.ToMultiplexPacket(dcg.Fragment{
+		SequenceNumber:       1,
+		FragmentNumber:       1,
+		FragmentCount:        1,
+		MessageID:            99,
+		Payload:              []byte("platform"),
+		TransportMessageType: int(dcg.TransportMessageTypePlatform),
+		SessionID:            "session",
+	}, int(dcg.MessageTypeFragment))
+	hub.reads <- onReceiveFrame(t, "phone", packet)
+
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "application receive queue is full") {
+			t.Fatalf("err=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("relay stayed blocked behind a full application queue")
+	}
+}

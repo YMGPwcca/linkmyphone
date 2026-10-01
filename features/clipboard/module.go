@@ -186,18 +186,26 @@ func (i *instance) Errors() <-chan error {
 
 func (i *instance) Stop(ctx context.Context) error {
 	i.stopOnce.Do(func() {
-		featureCtx, cancel := context.WithTimeout(ctx, i.requestTimeout)
-		if _, err := i.client.PushFeatureState(featureCtx, clipproto.RequestFeatureOff); err != nil &&
-			!errors.Is(err, context.Canceled) &&
-			!errors.Is(err, context.DeadlineExceeded) {
-			kernel.Report(i.reporter, kernel.Event{
-				ModuleID: i.moduleID,
-				Level:    "warning",
-				Message:  "FEATURE_OFF synchronization failed",
-				Fields:   map[string]string{"error": err.Error()},
-			})
+		running := true
+		select {
+		case <-i.done:
+			running = false
+		default:
 		}
-		cancel()
+		if running {
+			featureCtx, cancel := context.WithTimeout(ctx, i.requestTimeout)
+			if _, err := i.client.PushFeatureState(featureCtx, clipproto.RequestFeatureOff); err != nil &&
+				!errors.Is(err, context.Canceled) &&
+				!errors.Is(err, context.DeadlineExceeded) {
+				kernel.Report(i.reporter, kernel.Event{
+					ModuleID: i.moduleID,
+					Level:    "warning",
+					Message:  "FEATURE_OFF synchronization failed",
+					Fields:   map[string]string{"error": err.Error()},
+				})
+			}
+			cancel()
+		}
 		i.cancel()
 		if i.endpoint != nil {
 			i.endpoint.Close()
