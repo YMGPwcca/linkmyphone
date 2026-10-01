@@ -419,6 +419,12 @@ func runClipboardSync(ctx context.Context, args []string) error {
 		case <-ctx.Done():
 			return nil
 
+		case err := <-cloud.Errors():
+			if err == nil || errors.Is(err, context.Canceled) {
+				return nil
+			}
+			return fmt.Errorf("Hub Relay read loop: %w", err)
+
 		case err := <-runErr:
 			if err == nil || errors.Is(err, context.Canceled) {
 				return nil
