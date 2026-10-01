@@ -5,6 +5,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	clipclient "github.com/YMGPwcca/phonelink-linux/clipboard"
 )
 
 type fakeLocal struct {
@@ -42,14 +44,6 @@ func TestTrackedLocalClipboardSuppressesRemoteEcho(t *testing.T) {
 		t.Fatal("new local text must be reported")
 	}
 
-	select {
-	case event := <-tracked.remoteWrite:
-		if event.size != len([]byte("from phone")) {
-			t.Fatalf("size=%d", event.size)
-		}
-	default:
-		t.Fatal("expected remote write event")
-	}
 }
 
 func TestTrackingHashNormalizesOnlyEchoComparison(t *testing.T) {
@@ -83,11 +77,37 @@ func TestPublishQueueIsLatestWinsAndDiscardable(t *testing.T) {
 	}
 
 	queueLatestPublish(queue, publishJob{generation: 4, text: "four"})
-	discardQueuedPublishes(queue)
+	discardQueuedPublishesBefore(queue, 3)
 	select {
 	case job := <-queue:
-		t.Fatalf("unexpected queued job=%#v", job)
+		if job.generation != 4 {
+			t.Fatalf("newer job was not preserved: %#v", job)
+		}
 	default:
+		t.Fatal("newer queued job was incorrectly discarded")
+	}
+
+	queueLatestPublish(queue, publishJob{generation: 4, text: "four"})
+	discardQueuedPublishesBefore(queue, 5)
+	select {
+	case job := <-queue:
+		t.Fatalf("older queued job survived remote generation: %#v", job)
+	default:
+	}
+}
+
+func TestRemoteApplyQueueKeepsLatestGeneration(t *testing.T) {
+	queue := make(chan clipclient.RemoteApplyEvent, 1)
+	queueLatestRemoteApply(queue, clipclient.RemoteApplyEvent{Generation: 2, Bytes: 2})
+	queueLatestRemoteApply(queue, clipclient.RemoteApplyEvent{Generation: 3, Bytes: 3})
+
+	select {
+	case event := <-queue:
+		if event.Generation != 3 || event.Bytes != 3 {
+			t.Fatalf("event=%#v", event)
+		}
+	default:
+		t.Fatal("expected remote apply event")
 	}
 }
 

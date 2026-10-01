@@ -15,10 +15,6 @@ import (
 
 const remoteClipboardSettleWindow = 3 * time.Second
 
-type remoteWriteEvent struct {
-	size int
-}
-
 type trackedLocalClipboard struct {
 	base clipclient.Local
 
@@ -30,7 +26,6 @@ type trackedLocalClipboard struct {
 	initialized      bool
 	applying         bool
 	suppress         map[[32]byte]time.Time
-	remoteWrite      chan remoteWriteEvent
 }
 
 func newTrackedLocalClipboard(base clipclient.Local, initial string) *trackedLocalClipboard {
@@ -40,7 +35,6 @@ func newTrackedLocalClipboard(base clipclient.Local, initial string) *trackedLoc
 		lastTrackingHash: clipboardTrackingHash(initial),
 		initialized:      true,
 		suppress:         make(map[[32]byte]time.Time),
-		remoteWrite:      make(chan remoteWriteEvent, 8),
 	}
 }
 
@@ -81,10 +75,6 @@ func (l *trackedLocalClipboard) WriteText(ctx context.Context, text string) erro
 		return err
 	}
 
-	select {
-	case l.remoteWrite <- remoteWriteEvent{size: len([]byte(text))}:
-	default:
-	}
 	return nil
 }
 
@@ -196,13 +186,35 @@ func queueLatestPublish(queue chan publishJob, job publishJob) {
 	}
 }
 
-func discardQueuedPublishes(queue chan publishJob) {
-	for {
-		select {
-		case <-queue:
-		default:
-			return
+func discardQueuedPublishesBefore(queue chan publishJob, generation uint64) {
+	select {
+	case job := <-queue:
+		if job.generation >= generation {
+			select {
+			case queue <- job:
+			default:
+			}
 		}
+	default:
+	}
+}
+
+func queueLatestRemoteApply(
+	queue chan clipclient.RemoteApplyEvent,
+	event clipclient.RemoteApplyEvent,
+) {
+	select {
+	case queue <- event:
+		return
+	default:
+	}
+	select {
+	case <-queue:
+	default:
+	}
+	select {
+	case queue <- event:
+	default:
 	}
 }
 
@@ -247,19 +259,19 @@ func (i *instance) run(ctx context.Context, clientErr <-chan error) {
 				},
 			})
 
-		case event := <-i.local.remoteWrite:
-			// The phone publication reserved the shared generation before its
-			// CONTENT pull. Drop any local jobs that were still waiting; an
-			// already in-flight older job is rejected by the client's floor.
-			discardQueuedPublishes(i.publishQueue)
-			generation := i.client.CurrentGeneration()
+		case event := <-i.remoteApplied:
+			// The protocol client reserved this generation when the phone
+			// publication arrived. Remove only older queued local work; a local
+			// copy observed after this phone event has a higher generation and
+			// must survive.
+			discardQueuedPublishesBefore(i.publishQueue, event.Generation)
 			kernel.Report(i.reporter, kernel.Event{
 				ModuleID: i.moduleID,
 				Level:    "sync",
 				Message:  "phone -> Linux applied text",
 				Fields: map[string]string{
-					"bytes":      fmt.Sprint(event.size),
-					"generation": fmt.Sprint(generation),
+					"bytes":      fmt.Sprint(event.Bytes),
+					"generation": fmt.Sprint(event.Generation),
 				},
 			})
 

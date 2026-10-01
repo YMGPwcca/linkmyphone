@@ -63,13 +63,17 @@ func (m *Module) Start(
 	if err != nil {
 		return nil, fmt.Errorf("clipboard module: subscribe transport: %w", err)
 	}
+
+	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	remoteApplied := make(chan clipclient.RemoteApplyEvent, 8)
 	client := clipclient.New(endpoint, local, clipclient.Config{
 		Target:          m.session.Target.ID,
 		SelfDcgClientID: m.session.SelfDcgClientID,
 		RequestTimeout:  cfg.RequestTimeout(),
+		OnRemoteApplied: func(event clipclient.RemoteApplyEvent) {
+			queueLatestRemoteApply(remoteApplied, event)
+		},
 	})
-
-	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	instance := &instance{
 		moduleID:       m.manifest.ID,
 		cfg:            cfg,
@@ -77,6 +81,7 @@ func (m *Module) Start(
 		client:         client,
 		local:          local,
 		endpoint:       endpoint,
+		remoteApplied:  remoteApplied,
 		cancel:         cancel,
 		done:           make(chan struct{}),
 		errors:         make(chan error, 1),
@@ -151,10 +156,10 @@ type instance struct {
 	cfg      Config
 	reporter kernel.Reporter
 
-	client   *clipclient.Client
-	local    *trackedLocalClipboard
-	endpoint *phonehost.Endpoint
-
+	client         *clipclient.Client
+	local          *trackedLocalClipboard
+	endpoint       *phonehost.Endpoint
+	remoteApplied  chan clipclient.RemoteApplyEvent
 
 	publishQueue   chan publishJob
 	publishResults <-chan publishResult

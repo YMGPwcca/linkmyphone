@@ -32,6 +32,7 @@ type publishedSnapshot struct {
 	createdAt  time.Time
 	generation uint64
 	versioned  bool
+	superseded bool
 }
 
 type Relay interface {
@@ -44,11 +45,17 @@ type Local interface {
 	WriteText(context.Context, string) error
 }
 
+type RemoteApplyEvent struct {
+	Generation uint64
+	Bytes      int
+}
+
 type Config struct {
 	Target          string
 	SessionID       string
 	SelfDcgClientID string
 	RequestTimeout  time.Duration
+	OnRemoteApplied func(RemoteApplyEvent)
 }
 
 type pendingResponse struct {
@@ -219,9 +226,7 @@ func (c *Client) PublishLocalTextGeneration(
 // Reserving immediately (before the publisher worker sends it) gives local and
 // phone changes one ordering domain and invalidates older outbound snapshots.
 func (c *Client) ReserveLocalGeneration() uint64 {
-	generation := c.generation.Add(1)
-	c.advancePublicationFloor(generation)
-	return generation
+	return c.generation.Add(1)
 }
 
 // CurrentGeneration returns the latest observed clipboard generation. It is
@@ -264,7 +269,8 @@ func (c *Client) advancePublicationFloor(generation uint64) {
 	c.publicationFloor = generation
 	for correlationID, snapshot := range c.published {
 		if snapshot.versioned && snapshot.generation < generation {
-			delete(c.published, correlationID)
+			snapshot.superseded = true
+			c.published[correlationID] = snapshot
 		}
 	}
 }
@@ -307,9 +313,11 @@ func (c *Client) publishLocalText(
 	}
 
 	c.mu.Lock()
+	snapshot := c.published[correlationID]
 	superseded := versioned && generation < c.publicationFloor
-	if superseded {
-		delete(c.published, correlationID)
+	if superseded && snapshot.versioned && snapshot.generation == generation {
+		snapshot.superseded = true
+		c.published[correlationID] = snapshot
 	}
 	c.mu.Unlock()
 	if superseded {
@@ -380,7 +388,16 @@ func (c *Client) pullToLocal(ctx context.Context, correlationID string, generati
 	if readErr == nil && current == text {
 		return nil
 	}
-	return c.local.WriteText(ctx, text)
+	if err := c.local.WriteText(ctx, text); err != nil {
+		return err
+	}
+	if c.cfg.OnRemoteApplied != nil {
+		c.cfg.OnRemoteApplied(RemoteApplyEvent{
+			Generation: generation,
+			Bytes:      len([]byte(text)),
+		})
+	}
+	return nil
 }
 
 // PushFeatureState mirrors the Windows per-device feature synchronization.
@@ -634,7 +651,14 @@ func (c *Client) handleIncomingRequest(ctx context.Context, msg relay.Received, 
 		c.prunePublishedLocked(time.Now())
 		snapshot, published := c.published[req.CorrelationID]
 		c.mu.Unlock()
-		if published {
+		if published && snapshot.superseded {
+			response = proto.Response{
+				Status:        proto.ResponseInvalidContent,
+				CorrelationID: req.CorrelationID,
+				ErrorType:     proto.ErrorReject,
+				ErrorDetail:   "clipboard publication was superseded by a newer remote change",
+			}
+		} else if published {
 			response = proto.NewTextResponse(req.CorrelationID, snapshot.text, nil)
 		} else if c.local == nil {
 			response = proto.Response{Status: proto.ResponseInvalidContent, CorrelationID: req.CorrelationID, ErrorType: proto.ErrorFail, ErrorDetail: "local clipboard unavailable"}

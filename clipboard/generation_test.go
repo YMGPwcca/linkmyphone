@@ -36,7 +36,7 @@ func TestVersionedPublicationSupersededBeforeSend(t *testing.T) {
 	}
 }
 
-func TestSupersededSnapshotFallsBackToCurrentLocalClipboard(t *testing.T) {
+func TestSupersededSnapshotRejectsStaleContentRequest(t *testing.T) {
 	fr := newFakeRelay()
 	local := &fakeLocal{text: "phone-new"}
 	c := New(fr, local, Config{
@@ -101,10 +101,72 @@ func TestSupersededSnapshotFallsBackToCurrentLocalClipboard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(clipboardResponse.Items) != 1 ||
-		clipboardResponse.Items[0].Text == nil ||
-		*clipboardResponse.Items[0].Text != "phone-new" {
+	if clipboardResponse.Status != proto.ResponseInvalidContent ||
+		clipboardResponse.CorrelationID != "cid-old" {
 		t.Fatalf("response=%#v", clipboardResponse)
+	}
+}
+
+func TestNewerLocalGenerationKeepsOlderCorrelationSnapshot(t *testing.T) {
+	fr := newFakeRelay()
+	local := &fakeLocal{text: "newer-local"}
+	c := New(fr, local, Config{
+		Target:          "phone",
+		SessionID:       "session",
+		SelfDcgClientID: "desktop",
+	})
+
+	genA := c.ReserveLocalGeneration()
+	if _, err := c.PublishLocalTextGeneration(
+		context.Background(),
+		"local-A",
+		"cid-A",
+		genA,
+	); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.ReserveLocalGeneration()
+
+	req := proto.MarshalDeviceResourceMessage(
+		proto.WrapClipboardRequest(proto.NewContentRequest("cid-A")),
+	)
+	pm := platform.NewDeviceResourceRequest(req, "req-A")
+	wire, err := platform.Marshal(pm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.handlePlatform(context.Background(), relay.Received{
+		Source:               "phone",
+		SessionID:            "session",
+		TransportMessageType: dcg.TransportMessageTypePlatform,
+		Payload:              wire,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	queued := <-c.incomingRequests
+	if err := c.handleIncomingRequest(context.Background(), queued.msg, queued.pm); err != nil {
+		t.Fatal(err)
+	}
+
+	fr.mu.Lock()
+	responseWire := append([]byte(nil), fr.sent[len(fr.sent)-1].Payload...)
+	fr.mu.Unlock()
+	responseMessage, err := platform.Unmarshal(responseWire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	drm, err := proto.UnmarshalDeviceResourceResponse(responseMessage.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := proto.UnmarshalResponse(drm.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Items) != 1 ||
+		response.Items[0].Text == nil ||
+		*response.Items[0].Text != "local-A" {
+		t.Fatalf("response=%#v", response)
 	}
 }
 
