@@ -224,23 +224,35 @@ func runSessionProbe(ctx context.Context, args []string) error {
 
 	switch contextResult.Route {
 	case platform.RouteDeviceResourceManager:
-		fmt.Printf(
-			"[context] Device resource: %s / %s\n",
-			contextResult.ResourcePath,
-			deviceResourceRequestTypeName(contextResult.DeviceResourceRequestType),
-		)
-		fmt.Printf(
-			"[context] Clipboard request: %s\n",
-			clipboardRequestTypeName(contextResult.ClipboardRequestType),
-		)
-		if contextResult.ClipboardCorrelationID == contextResult.CorrelationID {
-			fmt.Println("[context] Clipboard correlation: matched publication")
-		} else if contextResult.ClipboardCorrelationID != "" {
-			fmt.Println("[context] Clipboard correlation: peer used a different id")
+		for i, request := range contextResult.ClipboardRequests {
+			fmt.Printf(
+				"[context] Clipboard request #%d: %s / %s / %s\n",
+				i+1,
+				request.ResourcePath,
+				deviceResourceRequestTypeName(request.DeviceResourceRequestType),
+				clipboardRequestTypeName(request.ClipboardRequestType),
+			)
+			if request.CorrelationID == contextResult.CorrelationID {
+				fmt.Printf("[context] Clipboard correlation #%d: matched publication\n", i+1)
+			} else if request.CorrelationID != "" {
+				fmt.Printf("[context] Clipboard correlation #%d: peer used a different id\n", i+1)
+			}
 		}
-		fmt.Println("[context] Probe answered ResourceHandlerNotRegistered; no clipboard content was sent.")
-		fmt.Println()
-		fmt.Println("[OK] S23 received the Context publication and requested /clipboard; ContextSource delivery is live.")
+		if contextResult.StatusFeatureOnSent {
+			fmt.Println("[context] STATUS response: FEATURE_ON")
+		}
+		if contextResult.ContentDeclined {
+			fmt.Println("[context] CONTENT response: ResourceHandlerNotRegistered; no clipboard content was sent.")
+			fmt.Println()
+			fmt.Println("[OK] S23 advanced from STATUS to CONTENT; clipboard pull handshake is live.")
+		} else if contextResult.StatusFeatureOnSent {
+			fmt.Printf("[context] No CONTENT follow-up within %s after FEATURE_ON.\n", opts.contextTimeout)
+			fmt.Println()
+			fmt.Println("[OK] S23 requested clipboard STATUS and accepted the probe response path.")
+		} else {
+			fmt.Println()
+			fmt.Println("[OK] S23 received the Context publication and requested /clipboard; ContextSource delivery is live.")
+		}
 
 	case platform.RouteContextPublish:
 		fmt.Printf("[context] Incoming MSAEP message tag: %d\n", contextResult.MessageTag)

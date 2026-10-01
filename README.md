@@ -119,7 +119,7 @@ phone clipboard change
 
 ## Still required for an end-to-end usable client
 
-- live ContextSource / clipboard validation after the now-confirmed `/SessionValidation` path
+- live validation of the clipboard STATUS -> FEATURE_ON -> CONTENT continuation after the now-confirmed ContextSource publication path
 - Linux native clipboard backend
 - executable/daemon wiring and user configuration
 - reconnect/wake/token-refresh hardening for long-running parity with Phone Link
@@ -139,8 +139,9 @@ The first live Linux bootstrap probe against the Microsoft production services h
 - Windows' wake path performs a pre-wake `SendConnectedAsync` flush and waits for its Hub Completion before Dispatcher/Wake; Linux now mirrors that ordering instead of waiting until `OnPartnerConnected` to send reciprocal presence.
 - Windows sends every Hub Relay operation with a non-null Hub Relay trace context (`TraceId` 32 hex chars, `ParentId` 16 hex chars, non-null `TraceState`); Linux now generates/normalizes the same shape for fragment, ACK, and partner-presence sends. An empty trace object can make the receiver fail before DCG packet processing and therefore before it emits an ACK.
 - with that trace shape fixed, the production S23 accepts a Linux PLATFORM `/SessionValidation` request and returns `/internal/response` with `SessionValidation`, `PersistentMessageChannel`, and `NanoTransportPreference`; the observed versions were PersistentMessagingChannel 14 and NanoTransportPreference 3.
+- a production S23 accepts the Linux clipboard tag-9 `/Context/Publish` publication and immediately issues `GET /clipboard` with clipboard request `STATUS`; the request correlation id exactly matches the published `CLIPBOARD_CHANGE` correlation id.
 
-The next live validation point is the ContextSource delivery path used by clipboard PubSub traffic.
+The next live validation point is whether replying `FEATURE_ON` to that STATUS advances the S23 to a `CONTENT` request.
 
 ## Bootstrap probe
 
@@ -253,16 +254,25 @@ PLATFORM /Context/Publish
   -> ClipboardResponseMessage(CLIPBOARD_CHANGE)
 ```
 
-It then watches the linked Android peer for a relevant PLATFORM reaction. The strongest positive signal is:
+The production S23 has now confirmed the first Android reaction:
 
 ```text
 /DeviceResourceManager
   resource: /clipboard
   request: GET
-  clipboard request: CONTENT
+  clipboard request: STATUS
+  correlation: same id as CLIPBOARD_CHANGE
 ```
 
-The probe reports whether the Android correlation id matches the publication id. After observing a clipboard DRM request it replies with `ResourceHandlerNotRegistered`, so no clipboard content is returned and neither clipboard is intentionally modified.
+The probe now answers that STATUS exactly like the normal Windows-side clipboard resource handler:
+
+```text
+DeviceResourceResponse: Success
+ClipboardResponse: FEATURE_ON
+correlation: same id as STATUS
+```
+
+It then keeps the PLATFORM receive loop alive and waits for the next clipboard request. If the S23 advances to `CONTENT`, the probe records it and replies with `ResourceHandlerNotRegistered` so no real clipboard content is returned and neither clipboard is intentionally modified.
 
 Useful override:
 
@@ -270,7 +280,7 @@ Useful override:
 go run ./cmd/phonelink-linux session-probe --context-probe --context-timeout 15s
 ```
 
-A timeout after the DCG acknowledgement is recorded as an observation rather than a transport failure: it means the `/Context/Publish` fragment reached the peer transport, but no matching PLATFORM follow-up was observed in the probe window.
+A timeout after the DCG acknowledgement is recorded as an observation rather than a transport failure. If STATUS was already observed, the result also records that FEATURE_ON was sent and that no CONTENT follow-up arrived before the probe timeout.
 
 ## Test
 

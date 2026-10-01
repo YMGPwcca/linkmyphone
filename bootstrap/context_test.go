@@ -12,7 +12,7 @@ import (
 	"github.com/YMGPwcca/phonelink-linux/transport/relay"
 )
 
-func TestProbeClipboardContextPublishObservesClipboardDRMRequest(t *testing.T) {
+func TestProbeClipboardContextPublishContinuesFromStatusToContent(t *testing.T) {
 	fr := newSessionFakeRelay()
 	type result struct {
 		value ContextProbeResult
@@ -78,13 +78,13 @@ func TestProbeClipboardContextPublishObservesClipboardDRMRequest(t *testing.T) {
 		t.Fatalf("change=%#v", change)
 	}
 
-	drmPayload := clipproto.MarshalDeviceResourceMessage(
+	statusPayload := clipproto.MarshalDeviceResourceMessage(
 		clipproto.WrapClipboardRequest(
-			clipproto.NewContentRequest(change.CorrelationID),
+			clipproto.NewStatusRequest(change.CorrelationID),
 		),
 	)
-	request := platform.NewDeviceResourceRequest(drmPayload, "phone-request")
-	requestWire, err := platform.Marshal(request)
+	statusRequest := platform.NewDeviceResourceRequest(statusPayload, "phone-status")
+	statusWire, err := platform.Marshal(statusRequest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,65 @@ func TestProbeClipboardContextPublishObservesClipboardDRMRequest(t *testing.T) {
 		Source:               "phone",
 		SessionID:            "peer-session",
 		TransportMessageType: dcg.TransportMessageTypePlatform,
-		Payload:              requestWire,
+		Payload:              statusWire,
+	}
+
+	var statusReply relay.Received
+	deadline = time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		fr.mu.Lock()
+		if len(fr.sent) >= 2 {
+			statusReply = fr.sent[1]
+		}
+		fr.mu.Unlock()
+		if statusReply.Payload != nil {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if statusReply.Payload == nil {
+		t.Fatal("no STATUS response")
+	}
+	statusMessage, err := platform.Unmarshal(statusReply.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statusRoute, _ := statusMessage.Header(platform.HeaderRoute)
+	statusOriginal, _ := statusMessage.Header(platform.HeaderOriginalRequestID)
+	if statusRoute != platform.RouteInternalResponse || statusOriginal != "phone-status" {
+		t.Fatalf("route=%q original=%q", statusRoute, statusOriginal)
+	}
+	statusDRM, err := clipproto.UnmarshalDeviceResourceResponse(statusMessage.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if statusDRM.ResponseType != clipproto.DeviceResourceResponseSuccess {
+		t.Fatalf("status response=%#v", statusDRM)
+	}
+	statusClipboard, err := clipproto.UnmarshalResponse(statusDRM.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if statusClipboard.Status != clipproto.ResponseFeatureOn ||
+		statusClipboard.CorrelationID != change.CorrelationID {
+		t.Fatalf("status clipboard response=%#v", statusClipboard)
+	}
+
+	contentPayload := clipproto.MarshalDeviceResourceMessage(
+		clipproto.WrapClipboardRequest(
+			clipproto.NewContentRequest(change.CorrelationID),
+		),
+	)
+	contentRequest := platform.NewDeviceResourceRequest(contentPayload, "phone-content")
+	contentWire, err := platform.Marshal(contentRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr.recv <- relay.Received{
+		Source:               "phone",
+		SessionID:            "peer-session",
+		TransportMessageType: dcg.TransportMessageTypePlatform,
+		Payload:              contentWire,
 	}
 
 	select {
@@ -101,47 +159,131 @@ func TestProbeClipboardContextPublishObservesClipboardDRMRequest(t *testing.T) {
 			t.Fatal(got.err)
 		}
 		if got.value.Route != platform.RouteDeviceResourceManager ||
-			got.value.ResourcePath != clipproto.ResourcePath ||
-			got.value.DeviceResourceRequestType != clipproto.DeviceResourceRequestGET ||
-			got.value.ClipboardRequestType != clipproto.RequestContent ||
-			got.value.ClipboardCorrelationID != change.CorrelationID {
+			!got.value.StatusFeatureOnSent ||
+			!got.value.ContentDeclined ||
+			len(got.value.ClipboardRequests) != 2 {
 			t.Fatalf("result=%#v", got.value)
+		}
+		if got.value.ClipboardRequests[0].ClipboardRequestType != clipproto.RequestStatus ||
+			got.value.ClipboardRequests[1].ClipboardRequestType != clipproto.RequestContent ||
+			got.value.ClipboardRequests[0].CorrelationID != change.CorrelationID ||
+			got.value.ClipboardRequests[1].CorrelationID != change.CorrelationID {
+			t.Fatalf("requests=%#v", got.value.ClipboardRequests)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out")
 	}
 
-	var reply relay.Received
+	var contentReply relay.Received
 	deadline = time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
 		fr.mu.Lock()
-		if len(fr.sent) >= 2 {
-			reply = fr.sent[1]
+		if len(fr.sent) >= 3 {
+			contentReply = fr.sent[2]
 		}
 		fr.mu.Unlock()
-		if reply.Payload != nil {
+		if contentReply.Payload != nil {
 			break
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if reply.Payload == nil {
-		t.Fatal("no DRM probe response")
+	if contentReply.Payload == nil {
+		t.Fatal("no CONTENT probe response")
 	}
-	replyMessage, err := platform.Unmarshal(reply.Payload)
+	contentMessage, err := platform.Unmarshal(contentReply.Payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	replyRoute, _ := replyMessage.Header(platform.HeaderRoute)
-	originalRequestID, _ := replyMessage.Header(platform.HeaderOriginalRequestID)
-	if replyRoute != platform.RouteInternalResponse || originalRequestID != "phone-request" {
-		t.Fatalf("route=%q original=%q", replyRoute, originalRequestID)
+	contentRoute, _ := contentMessage.Header(platform.HeaderRoute)
+	contentOriginal, _ := contentMessage.Header(platform.HeaderOriginalRequestID)
+	if contentRoute != platform.RouteInternalResponse || contentOriginal != "phone-content" {
+		t.Fatalf("route=%q original=%q", contentRoute, contentOriginal)
 	}
-	drmResponse, err := clipproto.UnmarshalDeviceResourceResponse(replyMessage.Payload)
+	contentDRM, err := clipproto.UnmarshalDeviceResourceResponse(contentMessage.Payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if drmResponse.ResponseType != clipproto.DeviceResourceResponseResourceHandlerNotRegistered {
-		t.Fatalf("response=%#v", drmResponse)
+	if contentDRM.ResponseType != clipproto.DeviceResourceResponseResourceHandlerNotRegistered {
+		t.Fatalf("content response=%#v", contentDRM)
+	}
+}
+
+func TestProbeClipboardContextPublishStatusOnlyTimesOutAfterFeatureOn(t *testing.T) {
+	fr := newSessionFakeRelay()
+	type result struct {
+		value ContextProbeResult
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		got, err := ProbeClipboardContextPublish(
+			context.Background(),
+			fr,
+			"phone",
+			"desktop",
+			30*time.Millisecond,
+		)
+		done <- result{value: got, err: err}
+	}()
+
+	var correlationID string
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		fr.mu.Lock()
+		if len(fr.sent) != 0 {
+			pm, err := platform.Unmarshal(fr.sent[0].Payload)
+			if err == nil {
+				envelope, err := msaep.Unmarshal(pm.Payload)
+				if err == nil {
+					pubsub, err := clipproto.UnmarshalPubSubPayload(envelope.Payload)
+					if err == nil {
+						change, err := clipproto.UnmarshalResponse(pubsub.Data)
+						if err == nil {
+							correlationID = change.CorrelationID
+						}
+					}
+				}
+			}
+		}
+		fr.mu.Unlock()
+		if correlationID != "" {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if correlationID == "" {
+		t.Fatal("no publication correlation id")
+	}
+
+	statusPayload := clipproto.MarshalDeviceResourceMessage(
+		clipproto.WrapClipboardRequest(
+			clipproto.NewStatusRequest(correlationID),
+		),
+	)
+	statusRequest := platform.NewDeviceResourceRequest(statusPayload, "phone-status")
+	statusWire, err := platform.Marshal(statusRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr.recv <- relay.Received{
+		Source:               "phone",
+		TransportMessageType: dcg.TransportMessageTypePlatform,
+		Payload:              statusWire,
+	}
+
+	select {
+	case got := <-done:
+		if got.err != nil {
+			t.Fatal(got.err)
+		}
+		if !got.value.StatusFeatureOnSent ||
+			got.value.ContentDeclined ||
+			len(got.value.ClipboardRequests) != 1 ||
+			got.value.ClipboardRequests[0].ClipboardRequestType != clipproto.RequestStatus {
+			t.Fatalf("result=%#v", got.value)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out")
 	}
 }
 

@@ -15,25 +15,34 @@ import (
 
 const DefaultContextProbeTimeout = 8 * time.Second
 
-type ContextProbeResult struct {
-	RequestID                 string
-	CorrelationID             string
-	SessionID                 string
-	Route                     string
+type ContextProbeClipboardRequest struct {
 	Headers                   []platform.Header
-	RejectedReason            string
-	MessageTag                int32
 	ResourcePath              string
 	DeviceResourceRequestType clipproto.DeviceResourceRequestType
 	ClipboardRequestType      clipproto.RequestType
-	ClipboardCorrelationID    string
+	CorrelationID             string
+}
+
+type ContextProbeResult struct {
+	RequestID           string
+	CorrelationID       string
+	SessionID           string
+	Route               string
+	Headers             []platform.Header
+	RejectedReason      string
+	MessageTag          int32
+	ClipboardRequests   []ContextProbeClipboardRequest
+	StatusFeatureOnSent bool
+	ContentDeclined     bool
 }
 
 // ProbeClipboardContextPublish sends the source-confirmed Windows clipboard
 // publication shape through /Context/Publish, then observes the first relevant
-// PLATFORM reaction from the Android peer. A /clipboard DRM request is answered
-// with ResourceHandlerNotRegistered after it has been decoded so the probe does
-// not leave the peer waiting for a response or mutate either clipboard.
+// PLATFORM reaction from the Android peer. Live Android behavior after a PC
+// CLIPBOARD_CHANGE publication starts with /clipboard STATUS using the same
+// correlation id. The probe answers STATUS with FEATURE_ON, matching the normal
+// Windows-side resource handler, then keeps observing for CONTENT. CONTENT is
+// answered with ResourceHandlerNotRegistered so no clipboard content is sent.
 func ProbeClipboardContextPublish(
 	ctx context.Context,
 	r SessionValidationRelay,
@@ -149,34 +158,71 @@ func ProbeClipboardContextPublish(
 				out.SessionID = incoming.SessionID
 				out.Route = route
 				out.Headers = append([]platform.Header(nil), pm.Headers...)
-				out.ResourcePath = drm.ResourcePath
-				out.DeviceResourceRequestType = drm.RequestType
-				out.ClipboardRequestType = req.Type
-				out.ClipboardCorrelationID = req.CorrelationID
+				out.ClipboardRequests = append(out.ClipboardRequests, ContextProbeClipboardRequest{
+					Headers:                   append([]platform.Header(nil), pm.Headers...),
+					ResourcePath:              drm.ResourcePath,
+					DeviceResourceRequestType: drm.RequestType,
+					ClipboardRequestType:      req.Type,
+					CorrelationID:             req.CorrelationID,
+				})
 
-				if incomingRequestID, ok := pm.Header(platform.HeaderRequestID); ok && incomingRequestID != "" {
+				incomingRequestID, hasRequestID := pm.Header(platform.HeaderRequestID)
+				switch req.Type {
+				case clipproto.RequestStatus:
+					if !hasRequestID || incomingRequestID == "" {
+						return out, errors.New("bootstrap: Context probe STATUS missing request id")
+					}
 					response := clipproto.DeviceResourceResponse{
-						ResponseType: clipproto.DeviceResourceResponseResourceHandlerNotRegistered,
+						ResponseType: clipproto.DeviceResourceResponseSuccess,
+						Payload:      clipproto.MarshalResponse(clipproto.NewFeatureOnResponse(req.CorrelationID)),
 					}
-					reply := platform.NewInternalResponse(
-						clipproto.MarshalDeviceResourceResponse(response),
-						incomingRequestID,
-					)
-					replyWire, err := platform.Marshal(reply)
-					if err != nil {
-						return out, fmt.Errorf("bootstrap: marshal Context probe DRM response: %w", err)
-					}
-					if err := r.Send(
+					if err := sendContextProbeDRMResponse(
 						ctx,
+						r,
 						incoming.Source,
-						"",
-						dcg.TransportMessageTypePlatform,
-						replyWire,
+						incomingRequestID,
+						response,
 					); err != nil {
-						return out, fmt.Errorf("bootstrap: send Context probe DRM response: %w", err)
+						return out, err
 					}
+					out.StatusFeatureOnSent = true
+					continue
+
+				case clipproto.RequestContent:
+					if hasRequestID && incomingRequestID != "" {
+						response := clipproto.DeviceResourceResponse{
+							ResponseType: clipproto.DeviceResourceResponseResourceHandlerNotRegistered,
+						}
+						if err := sendContextProbeDRMResponse(
+							ctx,
+							r,
+							incoming.Source,
+							incomingRequestID,
+							response,
+						); err != nil {
+							return out, err
+						}
+						out.ContentDeclined = true
+					}
+					return out, nil
+
+				default:
+					if hasRequestID && incomingRequestID != "" {
+						response := clipproto.DeviceResourceResponse{
+							ResponseType: clipproto.DeviceResourceResponseResourceHandlerNotRegistered,
+						}
+						if err := sendContextProbeDRMResponse(
+							ctx,
+							r,
+							incoming.Source,
+							incomingRequestID,
+							response,
+						); err != nil {
+							return out, err
+						}
+					}
+					return out, nil
 				}
-				return out, nil
 
 			case platform.RouteContextPublish:
 				envelope, err := msaep.Unmarshal(pm.Payload)
@@ -191,6 +237,33 @@ func ProbeClipboardContextPublish(
 			}
 		}
 	}
+}
+
+func sendContextProbeDRMResponse(
+	ctx context.Context,
+	r SessionValidationRelay,
+	target string,
+	requestID string,
+	response clipproto.DeviceResourceResponse,
+) error {
+	reply := platform.NewInternalResponse(
+		clipproto.MarshalDeviceResourceResponse(response),
+		requestID,
+	)
+	replyWire, err := platform.Marshal(reply)
+	if err != nil {
+		return fmt.Errorf("bootstrap: marshal Context probe DRM response: %w", err)
+	}
+	if err := r.Send(
+		ctx,
+		target,
+		"",
+		dcg.TransportMessageTypePlatform,
+		replyWire,
+	); err != nil {
+		return fmt.Errorf("bootstrap: send Context probe DRM response: %w", err)
+	}
+	return nil
 }
 
 func newContextProbeID() (string, error) {
