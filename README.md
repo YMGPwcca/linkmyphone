@@ -53,6 +53,19 @@ The repository now includes:
   - parse `PubSubPayload.Additional`
   - request `CONTENT`
   - apply text to the local clipboard backend
+- native Linux text clipboard backend:
+  - Wayland via `wl-paste` / `wl-copy`
+  - X11 fallback via `xclip` or `xsel`
+  - direct process execution without a shell
+- continuous `clipboard-sync` command:
+  - resumes the persisted DCG identity
+  - wakes/selects the Android peer
+  - validates the PLATFORM session
+  - advertises clipboard `FEATURE_ON`
+  - publishes Linux clipboard changes
+  - applies phone clipboard publications locally
+  - suppresses immediate phone -> Linux -> phone echo loops
+  - snapshots outbound text by correlation id so CONTENT replies match the advertised change
 
 ## Source-confirmed clipboard cloud path
 
@@ -119,9 +132,8 @@ phone clipboard change
 
 ## Still required for an end-to-end usable client
 
-- live validation that Android applies the explicit text returned to a confirmed CONTENT request
-- Linux native clipboard backend
-- executable/daemon wiring and user configuration
+- live validation of the new continuous `clipboard-sync` command in both directions
+- service/daemon packaging and user configuration
 - reconnect/wake/token-refresh hardening for long-running parity with Phone Link
 
 ## Production bootstrap validation
@@ -139,9 +151,11 @@ The first live Linux bootstrap probe against the Microsoft production services h
 - Windows' wake path performs a pre-wake `SendConnectedAsync` flush and waits for its Hub Completion before Dispatcher/Wake; Linux now mirrors that ordering instead of waiting until `OnPartnerConnected` to send reciprocal presence.
 - Windows sends every Hub Relay operation with a non-null Hub Relay trace context (`TraceId` 32 hex chars, `ParentId` 16 hex chars, non-null `TraceState`); Linux now generates/normalizes the same shape for fragment, ACK, and partner-presence sends. An empty trace object can make the receiver fail before DCG packet processing and therefore before it emits an ACK.
 - with that trace shape fixed, the production S23 accepts a Linux PLATFORM `/SessionValidation` request and returns `/internal/response` with `SessionValidation`, `PersistentMessageChannel`, and `NanoTransportPreference`; the observed versions were PersistentMessagingChannel 14 and NanoTransportPreference 3.
-- a production S23 accepts the Linux clipboard tag-9 `/Context/Publish` publication and immediately issues `GET /clipboard` with clipboard request `STATUS`; the request correlation id exactly matches the published `CLIPBOARD_CHANGE` correlation id.
+- a production S23 accepts the Linux clipboard tag-9 `/Context/Publish` publication and issues `GET /clipboard` using the published `CLIPBOARD_CHANGE` correlation id;
+- the observed S23 state machine advances through `STATUS -> FEATURE_ON -> CONTENT` when STATUS is present, and can also request CONTENT directly on a later run;
+- returning a successful text/plain CONTENT response was live-validated end to end: the explicit Linux probe text appeared in the S23 clipboard and was pasteable on the phone.
 
-The next live validation point is whether replying `FEATURE_ON` to that STATUS advances the S23 to a `CONTENT` request.
+The next live validation point is continuous two-way synchronization using the native Linux clipboard backend.
 
 ## Bootstrap probe
 
@@ -292,6 +306,34 @@ go run ./cmd/phonelink-linux session-probe \
 When Android requests CONTENT, the probe returns a normal successful text/plain clipboard response with the same correlation id. The CLI reports only the byte count, not the text itself. Probe text is limited to 4096 bytes and the option is rejected unless `--context-probe` is also present. Because command-line arguments may be stored in shell history, do not use sensitive text.
 
 A timeout after the DCG acknowledgement is recorded as an observation rather than a transport failure. If STATUS was already observed, the result also records that FEATURE_ON was sent and that no CONTENT follow-up arrived before the probe timeout.
+
+## Continuous Linux clipboard sync
+
+After bootstrap has produced persistent state, run:
+
+```bash
+go run ./cmd/phonelink-linux clipboard-sync
+```
+
+The command auto-detects a native Linux text clipboard provider. On Wayland it prefers `wl-clipboard`; on X11 it falls back to `xclip` and then `xsel`. Install at least one supported provider before running the command.
+
+Startup does **not** publish the clipboard that was already present before the process started. Only subsequent local clipboard changes are published by default. To intentionally send the current clipboard immediately:
+
+```bash
+go run ./cmd/phonelink-linux clipboard-sync --publish-initial
+```
+
+The local clipboard is polled every 500 ms by default:
+
+```bash
+go run ./cmd/phonelink-linux clipboard-sync --poll-interval 250ms
+```
+
+Clipboard contents are never printed by the command; diagnostics report only direction, byte count, and shortened correlation ids.
+
+Outbound text is snapshotted by correlation id. If the Linux clipboard changes again before Android requests CONTENT, the older request still receives the exact text associated with its own publication instead of the newer clipboard value.
+
+Phone-originated writes update the local tracking baseline before polling resumes, preventing the same text from being immediately published back to the phone.
 
 ## Test
 

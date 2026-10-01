@@ -17,7 +17,16 @@ import (
 	"github.com/YMGPwcca/phonelink-linux/transport/relay"
 )
 
-const DefaultRequestTimeout = 10 * time.Second
+const (
+	DefaultRequestTimeout      = 10 * time.Second
+	publishedSnapshotTTL       = 2 * time.Minute
+	maxPublishedSnapshotCount  = 64
+)
+
+type publishedSnapshot struct {
+	text      string
+	createdAt time.Time
+}
 
 type Relay interface {
 	Send(context.Context, string, string, dcg.TransportMessageType, []byte) error
@@ -48,7 +57,7 @@ type Client struct {
 
 	mu        sync.Mutex
 	pending   map[string]chan pendingResponse
-	published map[string]string
+	published map[string]publishedSnapshot
 	asyncErr  chan error
 }
 
@@ -61,7 +70,7 @@ func New(r Relay, local Local, cfg Config) *Client {
 		local: local,
 		cfg: cfg,
 		pending:   make(map[string]chan pendingResponse),
-		published: make(map[string]string),
+		published: make(map[string]publishedSnapshot),
 		asyncErr:  make(chan error, 8),
 	}
 }
@@ -161,7 +170,11 @@ func (c *Client) PublishLocalText(ctx context.Context, text, correlationID strin
 		correlationID = newID()
 	}
 	c.mu.Lock()
-	c.published[correlationID] = text
+	c.prunePublishedLocked(time.Now())
+	c.published[correlationID] = publishedSnapshot{
+		text:      text,
+		createdAt: time.Now(),
+	}
 	c.mu.Unlock()
 
 	publishedID, err := c.PublishLocalChange(ctx, correlationID)
@@ -187,6 +200,28 @@ func (c *Client) HandlePhoneClipboardPublication(ctx context.Context, publicatio
 		return err
 	}
 	return c.pullToLocal(ctx, correlationID)
+}
+
+func (c *Client) prunePublishedLocked(now time.Time) {
+	for correlationID, snapshot := range c.published {
+		if now.Sub(snapshot.createdAt) > publishedSnapshotTTL {
+			delete(c.published, correlationID)
+		}
+	}
+	for len(c.published) >= maxPublishedSnapshotCount {
+		var oldestID string
+		var oldestTime time.Time
+		for correlationID, snapshot := range c.published {
+			if oldestID == "" || snapshot.createdAt.Before(oldestTime) {
+				oldestID = correlationID
+				oldestTime = snapshot.createdAt
+			}
+		}
+		if oldestID == "" {
+			break
+		}
+		delete(c.published, oldestID)
+	}
 }
 
 func (c *Client) pullToLocal(ctx context.Context, correlationID string) error {
@@ -340,13 +375,13 @@ func (c *Client) handleIncomingRequest(ctx context.Context, msg relay.Received, 
 		response = proto.NewFeatureOnResponse(req.CorrelationID)
 	case proto.RequestContent:
 		c.mu.Lock()
-		text, published := c.published[req.CorrelationID]
+		snapshot, published := c.published[req.CorrelationID]
 		if published {
 			delete(c.published, req.CorrelationID)
 		}
 		c.mu.Unlock()
 		if published {
-			response = proto.NewTextResponse(req.CorrelationID, text, nil)
+			response = proto.NewTextResponse(req.CorrelationID, snapshot.text, nil)
 		} else if c.local == nil {
 			response = proto.Response{Status: proto.ResponseInvalidContent, CorrelationID: req.CorrelationID, ErrorType: proto.ErrorFail, ErrorDetail: "local clipboard unavailable"}
 		} else {

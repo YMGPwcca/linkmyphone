@@ -42,6 +42,8 @@ func main() {
 		err = runPeerProbe(ctx, os.Args[2:])
 	case "session-probe":
 		err = runSessionProbe(ctx, os.Args[2:])
+	case "clipboard-sync":
+		err = runClipboardSync(ctx, os.Args[2:])
 	case "help", "-h", "--help":
 		usage()
 		return
@@ -63,6 +65,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  phonelink-linux bootstrap-probe [options]")
 	fmt.Fprintln(os.Stderr, "  phonelink-linux peer-probe [options]")
 	fmt.Fprintln(os.Stderr, "  phonelink-linux session-probe [options]")
+	fmt.Fprintln(os.Stderr, "  phonelink-linux clipboard-sync [options]")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "bootstrap-probe validates Microsoft login, DCG enrollment/state,")
 	fmt.Fprintln(os.Stderr, "linked-peer trust, and the account-level SignalR relay connection.")
@@ -70,6 +73,8 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "sends a signed Dispatcher/Wake when needed, and waits for Hub presence.")
 	fmt.Fprintln(os.Stderr, "session-probe continues through PLATFORM /SessionValidation and reports")
 	fmt.Fprintln(os.Stderr, "the peer capability/version response without dumping raw payloads.")
+	fmt.Fprintln(os.Stderr, "clipboard-sync keeps the linked Android peer online and synchronizes text")
+	fmt.Fprintln(os.Stderr, "between the native Linux clipboard and the Phone Link clipboard protocol.")
 }
 
 type probeOptions struct {
