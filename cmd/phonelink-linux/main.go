@@ -40,6 +40,8 @@ func main() {
 		err = runBootstrapProbe(ctx, os.Args[2:])
 	case "peer-probe":
 		err = runPeerProbe(ctx, os.Args[2:])
+	case "session-probe":
+		err = runSessionProbe(ctx, os.Args[2:])
 	case "help", "-h", "--help":
 		usage()
 		return
@@ -60,11 +62,14 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "Usage:")
 	fmt.Fprintln(os.Stderr, "  phonelink-linux bootstrap-probe [options]")
 	fmt.Fprintln(os.Stderr, "  phonelink-linux peer-probe [options]")
+	fmt.Fprintln(os.Stderr, "  phonelink-linux session-probe [options]")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "bootstrap-probe validates Microsoft login, DCG enrollment/state,")
 	fmt.Fprintln(os.Stderr, "linked-peer trust, and the account-level SignalR relay connection.")
 	fmt.Fprintln(os.Stderr, "peer-probe reuses persisted state, selects the linked Android peer,")
 	fmt.Fprintln(os.Stderr, "sends a signed Dispatcher/Wake when needed, and waits for Hub presence.")
+	fmt.Fprintln(os.Stderr, "session-probe continues through PLATFORM /SessionValidation and reports")
+	fmt.Fprintln(os.Stderr, "the peer capability/version response without dumping raw payloads.")
 }
 
 type probeOptions struct {

@@ -200,6 +200,38 @@ go run ./cmd/phonelink-linux peer-probe --wake-timeout 60s
 
 This probe does not send PLATFORM SessionValidation or clipboard traffic yet.
 
+## PLATFORM SessionValidation probe
+
+After `peer-probe` has confirmed that the Android target can be woken onto Hub Relay, run:
+
+```bash
+go run ./cmd/phonelink-linux session-probe
+```
+
+The probe reuses the same persisted identity, refreshes trust, ensures the linked Android peer is present, then sends the source-confirmed PLATFORM request:
+
+```text
+route: /SessionValidation
+ms-content-type: application/x-binary
+_rejectionVersion: 1
+_requestId: <numeric request id>
+
+protobuf request:
+  PlatformCapabilities = [SessionValidation]
+```
+
+The baseline request advertises only `SessionValidation`, matching the unconditional capability in Windows' `PlatformCapabilitiesProvider`. Optional PersistentMessageChannel and NanoTransportPreference capabilities are feature-flagged in Windows and are not advertised by this probe.
+
+A successful peer response is matched through `/internal/response` + `_originalRequestId` and decoded as:
+
+```text
+PlatformCapabilities
+PersistentMessagingChannelVersion
+NanoTransportPreferenceVersion
+```
+
+The CLI prints only capability/version information and platform header names; it does not dump the raw platform payload.
+
 ## Test
 
 ```bash

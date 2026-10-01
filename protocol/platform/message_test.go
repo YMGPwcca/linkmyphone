@@ -90,3 +90,19 @@ func TestContextPublishHeaders(t *testing.T) {
 		t.Fatalf("request id=(%q,%v)", requestID, ok)
 	}
 }
+
+func TestSessionValidationRequestHeaders(t *testing.T) {
+	m := NewSessionValidationRequest([]byte{0x0a, 0x01, 0x01}, "7")
+	tests := map[string]string{
+		HeaderContentType:      ContentTypeBinary,
+		HeaderRoute:            RouteSessionValidation,
+		HeaderRejectionVersion: "1",
+		HeaderRequestID:        "7",
+	}
+	for key, want := range tests {
+		got, ok := m.Header(key)
+		if !ok || got != want {
+			t.Fatalf("%s=(%q,%v), want %q", key, got, ok, want)
+		}
+	}
+}

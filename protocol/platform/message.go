@@ -19,10 +19,12 @@ const (
 	HeaderRejectionVersion  = "_rejectionVersion"
 	HeaderRequestID         = "_requestId"
 	HeaderOriginalRequestID = "_originalRequestId"
+	HeaderRejectedReason    = "_rejectedReason"
 
 	ContentTypeBinary          = "application/x-binary"
 	RouteDeviceResourceManager = "/DeviceResourceManager"
 	RouteContextPublish        = "/Context/Publish"
+	RouteSessionValidation     = "/SessionValidation"
 	RouteInternalResponse      = "/internal/response"
 )
 
@@ -37,6 +39,19 @@ type Message struct {
 	Version byte
 	Headers []Header
 	Payload []byte
+}
+
+func NewSessionValidationRequest(payload []byte, requestID string) Message {
+	return Message{
+		Version: Version1,
+		Headers: []Header{
+			{Key: HeaderContentType, Value: ContentTypeBinary},
+			{Key: HeaderRoute, Value: RouteSessionValidation},
+			{Key: HeaderRejectionVersion, Value: "1"},
+			{Key: HeaderRequestID, Value: requestID},
+		},
+		Payload: append([]byte(nil), payload...),
+	}
 }
 
 func NewDeviceResourceRequest(payload []byte, requestID string) Message {
