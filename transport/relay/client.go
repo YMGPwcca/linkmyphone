@@ -61,6 +61,7 @@ type Client struct {
 	sequencers    map[string]*dcg.Sequencer
 	sessions      map[string]string
 	pending       map[pendingKey]chan dcg.Ack
+	completions   map[string]chan psignalr.Completion
 	partners      map[string]bool
 	partnerWaiters map[string][]chan struct{}
 	hubConnected  *psignalr.OnConnectedPayload
@@ -91,6 +92,7 @@ func New(hub Hub, cfg Config) *Client {
 		sequencers:    make(map[string]*dcg.Sequencer),
 		sessions:      make(map[string]string),
 		pending:       make(map[pendingKey]chan dcg.Ack),
+		completions:   make(map[string]chan psignalr.Completion),
 		partners:       make(map[string]bool),
 		partnerWaiters: make(map[string][]chan struct{}),
 		received:       make(chan Received, 32),
@@ -168,7 +170,14 @@ func (c *Client) Run(ctx context.Context) error {
 				if err := c.handlePacket(ctx, msg); err != nil {
 					return err
 				}
-			case psignalr.HubMessageTypeCompletion, psignalr.HubMessageTypePing:
+			case psignalr.HubMessageTypeCompletion:
+				completion, err := psignalr.ParseCompletion(body)
+				if err != nil {
+					return err
+				}
+				c.deliverCompletion(completion)
+				continue
+			case psignalr.HubMessageTypePing:
 				continue
 			case psignalr.HubMessageTypeClose:
 				return psignalr.CloseError(a)
@@ -287,28 +296,68 @@ func (c *Client) sendFragment(ctx context.Context, target string, f dcg.Fragment
 
 	packet := dcg.ToMultiplexPacket(f, int(dcg.MessageTypeFragment))
 	for attempt := 0; attempt <= c.ackRetries; attempt++ {
-		if err := c.sendPacket(target, "", psignalr.TraceContextPacket{}, packet); err != nil {
+		invocationID, completionCh, err := c.sendPacketWithCompletion(
+			target,
+			"",
+			psignalr.TraceContextPacket{},
+			packet,
+		)
+		if err != nil {
 			return err
 		}
+
+		hubAccepted := false
 		timer := time.NewTimer(c.ackTimeout)
-		select {
-		case ack := <-ackCh:
-			if !timer.Stop() {
-				<-timer.C
+		attemptDone := false
+		for !attemptDone {
+			select {
+			case ack := <-ackCh:
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				c.removeCompletionWaiter(invocationID)
+				if !ack.Success {
+					return fmt.Errorf("DCG acknowledgement failed with error %d", ack.ErrorNumber)
+				}
+				return nil
+
+			case completion := <-completionCh:
+				c.removeCompletionWaiter(invocationID)
+				completionCh = nil
+				if completion.Error != "" {
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
+					}
+					return fmt.Errorf("Hub Relay rejected SendMessageAsync: %s", completion.Error)
+				}
+				hubAccepted = true
+
+			case <-timer.C:
+				c.removeCompletionWaiter(invocationID)
+				attemptDone = true
+				if attempt == c.ackRetries {
+					if hubAccepted {
+						return errors.New("Hub Relay accepted SendMessageAsync, but peer DCG acknowledgement timed out")
+					}
+					return errors.New("Hub Relay completion and peer DCG acknowledgement timed out")
+				}
+
+			case <-ctx.Done():
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
+				c.removeCompletionWaiter(invocationID)
+				return ctx.Err()
 			}
-			if !ack.Success {
-				return fmt.Errorf("DCG acknowledgement failed with error %d", ack.ErrorNumber)
-			}
-			return nil
-		case <-timer.C:
-			if attempt == c.ackRetries {
-				return errors.New("DCG acknowledgement timeout")
-			}
-		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
-			}
-			return ctx.Err()
 		}
 	}
 	return errors.New("relay: unreachable retry state")
@@ -367,6 +416,38 @@ func (c *Client) handlePacket(ctx context.Context, msg psignalr.ReceiveMessage) 
 	}
 }
 
+func (c *Client) sendPacketWithCompletion(
+	target,
+	connectionSessionID string,
+	trace psignalr.TraceContextPacket,
+	packet dcg.MultiplexPacket,
+) (string, <-chan psignalr.Completion, error) {
+	id := strconv.FormatUint(c.invocation.Add(1), 10)
+	completionCh := make(chan psignalr.Completion, 1)
+	c.mu.Lock()
+	c.completions[id] = completionCh
+	c.mu.Unlock()
+
+	var (
+		frame []byte
+		err   error
+	)
+	if connectionSessionID != "" {
+		frame, err = psignalr.FrameSendSessionBasedMessageAsync(&id, trace, target, packet, connectionSessionID)
+	} else {
+		frame, err = psignalr.FrameSendMessageAsync(&id, trace, target, packet)
+	}
+	if err != nil {
+		c.removeCompletionWaiter(id)
+		return "", nil, err
+	}
+	if err := c.hub.SendBinary(frame); err != nil {
+		c.removeCompletionWaiter(id)
+		return "", nil, err
+	}
+	return id, completionCh, nil
+}
+
 func (c *Client) sendPacket(target, connectionSessionID string, trace psignalr.TraceContextPacket, packet dcg.MultiplexPacket) error {
 	id := strconv.FormatUint(c.invocation.Add(1), 10)
 	var (
@@ -382,6 +463,28 @@ func (c *Client) sendPacket(target, connectionSessionID string, trace psignalr.T
 		return err
 	}
 	return c.hub.SendBinary(frame)
+}
+
+func (c *Client) deliverCompletion(completion psignalr.Completion) {
+	c.mu.Lock()
+	waiter := c.completions[completion.InvocationID]
+	c.mu.Unlock()
+	if waiter == nil {
+		return
+	}
+	select {
+	case waiter <- completion:
+	default:
+	}
+}
+
+func (c *Client) removeCompletionWaiter(invocationID string) {
+	if invocationID == "" {
+		return
+	}
+	c.mu.Lock()
+	delete(c.completions, invocationID)
+	c.mu.Unlock()
 }
 
 func (c *Client) markHubConnected(payload psignalr.OnConnectedPayload) {

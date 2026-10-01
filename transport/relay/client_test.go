@@ -3,6 +3,7 @@ package relay
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -459,6 +460,75 @@ func onConnectedFrame(t *testing.T, region string, partners []string) []byte {
 		p.str(partner)
 	}
 	p.array(0)
+	frame, err := psignalr.Frame(p.b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return frame
+}
+
+func TestSendReportsHubCompletionError(t *testing.T) {
+	hub := newFakeHub()
+	c := New(hub, Config{FragmentSize: 1024, AckTimeout: time.Second, AckRetries: 1})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- c.Send(ctx, "phone", "session", dcg.TransportMessageTypePlatform, []byte("hello"))
+	}()
+
+	var sent []byte
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		hub.mu.Lock()
+		if len(hub.sent) > 0 {
+			sent = append([]byte(nil), hub.sent[0]...)
+		}
+		hub.mu.Unlock()
+		if sent != nil {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if sent == nil {
+		t.Fatal("no fragment sent")
+	}
+
+	frames, err := psignalr.SplitFrames(sent)
+	if err != nil || len(frames) != 1 {
+		t.Fatalf("frames=%d err=%v", len(frames), err)
+	}
+	inv, err := psignalr.ParseInvocation(frames[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.InvocationID == nil || *inv.InvocationID == "" {
+		t.Fatal("missing invocation id")
+	}
+
+	hub.reads <- completionErrorFrame(t, *inv.InvocationID, "target unavailable")
+
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "Hub Relay rejected SendMessageAsync: target unavailable") {
+			t.Fatalf("err=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("send did not report Hub completion error")
+	}
+}
+
+func completionErrorFrame(t *testing.T, invocationID, message string) []byte {
+	t.Helper()
+	p := &tinyPacker{}
+	p.array(5)
+	p.integer(psignalr.HubMessageTypeCompletion)
+	p.mapLen(0)
+	p.str(invocationID)
+	p.integer(psignalr.CompletionResultError)
+	p.str(message)
 	frame, err := psignalr.Frame(p.b)
 	if err != nil {
 		t.Fatal(err)

@@ -136,6 +136,7 @@ The first live Linux bootstrap probe against the Microsoft production services h
 - the account receives an assigned SignalR shard;
 - the production SignalR service can return its JSON handshake response in a **binary WebSocket message**, so the transport accepts both text and binary handshake messages and preserves any first Hub payload coalesced after the record separator.
 - DCG Hub Relay fragment `MessageType` uses the internal Windows `TransportMessageType` enum (`App=0`, `Platform=1`, `Unknown=2`), not the protobuf enum (`App=1`, `Platform=2`); the Linux transport now uses the Hub values in both directions.
+- Windows sends Hub Relay packets with SignalR `InvokeAsync`, so Linux now tracks the matching Hub `Completion` for each DCG fragment send; diagnostics distinguish a Hub rejection from a Hub-accepted packet that never receives a peer DCG ACK.
 
 The remaining live validation point is reaching Hub Relay `OnConnected` after that transport fix.
 
