@@ -125,6 +125,19 @@ phone clipboard change
 - executable/daemon wiring and user configuration
 - reconnect/wake/token-refresh hardening for long-running parity with Phone Link
 
+## Production bootstrap validation
+
+The first live Linux bootstrap probe against the Microsoft production services has confirmed:
+
+- Microsoft device-code login succeeds for the CrossDevice public client and migrated DCG scope;
+- DCG identity creation and device enrollment succeed;
+- persistent state is written before later cloud stages;
+- DeviceInfoList returns linked Windows and Android peers and trust sync succeeds;
+- the account receives an assigned SignalR shard;
+- the production SignalR service can return its JSON handshake response in a **binary WebSocket message**, so the transport accepts both text and binary handshake messages and preserves any first Hub payload coalesced after the record separator.
+
+The remaining live validation point is reaching Hub Relay `OnConnected` after that transport fix.
+
 ## Bootstrap probe
 
 The repository includes an interactive production probe for bootstrap stages 1-4:

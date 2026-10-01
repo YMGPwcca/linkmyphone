@@ -24,14 +24,15 @@ type Config struct {
 }
 
 type Client struct {
-	ws *wsclient.Conn
+	ws      *wsclient.Conn
+	pending []byte
 }
 
 type negotiateResponse struct {
-	ConnectionToken     string `json:"connectionToken"`
-	URL                 string `json:"url"`
-	AccessToken         string `json:"accessToken"`
-	Error               string `json:"error"`
+	ConnectionToken string `json:"connectionToken"`
+	URL             string `json:"url"`
+	AccessToken     string `json:"accessToken"`
+	Error           string `json:"error"`
 	AvailableTransports []struct {
 		Transport       string   `json:"transport"`
 		TransferFormats []string `json:"transferFormats"`
@@ -100,19 +101,28 @@ func Dial(ctx context.Context, cfg Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	if op != wsclient.OpcodeText {
-		return nil, errors.New("signalr: expected text handshake response")
+	if op != wsclient.OpcodeText && op != wsclient.OpcodeBinary {
+		return nil, fmt.Errorf("signalr: unexpected handshake websocket opcode %d", op)
 	}
-	if err := validateHandshake(payload); err != nil {
+	pending, err := consumeHandshake(payload)
+	if err != nil {
 		return nil, err
 	}
+	if len(pending) != 0 && op != wsclient.OpcodeBinary {
+		return nil, errors.New("signalr: text handshake response carried trailing hub data")
+	}
 	ok = true
-	return &Client{ws: ws}, nil
+	return &Client{ws: ws, pending: pending}, nil
 }
 
-func (c *Client) Close() error                  { return c.ws.Close() }
-func (c *Client) SendBinary(frame []byte) error { return c.ws.WriteBinary(frame) }
+func (c *Client) Close() error                    { return c.ws.Close() }
+func (c *Client) SendBinary(frame []byte) error   { return c.ws.WriteBinary(frame) }
 func (c *Client) ReadBinary() ([]byte, error) {
+	if len(c.pending) != 0 {
+		p := c.pending
+		c.pending = nil
+		return p, nil
+	}
 	for {
 		op, p, err := c.ws.ReadMessage()
 		if err != nil {
@@ -198,22 +208,33 @@ func websocketURL(hubURL, token string) (string, error) {
 	return u.String(), nil
 }
 
-func validateHandshake(payload []byte) error {
-	if len(payload) == 0 || payload[len(payload)-1] != 0x1e {
-		return errors.New("signalr: malformed handshake response")
+func consumeHandshake(payload []byte) ([]byte, error) {
+	recordSeparator := bytes.IndexByte(payload, 0x1e)
+	if recordSeparator < 0 {
+		return nil, errors.New("signalr: malformed handshake response")
 	}
 	var v struct {
 		Error string `json:"error"`
 	}
-	body := payload[:len(payload)-1]
-	if len(body) == 0 {
-		return nil
+	body := payload[:recordSeparator]
+	if len(body) != 0 {
+		if err := json.Unmarshal(body, &v); err != nil {
+			return nil, fmt.Errorf("signalr: decode handshake response: %w", err)
+		}
+		if v.Error != "" {
+			return nil, fmt.Errorf("signalr handshake: %s", v.Error)
+		}
 	}
-	if err := json.Unmarshal(body, &v); err != nil {
+	return append([]byte(nil), payload[recordSeparator+1:]...), nil
+}
+
+func validateHandshake(payload []byte) error {
+	pending, err := consumeHandshake(payload)
+	if err != nil {
 		return err
 	}
-	if v.Error != "" {
-		return fmt.Errorf("signalr handshake: %s", v.Error)
+	if len(pending) != 0 {
+		return errors.New("signalr: unexpected trailing data after handshake")
 	}
 	return nil
 }
