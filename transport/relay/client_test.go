@@ -3,6 +3,7 @@ package relay
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -230,8 +231,20 @@ func (p *tinyPacker) bin(b []byte) {
 	p.b = append(p.b, b...)
 }
 
-func (p *tinyPacker) float64one() {
-	p.b = append(p.b, 0xcb, 0x3f, 0xf0, 0, 0, 0, 0, 0, 0)
+func (p *tinyPacker) float64Value(v float64) {
+	bits := math.Float64bits(v)
+	p.b = append(
+		p.b,
+		0xcb,
+		byte(bits>>56),
+		byte(bits>>48),
+		byte(bits>>40),
+		byte(bits>>32),
+		byte(bits>>24),
+		byte(bits>>16),
+		byte(bits>>8),
+		byte(bits),
+	)
 }
 
 func (p *tinyPacker) packet(v dcg.MultiplexPacket) {
@@ -258,11 +271,7 @@ func (p *tinyPacker) packet(v dcg.MultiplexPacket) {
 		case int:
 			p.integer(y)
 		case float64:
-			if y == 1 {
-				p.float64one()
-			} else {
-				p.b = append(p.b, 0xcb, 0, 0, 0, 0, 0, 0, 0, 0)
-			}
+			p.float64Value(y)
 		case bool:
 			if y {
 				p.b = append(p.b, 0xc3)
@@ -291,6 +300,34 @@ func (p *tinyPacker) packet(v dcg.MultiplexPacket) {
 	}
 	p.str("Type")
 	p.str(v.Type)
+}
+
+func TestOnReceiveFramePreservesAckSequenceNumber(t *testing.T) {
+	packet := dcg.SuccessAckPacket(dcg.Fragment{
+		SequenceNumber: 2,
+		SessionID:      "session",
+	})
+	frame := onReceiveFrame(t, "phone", packet)
+
+	frames, err := psignalr.SplitFrames(frame)
+	if err != nil || len(frames) != 1 {
+		t.Fatalf("frames=%d err=%v", len(frames), err)
+	}
+	inv, err := psignalr.ParseInvocation(frames[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg, err := psignalr.ParseOnReceiveMessage(inv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ack, err := dcg.ParseAckPacket(msg.Packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ack.SequenceNumber != 2 {
+		t.Fatalf("ack sequence=%d want=2", ack.SequenceNumber)
+	}
 }
 
 func TestSessionIDForTargetIsStableAndPerPeer(t *testing.T) {
@@ -622,5 +659,149 @@ func assertValidHubTrace(t *testing.T, raw any) {
 	}
 	if _, ok := m["TraceState"].(map[string]any); !ok {
 		t.Fatalf("TraceState=%#v (%T)", m["TraceState"], m["TraceState"])
+	}
+}
+
+func TestConcurrentSendsAreSerializedPerTarget(t *testing.T) {
+	hub := newFakeHub()
+	c := New(hub, Config{FragmentSize: 1024, AckTimeout: time.Second, AckRetries: 1})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- c.Send(
+			ctx,
+			"phone",
+			"session",
+			dcg.TransportMessageTypePlatform,
+			[]byte("first"),
+		)
+	}()
+
+	var firstFrame []byte
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		hub.mu.Lock()
+		if len(hub.sent) > 0 {
+			firstFrame = append([]byte(nil), hub.sent[0]...)
+		}
+		hub.mu.Unlock()
+		if firstFrame != nil {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if firstFrame == nil {
+		t.Fatal("no first send")
+	}
+
+	firstFrames, err := psignalr.SplitFrames(firstFrame)
+	if err != nil || len(firstFrames) != 1 {
+		t.Fatalf("frames=%d err=%v", len(firstFrames), err)
+	}
+	firstInv, err := psignalr.ParseInvocation(firstFrames[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstPacketMap, ok := firstInv.Arguments[2].(map[string]any)
+	if !ok {
+		t.Fatal("first packet missing")
+	}
+	firstPacket, err := packetFromMapForTest(firstPacketMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstFragment, err := dcg.ParseFragmentPacket(firstPacket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstFragment.SequenceNumber != 1 {
+		t.Fatalf("first sequence=%d", firstFragment.SequenceNumber)
+	}
+
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- c.Send(
+			ctx,
+			"phone",
+			"session",
+			dcg.TransportMessageTypePlatform,
+			[]byte("second"),
+		)
+	}()
+
+	// While the first send is waiting for its peer ACK, the second send for the
+	// same target must stay behind the per-target gate and must not hit the wire.
+	time.Sleep(20 * time.Millisecond)
+	hub.mu.Lock()
+	countBeforeFirstAck := len(hub.sent)
+	hub.mu.Unlock()
+	if countBeforeFirstAck != 1 {
+		t.Fatalf("second send escaped target gate before first ACK: sent=%d", countBeforeFirstAck)
+	}
+
+	hub.reads <- onReceiveFrame(t, "phone", dcg.SuccessAckPacket(firstFragment))
+
+	select {
+	case err := <-firstDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("first send did not complete")
+	}
+
+	var secondFrame []byte
+	deadline = time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		hub.mu.Lock()
+		if len(hub.sent) >= 2 {
+			secondFrame = append([]byte(nil), hub.sent[1]...)
+		}
+		hub.mu.Unlock()
+		if secondFrame != nil {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if secondFrame == nil {
+		t.Fatal("second send did not start after first completed")
+	}
+
+	secondFrames, err := psignalr.SplitFrames(secondFrame)
+	if err != nil || len(secondFrames) != 1 {
+		t.Fatalf("frames=%d err=%v", len(secondFrames), err)
+	}
+	secondInv, err := psignalr.ParseInvocation(secondFrames[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondPacketMap, ok := secondInv.Arguments[2].(map[string]any)
+	if !ok {
+		t.Fatal("second packet missing")
+	}
+	secondPacket, err := packetFromMapForTest(secondPacketMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondFragment, err := dcg.ParseFragmentPacket(secondPacket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secondFragment.SequenceNumber != 2 {
+		t.Fatalf("second sequence=%d", secondFragment.SequenceNumber)
+	}
+
+	hub.reads <- onReceiveFrame(t, "phone", dcg.SuccessAckPacket(secondFragment))
+
+	select {
+	case err := <-secondDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("second send did not complete")
 	}
 }

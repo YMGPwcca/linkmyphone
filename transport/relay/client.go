@@ -57,7 +57,8 @@ type Client struct {
 	messageID   atomic.Int64
 	invocation  atomic.Uint64
 
-	mu         sync.Mutex
+	mu            sync.Mutex
+	sendGates     map[string]chan struct{}
 	sequencers    map[string]*dcg.Sequencer
 	sessions      map[string]string
 	pending       map[pendingKey]chan dcg.Ack
@@ -89,6 +90,7 @@ func New(hub Hub, cfg Config) *Client {
 		ackTimeout:   cfg.AckTimeout,
 		ackRetries:   cfg.AckRetries,
 		reassembler:  dcg.NewReassembler(32<<20, 4096),
+		sendGates:     make(map[string]chan struct{}),
 		sequencers:    make(map[string]*dcg.Sequencer),
 		sessions:      make(map[string]string),
 		pending:       make(map[pendingKey]chan dcg.Ack),
@@ -296,6 +298,16 @@ func (c *Client) WaitPartnerConnected(ctx context.Context, target string) error 
 func (c *Client) Send(ctx context.Context, target, sessionID string, transportType dcg.TransportMessageType, payload []byte) error {
 	if target == "" {
 		return errors.New("relay: target is required")
+	}
+	sendGate := c.sendGateForTarget(target)
+	select {
+	case sendGate <- struct{}{}:
+		defer func() { <-sendGate }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	if sessionID == "" {
 		var err error
@@ -606,6 +618,17 @@ func (c *Client) removePartnerWaiter(target string, waiter chan struct{}) {
 		}
 		return
 	}
+}
+
+func (c *Client) sendGateForTarget(target string) chan struct{} {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	gate := c.sendGates[target]
+	if gate == nil {
+		gate = make(chan struct{}, 1)
+		c.sendGates[target] = gate
+	}
+	return gate
 }
 
 func (c *Client) sequencer(target string) *dcg.Sequencer {

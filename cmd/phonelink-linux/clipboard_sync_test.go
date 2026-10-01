@@ -160,3 +160,15 @@ func TestTrackedLocalClipboardSuppressesRemoteTextWithProviderNewline(t *testing
 		t.Fatal("provider-added terminal newline must not echo remote text")
 	}
 }
+
+func TestTrackedLocalClipboardStillDetectsRealNewlineOnlyLocalChange(t *testing.T) {
+	base := &syncFakeLocal{text: "abc"}
+	tracked := newTrackedLocalClipboard(base, "abc")
+
+	if !tracked.MarkIfChanged("abc\n") {
+		t.Fatal("exact local newline change must still be publishable")
+	}
+	if tracked.MarkIfChanged("abc\n") {
+		t.Fatal("unchanged exact local text must not publish twice")
+	}
+}

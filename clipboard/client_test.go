@@ -2,6 +2,7 @@ package clipboard
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -359,5 +360,310 @@ func TestPullToLocalSkipsIdenticalReflectedText(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timeout")
+	}
+}
+
+type orderedLocal struct {
+	mu     sync.Mutex
+	text   string
+	writes []string
+}
+
+func (l *orderedLocal) ReadText(context.Context) (string, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.text, nil
+}
+
+func (l *orderedLocal) WriteText(_ context.Context, text string) error {
+	l.mu.Lock()
+	l.text = text
+	l.writes = append(l.writes, text)
+	l.mu.Unlock()
+	return nil
+}
+
+func phoneClipboardPublicationWire(t *testing.T, correlationID string) []byte {
+	t.Helper()
+	publication := proto.PubSubPayload{
+		Additional: proto.MarshalResponse(proto.NewClipboardChange(correlationID)),
+	}
+	envelope := msaep.New(
+		"phone-message-"+correlationID,
+		"phone",
+		int32(proto.ClipboardMessageTag),
+		proto.MarshalPubSubPayload(publication),
+	)
+	pm := platform.NewContextPublish(msaep.Marshal(envelope), "phone-pub-"+correlationID)
+	wire, err := platform.Marshal(pm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return wire
+}
+
+func waitForClipboardRequest(
+	t *testing.T,
+	fr *fakeRelay,
+	index int,
+) (relay.Received, platform.Message, proto.Request) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		fr.mu.Lock()
+		if len(fr.sent) > index {
+			sent := fr.sent[index]
+			fr.mu.Unlock()
+			pm, err := platform.Unmarshal(sent.Payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			drm, err := proto.UnmarshalDeviceResourceMessage(pm.Payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req, err := proto.UnmarshalRequest(drm.Payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return sent, pm, req
+		}
+		fr.mu.Unlock()
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("no clipboard request at index %d", index)
+	return relay.Received{}, platform.Message{}, proto.Request{}
+}
+
+func TestNewPhonePublicationCancelsOlderPullAndAppliesLatest(t *testing.T) {
+	fr := newFakeRelay()
+	local := &orderedLocal{text: "desktop"}
+	c := New(fr, local, Config{
+		Target: "phone",
+		SessionID: "session",
+		RequestTimeout: time.Second,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+
+	fr.recv <- relay.Received{
+		Source: "phone",
+		SessionID: "session",
+		TransportMessageType: dcg.TransportMessageTypePlatform,
+		Payload: phoneClipboardPublicationWire(t, "cid-a"),
+	}
+
+	_, requestA, reqA := waitForClipboardRequest(t, fr, 0)
+	if reqA.Type != proto.RequestContent || reqA.CorrelationID != "cid-a" {
+		t.Fatalf("request A=%#v", reqA)
+	}
+	requestIDA, _ := requestA.Header(platform.HeaderRequestID)
+
+	fr.recv <- relay.Received{
+		Source: "phone",
+		SessionID: "session",
+		TransportMessageType: dcg.TransportMessageTypePlatform,
+		Payload: phoneClipboardPublicationWire(t, "cid-b"),
+	}
+
+	_, requestB, reqB := waitForClipboardRequest(t, fr, 1)
+	if reqB.Type != proto.RequestContent || reqB.CorrelationID != "cid-b" {
+		t.Fatalf("request B=%#v", reqB)
+	}
+	requestIDB, _ := requestB.Header(platform.HeaderRequestID)
+
+	// A late response for the canceled request must be harmless.
+	textA := "stale A"
+	responseA := proto.NewTextResponse("cid-a", textA, nil)
+	drmA := proto.DeviceResourceResponse{
+		ResponseType: proto.DeviceResourceResponseSuccess,
+		Payload: proto.MarshalResponse(responseA),
+	}
+	replyA := platform.NewInternalResponse(
+		proto.MarshalDeviceResourceResponse(drmA),
+		requestIDA,
+	)
+	wireA, err := platform.Marshal(replyA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr.recv <- relay.Received{
+		Source: "phone",
+		SessionID: "session",
+		TransportMessageType: dcg.TransportMessageTypePlatform,
+		Payload: wireA,
+	}
+
+	textB := "latest B"
+	responseB := proto.NewTextResponse("cid-b", textB, nil)
+	drmB := proto.DeviceResourceResponse{
+		ResponseType: proto.DeviceResourceResponseSuccess,
+		Payload: proto.MarshalResponse(responseB),
+	}
+	replyB := platform.NewInternalResponse(
+		proto.MarshalDeviceResourceResponse(drmB),
+		requestIDB,
+	)
+	wireB, err := platform.Marshal(replyB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fr.recv <- relay.Received{
+		Source: "phone",
+		SessionID: "session",
+		TransportMessageType: dcg.TransportMessageTypePlatform,
+		Payload: wireB,
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		local.mu.Lock()
+		text := local.text
+		writes := append([]string(nil), local.writes...)
+		local.mu.Unlock()
+		if text == textB {
+			if len(writes) != 1 || writes[0] != textB {
+				t.Fatalf("writes=%#v", writes)
+			}
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("latest phone publication was not applied")
+}
+
+func TestPhonePublicationFromOtherPeerIsIgnored(t *testing.T) {
+	fr := newFakeRelay()
+	c := New(fr, &fakeLocal{}, Config{
+		Target: "phone",
+		SessionID: "session",
+		RequestTimeout: 50 * time.Millisecond,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+
+	fr.recv <- relay.Received{
+		Source: "other-phone",
+		SessionID: "session",
+		TransportMessageType: dcg.TransportMessageTypePlatform,
+		Payload: phoneClipboardPublicationWire(t, "cid-other"),
+	}
+
+	time.Sleep(20 * time.Millisecond)
+	fr.mu.Lock()
+	defer fr.mu.Unlock()
+	if len(fr.sent) != 0 {
+		t.Fatalf("unexpected request to configured target: sent=%d", len(fr.sent))
+	}
+}
+
+func TestDuplicateInternalResponseDoesNotBlockReceiveLoop(t *testing.T) {
+	fr := newFakeRelay()
+	c := New(fr, &fakeLocal{}, Config{Target: "phone"})
+
+	full := make(chan pendingResponse, 1)
+	full <- pendingResponse{}
+	c.mu.Lock()
+	c.pending["rid-full"] = full
+	c.mu.Unlock()
+
+	drm := proto.DeviceResourceResponse{
+		ResponseType: proto.DeviceResourceResponseSuccess,
+	}
+	pm := platform.NewInternalResponse(
+		proto.MarshalDeviceResourceResponse(drm),
+		"rid-full",
+	)
+	wire, err := platform.Marshal(pm)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- c.handlePlatform(context.Background(), relay.Received{
+			Source: "phone",
+			TransportMessageType: dcg.TransportMessageTypePlatform,
+			Payload: wire,
+		})
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("duplicate internal response blocked receive handling")
+	}
+}
+
+func TestPublishedSnapshotSurvivesDuplicateContentRequest(t *testing.T) {
+	fr := newFakeRelay()
+	local := &fakeLocal{text: "newer clipboard"}
+	c := New(fr, local, Config{
+		Target: "phone",
+		SessionID: "session",
+		SelfDcgClientID: "desktop-dcg",
+	})
+
+	if _, err := c.PublishLocalText(
+		context.Background(),
+		"stable snapshot",
+		"cid-retry",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+
+	for i := 0; i < 2; i++ {
+		req := proto.MarshalDeviceResourceMessage(
+			proto.WrapClipboardRequest(proto.NewContentRequest("cid-retry")),
+		)
+		pm := platform.NewDeviceResourceRequest(req, fmt.Sprintf("content-%d", i))
+		wire, err := platform.Marshal(pm)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fr.recv <- relay.Received{
+			Source: "phone",
+			SessionID: "session",
+			TransportMessageType: dcg.TransportMessageTypePlatform,
+			Payload: wire,
+		}
+
+		deadline := time.Now().Add(time.Second)
+		for time.Now().Before(deadline) {
+			fr.mu.Lock()
+			if len(fr.sent) >= 2+i {
+				sent := fr.sent[1+i]
+				fr.mu.Unlock()
+				reply, err := platform.Unmarshal(sent.Payload)
+				if err != nil {
+					t.Fatal(err)
+				}
+				drmReply, err := proto.UnmarshalDeviceResourceResponse(reply.Payload)
+				if err != nil {
+					t.Fatal(err)
+				}
+				clipReply, err := proto.UnmarshalResponse(drmReply.Payload)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(clipReply.Items) != 1 ||
+					clipReply.Items[0].Text == nil ||
+					*clipReply.Items[0].Text != "stable snapshot" {
+					t.Fatalf("reply %d=%#v", i, clipReply)
+				}
+				break
+			}
+			fr.mu.Unlock()
+			time.Sleep(time.Millisecond)
+		}
 	}
 }

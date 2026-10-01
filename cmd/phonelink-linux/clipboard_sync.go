@@ -45,24 +45,28 @@ type trackedLocalClipboard struct {
 	writeMu sync.Mutex
 	mu      sync.Mutex
 
-	lastHash    [32]byte
-	initialized bool
-	applying    bool
-	suppress    map[[32]byte]time.Time
-	remoteWrite chan int
+	lastExactHash    [32]byte
+	lastTrackingHash [32]byte
+	initialized      bool
+	applying         bool
+	suppress         map[[32]byte]time.Time
+	remoteWrite      chan int
 }
 
 func newTrackedLocalClipboard(base clipclient.Local, initial string) *trackedLocalClipboard {
 	return &trackedLocalClipboard{
 		base:        base,
-		lastHash:    clipboardTrackingHash(initial),
-		initialized: true,
+		lastExactHash:    sha256.Sum256([]byte(initial)),
+		lastTrackingHash: clipboardTrackingHash(initial),
+		initialized:      true,
 		suppress:    make(map[[32]byte]time.Time),
 		remoteWrite: make(chan int, 8),
 	}
 }
 
 func (l *trackedLocalClipboard) ReadText(ctx context.Context) (string, error) {
+	l.writeMu.Lock()
+	defer l.writeMu.Unlock()
 	return l.base.ReadText(ctx)
 }
 
@@ -70,16 +74,17 @@ func (l *trackedLocalClipboard) WriteText(ctx context.Context, text string) erro
 	l.writeMu.Lock()
 	defer l.writeMu.Unlock()
 
-	nextHash := clipboardTrackingHash(text)
+	nextExactHash := sha256.Sum256([]byte(text))
+	nextTrackingHash := clipboardTrackingHash(text)
 	now := time.Now()
 
 	l.mu.Lock()
 	l.pruneSuppressedLocked(now)
 	l.applying = true
 	if l.initialized {
-		l.suppress[l.lastHash] = now.Add(remoteClipboardSettleWindow)
+		l.suppress[l.lastTrackingHash] = now.Add(remoteClipboardSettleWindow)
 	}
-	l.suppress[nextHash] = now.Add(remoteClipboardSettleWindow)
+	l.suppress[nextTrackingHash] = now.Add(remoteClipboardSettleWindow)
 	l.mu.Unlock()
 
 	err := l.base.WriteText(ctx, text)
@@ -87,7 +92,8 @@ func (l *trackedLocalClipboard) WriteText(ctx context.Context, text string) erro
 	l.mu.Lock()
 	l.applying = false
 	if err == nil {
-		l.lastHash = nextHash
+		l.lastExactHash = nextExactHash
+		l.lastTrackingHash = nextTrackingHash
 		l.initialized = true
 	}
 	l.mu.Unlock()
@@ -103,7 +109,8 @@ func (l *trackedLocalClipboard) WriteText(ctx context.Context, text string) erro
 }
 
 func (l *trackedLocalClipboard) MarkIfChanged(text string) bool {
-	hash := clipboardTrackingHash(text)
+	exactHash := sha256.Sum256([]byte(text))
+	trackingHash := clipboardTrackingHash(text)
 	now := time.Now()
 
 	l.mu.Lock()
@@ -113,16 +120,18 @@ func (l *trackedLocalClipboard) MarkIfChanged(text string) bool {
 	if l.applying {
 		return false
 	}
-	if until, ok := l.suppress[hash]; ok && now.Before(until) {
-		l.lastHash = hash
+	if until, ok := l.suppress[trackingHash]; ok && now.Before(until) {
+		l.lastExactHash = exactHash
+		l.lastTrackingHash = trackingHash
 		l.initialized = true
-		delete(l.suppress, hash)
+		delete(l.suppress, trackingHash)
 		return false
 	}
-	if l.initialized && l.lastHash == hash {
+	if l.initialized && l.lastExactHash == exactHash {
 		return false
 	}
-	l.lastHash = hash
+	l.lastExactHash = exactHash
+	l.lastTrackingHash = trackingHash
 	l.initialized = true
 	return true
 }

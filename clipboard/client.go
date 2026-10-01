@@ -50,6 +50,11 @@ type pendingResponse struct {
 	err      error
 }
 
+type phonePublication struct {
+	source      string
+	publication proto.PubSubPayload
+}
+
 type Client struct {
 	relay Relay
 	local Local
@@ -59,6 +64,10 @@ type Client struct {
 	pending   map[string]chan pendingResponse
 	published map[string]publishedSnapshot
 	asyncErr  chan error
+
+	publicationMu   sync.Mutex
+	publications    chan phonePublication
+	phonePullCancel context.CancelFunc
 }
 
 func New(r Relay, local Local, cfg Config) *Client {
@@ -69,15 +78,20 @@ func New(r Relay, local Local, cfg Config) *Client {
 		relay: r,
 		local: local,
 		cfg: cfg,
-		pending:   make(map[string]chan pendingResponse),
-		published: make(map[string]publishedSnapshot),
-		asyncErr:  make(chan error, 8),
+		pending:      make(map[string]chan pendingResponse),
+		published:    make(map[string]publishedSnapshot),
+		asyncErr:     make(chan error, 8),
+		publications: make(chan phonePublication, 1),
 	}
 }
 
 // Run dispatches PLATFORM messages into request responses and incoming
 // /clipboard requests. The underlying relay Run loop must also be running.
 func (c *Client) Run(ctx context.Context) error {
+	workerCtx, cancelWorker := context.WithCancel(ctx)
+	defer cancelWorker()
+	go c.runPhonePublicationWorker(workerCtx)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -232,6 +246,9 @@ func (c *Client) pullToLocal(ctx context.Context, correlationID string) error {
 	if c.local == nil {
 		return errors.New("clipboard: no local clipboard backend")
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	// Android may publish the same text back after applying a desktop-originated
 	// clipboard update. Avoid rewriting an already-identical local clipboard:
@@ -321,20 +338,30 @@ func (c *Client) handlePlatform(ctx context.Context, msg relay.Received) error {
 		ch := c.pending[original]
 		c.mu.Unlock()
 		if ch != nil {
-			ch <- pendingResponse{response: response, err: err}
+			select {
+			case ch <- pendingResponse{response: response, err: err}:
+			default:
+			}
 		}
 		return nil
 
 	case platform.RouteDeviceResourceManager:
 		return c.handleIncomingRequest(ctx, msg, pm)
 	case platform.RouteContextPublish:
-		return c.handleIncomingPublication(ctx, pm)
+		return c.handleIncomingPublication(ctx, msg, pm)
 	default:
 		return nil
 	}
 }
 
-func (c *Client) handleIncomingPublication(ctx context.Context, pm platform.Message) error {
+func (c *Client) handleIncomingPublication(
+	ctx context.Context,
+	msg relay.Received,
+	pm platform.Message,
+) error {
+	if c.cfg.Target != "" && msg.Source != c.cfg.Target {
+		return nil
+	}
 	envelope, err := msaep.Unmarshal(pm.Payload)
 	if err != nil {
 		return err
@@ -347,17 +374,70 @@ func (c *Client) handleIncomingPublication(ctx context.Context, pm platform.Mess
 		return err
 	}
 
-	// Pulling CONTENT waits for a /internal/response, which must be consumed by
-	// this Run loop. Do it asynchronously so the receive loop remains live.
-	go func() {
-		if err := c.HandlePhoneClipboardPublication(ctx, publication); err != nil {
+	c.enqueuePhonePublication(phonePublication{
+		source:      msg.Source,
+		publication: publication,
+	})
+	return nil
+}
+
+func (c *Client) enqueuePhonePublication(publication phonePublication) {
+	c.publicationMu.Lock()
+	if c.phonePullCancel != nil {
+		c.phonePullCancel()
+	}
+	c.publicationMu.Unlock()
+
+	select {
+	case c.publications <- publication:
+		return
+	default:
+	}
+
+	select {
+	case <-c.publications:
+	default:
+	}
+	select {
+	case c.publications <- publication:
+	default:
+	}
+}
+
+func (c *Client) runPhonePublicationWorker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case publication := <-c.publications:
+			pullCtx, cancel := context.WithCancel(ctx)
+			c.publicationMu.Lock()
+			c.phonePullCancel = cancel
+			c.publicationMu.Unlock()
+
+			err := c.HandlePhoneClipboardPublication(
+				pullCtx,
+				publication.publication,
+			)
+			cancel()
+
+			c.publicationMu.Lock()
+			c.phonePullCancel = nil
+			c.publicationMu.Unlock()
+
+			if err == nil {
+				continue
+			}
+			if errors.Is(err, context.Canceled) && ctx.Err() == nil {
+				continue
+			}
 			select {
 			case c.asyncErr <- err:
 			case <-ctx.Done():
+				return
 			}
 		}
-	}()
-	return nil
+	}
 }
 
 func (c *Client) handleIncomingRequest(ctx context.Context, msg relay.Received, pm platform.Message) error {
@@ -385,9 +465,6 @@ func (c *Client) handleIncomingRequest(ctx context.Context, msg relay.Received, 
 	case proto.RequestContent:
 		c.mu.Lock()
 		snapshot, published := c.published[req.CorrelationID]
-		if published {
-			delete(c.published, req.CorrelationID)
-		}
 		c.mu.Unlock()
 		if published {
 			response = proto.NewTextResponse(req.CorrelationID, snapshot.text, nil)
