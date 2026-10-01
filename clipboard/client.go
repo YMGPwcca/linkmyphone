@@ -18,14 +18,19 @@ import (
 )
 
 const (
-	DefaultRequestTimeout      = 10 * time.Second
-	publishedSnapshotTTL       = 2 * time.Minute
-	maxPublishedSnapshotCount  = 64
+	DefaultRequestTimeout       = 10 * time.Second
+	publishedSnapshotTTL        = 2 * time.Minute
+	maxPublishedSnapshotCount   = 64
+	incomingRequestQueueSize    = 16
 )
 
+var ErrPublicationSuperseded = errors.New("clipboard: local publication superseded")
+
 type publishedSnapshot struct {
-	text      string
-	createdAt time.Time
+	text       string
+	createdAt  time.Time
+	generation uint64
+	versioned  bool
 }
 
 type Relay interface {
@@ -55,15 +60,22 @@ type phonePublication struct {
 	publication proto.PubSubPayload
 }
 
+type incomingRequest struct {
+	msg relay.Received
+	pm  platform.Message
+}
+
 type Client struct {
 	relay Relay
 	local Local
 	cfg   Config
 
-	mu        sync.Mutex
-	pending   map[string]chan pendingResponse
-	published map[string]publishedSnapshot
-	asyncErr  chan error
+	mu               sync.Mutex
+	pending          map[string]chan pendingResponse
+	published        map[string]publishedSnapshot
+	publicationFloor uint64
+	asyncErr         chan error
+	incomingRequests chan incomingRequest
 
 	publicationMu   sync.Mutex
 	publications    chan phonePublication
@@ -78,10 +90,11 @@ func New(r Relay, local Local, cfg Config) *Client {
 		relay: r,
 		local: local,
 		cfg: cfg,
-		pending:      make(map[string]chan pendingResponse),
-		published:    make(map[string]publishedSnapshot),
-		asyncErr:     make(chan error, 8),
-		publications: make(chan phonePublication, 1),
+		pending:          make(map[string]chan pendingResponse),
+		published:        make(map[string]publishedSnapshot),
+		asyncErr:         make(chan error, 8),
+		incomingRequests: make(chan incomingRequest, incomingRequestQueueSize),
+		publications:     make(chan phonePublication, 1),
 	}
 }
 
@@ -91,6 +104,7 @@ func (c *Client) Run(ctx context.Context) error {
 	workerCtx, cancelWorker := context.WithCancel(ctx)
 	defer cancelWorker()
 	go c.runPhonePublicationWorker(workerCtx)
+	go c.runIncomingRequestWorker(workerCtx)
 
 	for {
 		select {
@@ -180,23 +194,90 @@ func (c *Client) PublishLocalChange(ctx context.Context, correlationID string) (
 // correlation id receives the exact advertised snapshot even if the desktop
 // clipboard changes again in the meantime.
 func (c *Client) PublishLocalText(ctx context.Context, text, correlationID string) (string, error) {
+	return c.publishLocalText(ctx, text, correlationID, 0, false)
+}
+
+// PublishLocalTextGeneration binds an outbound snapshot to a local sync
+// generation. A later phone-originated generation can supersede older local
+// publications without losing the normal unversioned API used by probes/tests.
+func (c *Client) PublishLocalTextGeneration(
+	ctx context.Context,
+	text,
+	correlationID string,
+	generation uint64,
+) (string, error) {
+	if generation == 0 {
+		return "", errors.New("clipboard: publication generation must be positive")
+	}
+	return c.publishLocalText(ctx, text, correlationID, generation, true)
+}
+
+// SupersedeLocalPublications invalidates versioned local snapshots older than
+// generation. If an old Context/Publish is already in flight and Android later
+// asks CONTENT for it, the request falls back to the current local clipboard,
+// allowing the newer phone-originated value to win deterministically.
+func (c *Client) SupersedeLocalPublications(generation uint64) {
+	if generation == 0 {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if generation <= c.publicationFloor {
+		return
+	}
+	c.publicationFloor = generation
+	for correlationID, snapshot := range c.published {
+		if snapshot.versioned && snapshot.generation < generation {
+			delete(c.published, correlationID)
+		}
+	}
+}
+
+func (c *Client) publishLocalText(
+	ctx context.Context,
+	text,
+	correlationID string,
+	generation uint64,
+	versioned bool,
+) (string, error) {
 	if correlationID == "" {
 		correlationID = newID()
 	}
+	now := time.Now()
 	c.mu.Lock()
-	c.prunePublishedLocked(time.Now())
+	c.prunePublishedLocked(now)
+	if versioned && generation < c.publicationFloor {
+		c.mu.Unlock()
+		return "", ErrPublicationSuperseded
+	}
 	c.published[correlationID] = publishedSnapshot{
-		text:      text,
-		createdAt: time.Now(),
+		text:       text,
+		createdAt:  now,
+		generation: generation,
+		versioned:  versioned,
 	}
 	c.mu.Unlock()
 
 	publishedID, err := c.PublishLocalChange(ctx, correlationID)
 	if err != nil {
 		c.mu.Lock()
-		delete(c.published, correlationID)
+		if snapshot, exists := c.published[correlationID]; exists &&
+			snapshot.generation == generation &&
+			snapshot.versioned == versioned {
+			delete(c.published, correlationID)
+		}
 		c.mu.Unlock()
 		return "", err
+	}
+
+	c.mu.Lock()
+	superseded := versioned && generation < c.publicationFloor
+	if superseded {
+		delete(c.published, correlationID)
+	}
+	c.mu.Unlock()
+	if superseded {
+		return "", ErrPublicationSuperseded
 	}
 	return publishedID, nil
 }
@@ -360,7 +441,7 @@ func (c *Client) handlePlatform(ctx context.Context, msg relay.Received) error {
 		return nil
 
 	case platform.RouteDeviceResourceManager:
-		return c.handleIncomingRequest(ctx, msg, pm)
+		return c.enqueueIncomingRequest(msg, pm)
 	case platform.RouteContextPublish:
 		return c.handleIncomingPublication(ctx, msg, pm)
 	default:
@@ -446,6 +527,33 @@ func (c *Client) runPhonePublicationWorker(ctx context.Context) {
 			case c.asyncErr <- err:
 			case <-ctx.Done():
 				return
+			}
+		}
+	}
+}
+
+func (c *Client) enqueueIncomingRequest(msg relay.Received, pm platform.Message) error {
+	request := incomingRequest{msg: msg, pm: pm}
+	select {
+	case c.incomingRequests <- request:
+		return nil
+	default:
+		return errors.New("clipboard: incoming request queue is full")
+	}
+}
+
+func (c *Client) runIncomingRequestWorker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case request := <-c.incomingRequests:
+			if err := c.handleIncomingRequest(ctx, request.msg, request.pm); err != nil {
+				select {
+				case c.asyncErr <- err:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
 	}
