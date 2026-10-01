@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"testing"
 
+	clipproto "github.com/YMGPwcca/phonelink-linux/protocol/clipboard"
 	"github.com/YMGPwcca/phonelink-linux/protocol/platform"
 	sessionproto "github.com/YMGPwcca/phonelink-linux/protocol/sessionvalidation"
 )
@@ -28,5 +29,14 @@ func TestPlatformHeaderNamesSortedAndUnique(t *testing.T) {
 	want := []string{"_route", "ms-content-type"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got=%v want=%v", got, want)
+	}
+}
+
+func TestContextProbeRequestTypeNames(t *testing.T) {
+	if got := deviceResourceRequestTypeName(clipproto.DeviceResourceRequestGET); got != "GET" {
+		t.Fatalf("DRM request name=%q", got)
+	}
+	if got := clipboardRequestTypeName(clipproto.RequestContent); got != "CONTENT" {
+		t.Fatalf("clipboard request name=%q", got)
 	}
 }

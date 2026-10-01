@@ -14,6 +14,7 @@ import (
 	"github.com/YMGPwcca/phonelink-linux/auth/msa"
 	authstate "github.com/YMGPwcca/phonelink-linux/auth/state"
 	"github.com/YMGPwcca/phonelink-linux/bootstrap"
+	clipproto "github.com/YMGPwcca/phonelink-linux/protocol/clipboard"
 	"github.com/YMGPwcca/phonelink-linux/protocol/platform"
 	sessionproto "github.com/YMGPwcca/phonelink-linux/protocol/sessionvalidation"
 	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
@@ -29,6 +30,8 @@ type sessionProbeOptions struct {
 	wakeTimeout    time.Duration
 	wakeTTL        time.Duration
 	requestTimeout time.Duration
+	contextProbe   bool
+	contextTimeout time.Duration
 }
 
 func runSessionProbe(ctx context.Context, args []string) error {
@@ -49,13 +52,15 @@ func runSessionProbe(ctx context.Context, args []string) error {
 	fs.DurationVar(&opts.wakeTimeout, "wake-timeout", bootstrap.DefaultPeerWakeTimeout, "time to wait for target peer presence after wake")
 	fs.DurationVar(&opts.wakeTTL, "wake-ttl", bootstrap.DefaultPeerWakeTTL, "Dispatcher wake time-to-live")
 	fs.DurationVar(&opts.requestTimeout, "request-timeout", bootstrap.DefaultSessionValidationTimeout, "time to wait for /SessionValidation response")
+	fs.BoolVar(&opts.contextProbe, "context-probe", false, "publish a source-confirmed clipboard ContextSource probe after SessionValidation")
+	fs.DurationVar(&opts.contextTimeout, "context-timeout", bootstrap.DefaultContextProbeTimeout, "time to observe the Android PLATFORM reaction to /Context/Publish")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
 		return fmt.Errorf("unexpected arguments: %s", strings.Join(fs.Args(), " "))
 	}
-	if opts.signalrTimeout <= 0 || opts.wakeTimeout <= 0 || opts.wakeTTL <= 0 || opts.requestTimeout <= 0 {
+	if opts.signalrTimeout <= 0 || opts.wakeTimeout <= 0 || opts.wakeTTL <= 0 || opts.requestTimeout <= 0 || opts.contextTimeout <= 0 {
 		return errors.New("all timeout/TTL values must be positive")
 	}
 
@@ -185,8 +190,68 @@ func runSessionProbe(ctx context.Context, args []string) error {
 	fmt.Printf("[4/4] NanoTransportPreferenceVersion: %d\n", validation.Response.NanoTransportPreferenceVersion)
 	fmt.Println("[4/4] SessionValidation: OK")
 
+	if !opts.contextProbe {
+		fmt.Println()
+		fmt.Println("[OK] S23 accepted PLATFORM /SessionValidation; ready for ContextSource probing.")
+		return nil
+	}
+
 	fmt.Println()
-	fmt.Println("[OK] S23 accepted PLATFORM /SessionValidation; ready for ContextSource probing.")
+	fmt.Println("[context] Sending clipboard tag 9 through PLATFORM /Context/Publish...")
+	contextResult, err := bootstrap.ProbeClipboardContextPublish(
+		ctx,
+		cloud.Relay,
+		target.ID,
+		resumed.Identity.DeviceID,
+		opts.contextTimeout,
+	)
+	if err != nil {
+		return fmt.Errorf("ContextSource probe: %w", err)
+	}
+	fmt.Println("[context] /Context/Publish DCG acknowledgement: OK")
+
+	if contextResult.Route == "" {
+		fmt.Printf("[context] No matching PLATFORM follow-up within %s.\n", opts.contextTimeout)
+		fmt.Println("[OK] Context publication reached DCG transport; peer application reaction is still unknown.")
+		return nil
+	}
+
+	fmt.Printf("[context] Peer route: %s\n", contextResult.Route)
+	fmt.Printf("[context] Peer headers: %s\n", strings.Join(platformHeaderNames(contextResult.Headers), ", "))
+	if contextResult.RejectedReason != "" && contextResult.RejectedReason != "None" {
+		return fmt.Errorf("ContextSource probe rejected by peer: %s", contextResult.RejectedReason)
+	}
+
+	switch contextResult.Route {
+	case platform.RouteDeviceResourceManager:
+		fmt.Printf(
+			"[context] Device resource: %s / %s\n",
+			contextResult.ResourcePath,
+			deviceResourceRequestTypeName(contextResult.DeviceResourceRequestType),
+		)
+		fmt.Printf(
+			"[context] Clipboard request: %s\n",
+			clipboardRequestTypeName(contextResult.ClipboardRequestType),
+		)
+		if contextResult.ClipboardCorrelationID == contextResult.CorrelationID {
+			fmt.Println("[context] Clipboard correlation: matched publication")
+		} else if contextResult.ClipboardCorrelationID != "" {
+			fmt.Println("[context] Clipboard correlation: peer used a different id")
+		}
+		fmt.Println("[context] Probe answered ResourceHandlerNotRegistered; no clipboard content was sent.")
+		fmt.Println()
+		fmt.Println("[OK] S23 received the Context publication and requested /clipboard; ContextSource delivery is live.")
+
+	case platform.RouteContextPublish:
+		fmt.Printf("[context] Incoming MSAEP message tag: %d\n", contextResult.MessageTag)
+		fmt.Println()
+		fmt.Println("[OK] S23 returned ContextSource traffic after the publication.")
+
+	case platform.RouteInternalResponse:
+		fmt.Println()
+		fmt.Println("[OK] S23 returned an internal response for the Context publication.")
+	}
+
 	return nil
 }
 
@@ -217,4 +282,36 @@ func platformHeaderNames(headers []platform.Header) []string {
 		return []string{"none"}
 	}
 	return out
+}
+
+func deviceResourceRequestTypeName(requestType clipproto.DeviceResourceRequestType) string {
+	switch requestType {
+	case clipproto.DeviceResourceRequestGET:
+		return "GET"
+	case clipproto.DeviceResourceRequestUPDATE:
+		return "UPDATE"
+	case clipproto.DeviceResourceRequestDELETE:
+		return "DELETE"
+	case clipproto.DeviceResourceRequestSYNC:
+		return "SYNC"
+	default:
+		return fmt.Sprintf("unknown(%d)", requestType)
+	}
+}
+
+func clipboardRequestTypeName(requestType clipproto.RequestType) string {
+	switch requestType {
+	case clipproto.RequestContent:
+		return "CONTENT"
+	case clipproto.RequestFeatureOn:
+		return "FEATURE_ON"
+	case clipproto.RequestFeatureOff:
+		return "FEATURE_OFF"
+	case clipproto.RequestFeatureDisable:
+		return "FEATURE_DISABLE"
+	case clipproto.RequestStatus:
+		return "STATUS"
+	default:
+		return fmt.Sprintf("unknown(%d)", requestType)
+	}
 }

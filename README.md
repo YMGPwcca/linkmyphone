@@ -119,8 +119,7 @@ phone clipboard change
 
 ## Still required for an end-to-end usable client
 
-- live Microsoft/DCG integration validation of the new first-run bootstrap against a real account and linked phone
-- minimum platform `/SessionValidation` / ContextSource bootstrap required before clipboard traffic
+- live ContextSource / clipboard validation after the now-confirmed `/SessionValidation` path
 - Linux native clipboard backend
 - executable/daemon wiring and user configuration
 - reconnect/wake/token-refresh hardening for long-running parity with Phone Link
@@ -139,8 +138,9 @@ The first live Linux bootstrap probe against the Microsoft production services h
 - Windows sends Hub Relay packets with SignalR `InvokeAsync`, so Linux now tracks the matching Hub `Completion` for each DCG fragment send; diagnostics distinguish a Hub rejection from a Hub-accepted packet that never receives a peer DCG ACK.
 - Windows' wake path performs a pre-wake `SendConnectedAsync` flush and waits for its Hub Completion before Dispatcher/Wake; Linux now mirrors that ordering instead of waiting until `OnPartnerConnected` to send reciprocal presence.
 - Windows sends every Hub Relay operation with a non-null Hub Relay trace context (`TraceId` 32 hex chars, `ParentId` 16 hex chars, non-null `TraceState`); Linux now generates/normalizes the same shape for fragment, ACK, and partner-presence sends. An empty trace object can make the receiver fail before DCG packet processing and therefore before it emits an ACK.
+- with that trace shape fixed, the production S23 accepts a Linux PLATFORM `/SessionValidation` request and returns `/internal/response` with `SessionValidation`, `PersistentMessageChannel`, and `NanoTransportPreference`; the observed versions were PersistentMessagingChannel 14 and NanoTransportPreference 3.
 
-The remaining live validation point is reaching Hub Relay `OnConnected` after that transport fix.
+The next live validation point is the ContextSource delivery path used by clipboard PubSub traffic.
 
 ## Bootstrap probe
 
@@ -235,6 +235,42 @@ NanoTransportPreferenceVersion
 ```
 
 The CLI prints only capability/version information and platform header names; it does not dump the raw platform payload.
+
+### ContextSource clipboard probe
+
+After SessionValidation is working, enable the opt-in ContextSource probe:
+
+```bash
+go run ./cmd/phonelink-linux session-probe --context-probe
+```
+
+The extra probe sends the source-confirmed Windows PC clipboard publication shape without sending clipboard content:
+
+```text
+PLATFORM /Context/Publish
+  -> MSAEP message tag 9
+  -> PubSubPayload.Data
+  -> ClipboardResponseMessage(CLIPBOARD_CHANGE)
+```
+
+It then watches the linked Android peer for a relevant PLATFORM reaction. The strongest positive signal is:
+
+```text
+/DeviceResourceManager
+  resource: /clipboard
+  request: GET
+  clipboard request: CONTENT
+```
+
+The probe reports whether the Android correlation id matches the publication id. After observing a clipboard DRM request it replies with `ResourceHandlerNotRegistered`, so no clipboard content is returned and neither clipboard is intentionally modified.
+
+Useful override:
+
+```bash
+go run ./cmd/phonelink-linux session-probe --context-probe --context-timeout 15s
+```
+
+A timeout after the DCG acknowledgement is recorded as an observation rather than a transport failure: it means the `/Context/Publish` fragment reached the peer transport, but no matching PLATFORM follow-up was observed in the probe window.
 
 ## Test
 
