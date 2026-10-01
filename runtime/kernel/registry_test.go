@@ -491,3 +491,37 @@ func TestRegistryProviderFailureInvalidatesDependentStartCompletion(t *testing.T
 		t.Fatalf("stop instance-less degraded consumer: %v", err)
 	}
 }
+
+func TestRegistryUpdatePreservesStoppedLifecycleState(t *testing.T) {
+	module := &fakeModule{manifest: testManifest(t, "phonelink.stopped", "test.stopped")}
+	registry := NewRegistry(nil)
+	if err := registry.Create(module, FeatureRecord{
+		ID:      module.manifest.ID,
+		Enabled: true,
+		Config:  json.RawMessage(`{"value":1}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Start(context.Background(), module.manifest.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Stop(context.Background(), module.manifest.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	enabled := false
+	config := json.RawMessage(`{"value":2}`)
+	snapshot, err := registry.Update(module.manifest.ID, &enabled, &config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Enabled {
+		t.Fatalf("snapshot enabled=%t", snapshot.Enabled)
+	}
+	if snapshot.State != StateStopped {
+		t.Fatalf("snapshot state=%s want=%s", snapshot.State, StateStopped)
+	}
+	if string(snapshot.Config) != `{"value":2}` {
+		t.Fatalf("snapshot config=%s", snapshot.Config)
+	}
+}

@@ -137,9 +137,9 @@ phone clipboard change
 
 ## Still required for an end-to-end usable client
 
-- live validation of the new modular `feature` + `run` composition path against the already-confirmed clipboard protocol
+- live validation of live control-plane CRUD while the modular runtime remains connected
 - event-driven Wayland clipboard watching instead of polling
-- service/daemon packaging and a local runtime control bridge for applying desired-state CRUD without restart
+- service/daemon packaging
 - reconnect/wake/token-refresh hardening for long-running parity with Phone Link
 
 ## Production bootstrap validation
@@ -166,7 +166,7 @@ The first live Linux bootstrap probe against the Microsoft production services h
 - the modular `feature create --enabled` + `run` path was live-validated end to end on the S23: the shared phone host reached SessionValidation, `phonelink.clipboard` reached Ready, live capabilities were published, two-way clipboard traffic remained functional, and Ctrl+C performed a clean module shutdown;
 - the modular branch passed full `go test ./...` and `go test -race ./...` after the lifecycle/router/generation refactor.
 
-The next runtime milestone is a local control plane that applies feature CRUD to the running process without restart.
+The runtime now includes a local Unix control plane that applies feature CRUD to the running process without restart. The next validation milestone is live enable/disable/config-update/delete while the S23 session remains connected.
 
 ## Bootstrap probe
 
@@ -357,7 +357,9 @@ Then start all enabled modules over one shared Phone Link host session:
 go run ./cmd/phonelink-linux run
 ```
 
-The persistent CRUD commands update desired state. The current CLI applies that state when `run` starts; the in-process kernel already exposes live Create/Read/Update/Delete/Start/Stop lifecycle operations so a future local control bridge can apply the same model without changing feature contracts.
+The same commands work both offline and against a running daemon. When `run` is active, it owns a versioned Unix control socket next to the feature store (`runtime.sock`, mode `0600`). The CLI sends CRUD through that socket and the runtime reconciles persistence plus kernel lifecycle immediately. If no daemon owns the socket, the CLI falls back to offline desired-state edits.
+
+During live updates, enabled modules are stopped before configuration changes and restarted afterward. Enable/disable maps directly to Start/Stop, delete revokes the live module before removing persistence, and failed persistence triggers runtime rollback. The socket exists throughout daemon startup so commands cannot silently fall back offline while the process is still booting.
 
 If a feature implementation is removed from the build, a stale disabled record remains readable, disable-able, and delete-able. It cannot be enabled or reconfigured until the implementation is present again.
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/YMGPwcca/phonelink-linux/features"
+	"github.com/YMGPwcca/phonelink-linux/runtime/controlplane"
 	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
 )
 
@@ -62,6 +64,40 @@ func featureStoreFlag(fs *flag.FlagSet) (*string, error) {
 	return &value, nil
 }
 
+func callLiveRuntime(
+	statePath string,
+	request controlplane.Request,
+) (controlplane.Response, bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), controlplane.DefaultCallTimeout)
+	defer cancel()
+	response, err := controlplane.Call(
+		ctx,
+		controlplane.SocketPathForStore(statePath),
+		request,
+	)
+	if errors.Is(err, controlplane.ErrUnavailable) {
+		return controlplane.Response{}, false, nil
+	}
+	if err != nil {
+		return controlplane.Response{}, true, err
+	}
+	if !response.OK {
+		if response.Error == "" {
+			response.Error = "runtime rejected control request"
+		}
+		return response, true, errors.New(response.Error)
+	}
+	return response, true, nil
+}
+
+func snapshotMap(snapshots []kernel.Snapshot) map[string]kernel.Snapshot {
+	out := make(map[string]kernel.Snapshot, len(snapshots))
+	for _, snapshot := range snapshots {
+		out[snapshot.ID] = snapshot
+	}
+	return out
+}
+
 func runFeatureList(args []string) error {
 	fs := flag.NewFlagSet("feature list", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -74,6 +110,60 @@ func runFeatureList(args []string) error {
 	}
 	if fs.NArg() != 0 {
 		return fmt.Errorf("unexpected arguments: %s", strings.Join(fs.Args(), " "))
+	}
+
+	liveResponse, live, err := callLiveRuntime(*statePath, controlplane.Request{
+		Version:   controlplane.ProtocolVersion,
+		Operation: controlplane.OperationList,
+	})
+	if err != nil {
+		return err
+	}
+	if live {
+		installed := make(map[string]kernel.FeatureRecord)
+		for _, record := range liveResponse.Records {
+			installed[record.ID] = record
+		}
+		liveStates := snapshotMap(liveResponse.Snapshots)
+		definitions, err := features.Catalog()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Feature registry: %s (live)\n", *statePath)
+		for _, definition := range definitions {
+			record, exists := installed[definition.Manifest.ID]
+			snapshot, running := liveStates[definition.Manifest.ID]
+			if running {
+				fmt.Printf(
+					"%s %s installed=%t enabled=%t state=%s epoch=%d\n",
+					definition.Manifest.ID,
+					definition.Manifest.Version,
+					exists,
+					exists && record.Enabled,
+					snapshot.State,
+					snapshot.Epoch,
+				)
+			} else {
+				fmt.Printf(
+					"%s %s installed=%t enabled=%t state=unavailable\n",
+					definition.Manifest.ID,
+					definition.Manifest.Version,
+					exists,
+					exists && record.Enabled,
+				)
+			}
+			delete(installed, definition.Manifest.ID)
+		}
+		unknownIDs := make([]string, 0, len(installed))
+		for id := range installed {
+			unknownIDs = append(unknownIDs, id)
+		}
+		sort.Strings(unknownIDs)
+		for _, id := range unknownIDs {
+			record := installed[id]
+			fmt.Printf("%s unknown installed=true enabled=%t state=unavailable\n", id, record.Enabled)
+		}
+		return nil
 	}
 
 	store, err := kernel.OpenFeatureStore(*statePath)
@@ -127,6 +217,38 @@ func runFeatureGet(args []string) error {
 		return errors.New("feature get requires exactly one ID")
 	}
 	id := fs.Arg(0)
+	liveResponse, live, err := callLiveRuntime(*statePath, controlplane.Request{
+		Version:   controlplane.ProtocolVersion,
+		Operation: controlplane.OperationGet,
+		ID:        id,
+	})
+	if err != nil {
+		return err
+	}
+	if live {
+		definition, definitionErr := features.Find(id)
+		payload := struct {
+			Manifest  *kernel.Manifest      `json:"manifest,omitempty"`
+			Installed bool                  `json:"installed"`
+			Record    *kernel.FeatureRecord `json:"record,omitempty"`
+			Runtime   *kernel.Snapshot      `json:"runtime,omitempty"`
+		}{
+			Installed: liveResponse.Record != nil,
+			Record:    liveResponse.Record,
+			Runtime:   liveResponse.Snapshot,
+		}
+		if definitionErr == nil {
+			manifest := definition.Manifest
+			payload.Manifest = &manifest
+		}
+		data, err := json.MarshalIndent(payload, "", "  ")
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(data))
+		return nil
+	}
+
 	store, err := kernel.OpenFeatureStore(*statePath)
 	if err != nil {
 		return err
@@ -190,15 +312,35 @@ func runFeatureCreate(args []string) error {
 		return err
 	}
 
+	record := kernel.FeatureRecord{
+		ID:      id,
+		Enabled: enabled,
+		Config:  config,
+	}
+	liveResponse, live, err := callLiveRuntime(*statePath, controlplane.Request{
+		Version:   controlplane.ProtocolVersion,
+		Operation: controlplane.OperationCreate,
+		Record:    &record,
+	})
+	if err != nil {
+		return err
+	}
+	if live {
+		state := kernel.StateValidated
+		epoch := uint64(0)
+		if liveResponse.Snapshot != nil {
+			state = liveResponse.Snapshot.State
+			epoch = liveResponse.Snapshot.Epoch
+		}
+		fmt.Printf("created %s enabled=%t live_state=%s epoch=%d\n", id, enabled, state, epoch)
+		return nil
+	}
+
 	store, err := kernel.OpenFeatureStore(*statePath)
 	if err != nil {
 		return err
 	}
-	if err := store.Create(kernel.FeatureRecord{
-		ID:      id,
-		Enabled: enabled,
-		Config:  config,
-	}); err != nil {
+	if err := store.Create(record); err != nil {
 		return err
 	}
 	fmt.Printf("created %s enabled=%t\n", id, enabled)
@@ -258,6 +400,35 @@ func runFeatureUpdate(args []string) error {
 		config = &raw
 	}
 
+	liveResponse, live, err := callLiveRuntime(*statePath, controlplane.Request{
+		Version:   controlplane.ProtocolVersion,
+		Operation: controlplane.OperationUpdate,
+		ID:        id,
+		Enabled:   enabled,
+		Config:    config,
+	})
+	if err != nil {
+		return err
+	}
+	if live {
+		record := liveResponse.Record
+		if record == nil {
+			return errors.New("runtime returned no updated feature record")
+		}
+		if liveResponse.Snapshot != nil {
+			fmt.Printf(
+				"updated %s enabled=%t live_state=%s epoch=%d\n",
+				record.ID,
+				record.Enabled,
+				liveResponse.Snapshot.State,
+				liveResponse.Snapshot.Epoch,
+			)
+		} else {
+			fmt.Printf("updated %s enabled=%t live_state=unavailable\n", record.ID, record.Enabled)
+		}
+		return nil
+	}
+
 	store, err := kernel.OpenFeatureStore(*statePath)
 	if err != nil {
 		return err
@@ -284,6 +455,19 @@ func runFeatureDelete(args []string) error {
 		return errors.New("feature delete requires exactly one ID")
 	}
 	id := fs.Arg(0)
+	_, live, err := callLiveRuntime(*statePath, controlplane.Request{
+		Version:   controlplane.ProtocolVersion,
+		Operation: controlplane.OperationDelete,
+		ID:        id,
+	})
+	if err != nil {
+		return err
+	}
+	if live {
+		fmt.Printf("deleted %s live=true\n", id)
+		return nil
+	}
+
 	store, err := kernel.OpenFeatureStore(*statePath)
 	if err != nil {
 		return err
@@ -318,6 +502,34 @@ func runFeatureToggle(args []string, enabled bool) error {
 			return fmt.Errorf("cannot enable unavailable feature %s: %w", id, err)
 		}
 	}
+	liveResponse, live, err := callLiveRuntime(*statePath, controlplane.Request{
+		Version:   controlplane.ProtocolVersion,
+		Operation: controlplane.OperationUpdate,
+		ID:        id,
+		Enabled:   &enabled,
+	})
+	if err != nil {
+		return err
+	}
+	if live {
+		record := liveResponse.Record
+		if record == nil {
+			return errors.New("runtime returned no updated feature record")
+		}
+		if liveResponse.Snapshot != nil {
+			fmt.Printf(
+				"%s enabled=%t live_state=%s epoch=%d\n",
+				record.ID,
+				record.Enabled,
+				liveResponse.Snapshot.State,
+				liveResponse.Snapshot.Epoch,
+			)
+		} else {
+			fmt.Printf("%s enabled=%t live_state=unavailable\n", record.ID, record.Enabled)
+		}
+		return nil
+	}
+
 	store, err := kernel.OpenFeatureStore(*statePath)
 	if err != nil {
 		return err

@@ -15,6 +15,7 @@ import (
 	"github.com/YMGPwcca/phonelink-linux/bootstrap"
 	"github.com/YMGPwcca/phonelink-linux/features"
 	clipboardfeature "github.com/YMGPwcca/phonelink-linux/features/clipboard"
+	"github.com/YMGPwcca/phonelink-linux/runtime/controlplane"
 	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
 	"github.com/YMGPwcca/phonelink-linux/runtime/phonehost"
 )
@@ -107,9 +108,6 @@ func runRuntime(ctx context.Context, args []string) error {
 			enabled++
 		}
 	}
-	if enabled == 0 {
-		return errors.New("no enabled features; use 'phonelink-linux feature create --enabled <id>' or 'feature enable <id>'")
-	}
 
 	fmt.Println("Phone Link Linux modular runtime")
 	fmt.Printf("State: %s\n", hostOpts.statePath)
@@ -117,7 +115,7 @@ func runRuntime(ctx context.Context, args []string) error {
 	fmt.Printf("Enabled modules: %d\n", enabled)
 	fmt.Println()
 
-	return runFeatureRuntime(ctx, hostOpts.config(), records)
+	return runManagedFeatureRuntime(ctx, hostOpts.config(), store)
 }
 
 func runClipboardSync(ctx context.Context, args []string) error {
@@ -167,6 +165,131 @@ func runClipboardSync(ctx context.Context, args []string) error {
 	fmt.Println()
 
 	return runFeatureRuntime(ctx, hostOpts.config(), []kernel.FeatureRecord{record})
+}
+
+func runManagedFeatureRuntime(
+	ctx context.Context,
+	hostConfig phonehost.Config,
+	store *kernel.FeatureStore,
+) (runErr error) {
+	reporter := consoleReporter{}
+	socketPath := controlplane.SocketPathForStore(store.Path())
+	switchHandler := controlplane.NewSwitchHandler(controlplane.HandlerFunc(
+		func(controlplane.Request) controlplane.Response {
+			return controlplane.Failure(errors.New("runtime is starting; retry the feature command"))
+		},
+	))
+	server, err := controlplane.Listen(socketPath, switchHandler)
+	if err != nil {
+		return err
+	}
+	defer server.Close()
+
+	controlErr := make(chan error, 1)
+	go func() {
+		controlErr <- server.Serve(ctx)
+	}()
+
+	session, err := phonehost.Open(ctx, hostConfig, reporter)
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+
+	registry := kernel.NewRegistry(reporter)
+	controller := newRuntimeController(ctx, store, registry, session, reporter)
+	if err := controller.load(ctx); err != nil {
+		return err
+	}
+
+	// Stop accepting new mutations before tearing modules down. Existing
+	// control requests inherit ctx and are canceled with runtime shutdown.
+	defer func() {
+		switchHandler.Set(controlplane.HandlerFunc(
+			func(controlplane.Request) controlplane.Response {
+				return controlplane.Failure(errors.New("runtime is stopping"))
+			},
+		))
+		// Close the control plane first and wait for in-flight handlers. Their
+		// operation contexts inherit ctx, so runtime cancellation aborts any
+		// network/lifecycle wait before module teardown begins.
+		if err := server.Close(); err != nil && runErr == nil {
+			runErr = err
+		}
+		stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := registry.StopAll(stopCtx); err != nil && runErr == nil {
+			runErr = err
+		}
+	}()
+
+	switchHandler.Set(controller)
+
+	printRuntimeState(registry)
+	fmt.Printf("[runtime] Control socket: %s\n", socketPath)
+	fmt.Println()
+	fmt.Println("[OK] Modular runtime is running. Feature CRUD is live. Press Ctrl+C to stop.")
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-session.Errors():
+			if err == nil || errors.Is(err, context.Canceled) {
+				return nil
+			}
+			return fmt.Errorf("Phone Link host: %w", err)
+		case err := <-controlErr:
+			if err == nil || errors.Is(err, context.Canceled) {
+				if ctx.Err() != nil {
+					return nil
+				}
+				return errors.New("controlplane: server exited")
+			}
+			return err
+		case runtimeErr := <-registry.Errors():
+			kernel.Report(reporter, kernel.Event{
+				ModuleID: runtimeErr.ModuleID,
+				Level:    "error",
+				Message:  "module failed; shared runtime remains online",
+				Fields: map[string]string{
+					"error": runtimeErr.Err.Error(),
+				},
+			})
+		}
+	}
+}
+
+func printRuntimeState(registry *kernel.Registry) {
+	ready := registry.List()
+	fmt.Println()
+	fmt.Println("[runtime] Modules:")
+	if len(ready) == 0 {
+		fmt.Println("  (none installed)")
+	}
+	for _, snapshot := range ready {
+		fmt.Printf(
+			"  %s %s enabled=%t state=%s epoch=%d\n",
+			snapshot.ID,
+			snapshot.Version,
+			snapshot.Enabled,
+			snapshot.State,
+			snapshot.Epoch,
+		)
+	}
+	capabilities := registry.Capabilities().Snapshot()
+	fmt.Println("[runtime] Live capabilities:")
+	if len(capabilities) == 0 {
+		fmt.Println("  (none)")
+	}
+	for _, capability := range capabilities {
+		fmt.Printf(
+			"  %s@%s <- %s\n",
+			capability.ID,
+			capability.ContractVersion,
+			capability.ProviderID,
+		)
+	}
 }
 
 func runFeatureRuntime(

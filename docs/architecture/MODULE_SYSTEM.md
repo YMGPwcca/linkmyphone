@@ -133,7 +133,17 @@ phonelink-linux feature enable phonelink.clipboard
 phonelink-linux feature delete phonelink.clipboard
 ```
 
-These commands mutate persistent desired state. `phonelink-linux run` loads that state when the runtime starts. The in-process kernel also exposes Create/Read/Update/Delete/Start/Stop APIs so a future local control bridge can apply the same operations live without changing feature contracts.
+When no daemon is running, these commands mutate persistent desired state directly. When `phonelink-linux run` owns the matching store, it also owns a versioned Unix socket at `runtime.sock` in the same directory. The CLI routes CRUD through that socket and the runtime applies persistence and lifecycle reconciliation in one serialized control path.
+
+The socket directory is forced to `0700` and the socket to `0600`. A stale socket is removed only when a local connection proves there is no live runtime. The socket is reserved before Phone Link bootstrap begins and initially responds with `runtime is starting`; this prevents CLI commands from falling back to offline writes while a daemon is still booting. During shutdown, the handler switches to `runtime is stopping`, in-flight mutations inherit runtime cancellation, and the server drains them before module teardown.
+
+Live update semantics are:
+
+- create: validate/build/register, optionally Start, then persist; persistence failure rolls the runtime entry back;
+- update config: Stop an active instance, Update config, Start again when enabled, then persist; failures restore the previous runtime record;
+- enable/disable: Update desired enabled state and Start/Stop immediately;
+- delete: Delete/Stop the runtime entry first, then remove persistence; persistence failure restores the runtime entry;
+- list/get: return both persisted records and live kernel snapshots, including state and epoch.
 
 A removed implementation does not make its persisted record undeletable: stale records remain readable, disable-able, and delete-able. They cannot be enabled or reconfigured until an implementation with that ID is present again.
 

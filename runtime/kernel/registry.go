@@ -180,7 +180,14 @@ func (r *Registry) Update(id string, enabled *bool, config *json.RawMessage) (Sn
 		entry.enabled = *enabled
 	}
 	entry.config = nextConfig
-	entry.state = StateValidated
+	// Updating desired state/config for an already-stopped module must not
+	// erase the lifecycle fact that it is stopped. Start() does not require
+	// StateValidated and will transition through Resolved/Starting itself.
+	// Other non-live terminal/error states are reset to Validated so an update
+	// can clear stale failure/blocking diagnostics before the next start.
+	if entry.state != StateStopped {
+		entry.state = StateValidated
+	}
 	entry.lastErr = ""
 	return snapshotEntry(entry), nil
 }
