@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -118,5 +119,179 @@ func TestListenReplacesStaleNonSocketPath(t *testing.T) {
 	}
 	if info.Mode()&os.ModeSocket == 0 {
 		t.Fatalf("mode=%v is not a Unix socket", info.Mode())
+	}
+}
+
+func TestSwitchHandlerTransitionsWithoutReplacingSocket(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "runtime.sock")
+	switcher := NewSwitchHandler(HandlerFunc(func(Request) Response {
+		return Failure(errors.New("runtime is starting"))
+	}))
+	server, err := Listen(path, switcher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		_ = server.Serve(ctx)
+	}()
+
+	first, err := Call(context.Background(), path, Request{
+		Version:   ProtocolVersion,
+		Operation: OperationList,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.OK || first.Error != "runtime is starting" {
+		t.Fatalf("starting response=%#v", first)
+	}
+
+	switcher.Set(HandlerFunc(func(Request) Response {
+		response := Success()
+		response.Snapshots = []kernel.Snapshot{{
+			ID:      "phonelink.test",
+			State:   kernel.StateReady,
+			Enabled: true,
+		}}
+		return response
+	}))
+
+	second, err := Call(context.Background(), path, Request{
+		Version:   ProtocolVersion,
+		Operation: OperationList,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !second.OK || len(second.Snapshots) != 1 ||
+		second.Snapshots[0].State != kernel.StateReady {
+		t.Fatalf("ready response=%#v", second)
+	}
+}
+
+func TestServerCloseStopsServeWithoutContextCancellation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "runtime.sock")
+	server, err := Listen(path, HandlerFunc(func(Request) Response {
+		return Success()
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	done := make(chan error, 1)
+	go func() {
+		done <- server.Serve(ctx)
+	}()
+
+	if err := server.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Serve err=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Serve did not stop after Server.Close")
+	}
+}
+
+func TestHandlerPanicReturnsFailureAndServerSurvives(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "runtime.sock")
+	server, err := Listen(path, HandlerFunc(func(request Request) Response {
+		if request.Operation == OperationDelete {
+			panic("boom")
+		}
+		return Success()
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		_ = server.Serve(ctx)
+	}()
+
+	panicResponse, err := Call(context.Background(), path, Request{
+		Version:   ProtocolVersion,
+		Operation: OperationDelete,
+		ID:        "phonelink.test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if panicResponse.OK || panicResponse.Error == "" {
+		t.Fatalf("panic response=%#v", panicResponse)
+	}
+
+	healthy, err := Call(context.Background(), path, Request{
+		Version:   ProtocolVersion,
+		Operation: OperationList,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !healthy.OK {
+		t.Fatalf("server did not survive handler panic: %#v", healthy)
+	}
+}
+
+func TestSocketPathIsScopedToFeatureStore(t *testing.T) {
+	// Keep this deliberately short so this test exercises the preferred XDG
+	// branch. The long-path fallback is covered separately below.
+	runtimeDir := "/tmp/pll-xdg"
+	t.Setenv("XDG_RUNTIME_DIR", runtimeDir)
+
+	storeDir := t.TempDir()
+	first := SocketPathForStore(filepath.Join(storeDir, "features.json"))
+	second := SocketPathForStore(filepath.Join(storeDir, "other.json"))
+	if first == second {
+		t.Fatalf("socket collision: %q", first)
+	}
+	if filepath.Dir(first) != filepath.Join(runtimeDir, "phonelink-linux") {
+		t.Fatalf("runtime dir=%q", filepath.Dir(first))
+	}
+	if len(filepath.Base(first)) != 24+len(".sock") {
+		t.Fatalf("socket name=%q", filepath.Base(first))
+	}
+}
+
+func TestSocketPathRemainsShortForDeepFeatureStore(t *testing.T) {
+	longRuntimeDir := filepath.Join(
+		t.TempDir(),
+		"an-intentionally-very-long-runtime-directory-name",
+		"another-long-component",
+	)
+	t.Setenv("XDG_RUNTIME_DIR", longRuntimeDir)
+
+	deep := t.TempDir()
+	for index := 0; index < 12; index++ {
+		deep = filepath.Join(deep, "very-long-feature-store-directory-name")
+	}
+	storePath := filepath.Join(deep, "features.json")
+	socketPath := SocketPathForStore(storePath)
+	if len(socketPath) >= maxUnixSocketPathLength {
+		t.Fatalf("socket path too long (%d): %q", len(socketPath), socketPath)
+	}
+	if !strings.HasPrefix(socketPath, "/tmp/phonelink-linux-") {
+		t.Fatalf("long XDG runtime path did not use short fallback: %q", socketPath)
+	}
+
+	server, err := Listen(socketPath, HandlerFunc(func(Request) Response {
+		return Success()
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Close(); err != nil {
+		t.Fatal(err)
 	}
 }

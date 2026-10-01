@@ -1,16 +1,22 @@
 package controlplane
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
 )
 
 const (
-	ProtocolVersion = 1
-	MaxRequestBytes = 1 << 20
+	ProtocolVersion         = 1
+	MaxRequestBytes         = 1 << 20
+	maxUnixSocketPathLength = 100
 )
 
 type Operation string
@@ -58,7 +64,30 @@ func (f HandlerFunc) HandleControl(request Request) Response {
 }
 
 func SocketPathForStore(storePath string) string {
-	return filepath.Join(filepath.Dir(storePath), "runtime.sock")
+	clean := filepath.Clean(storePath)
+	if absolute, err := filepath.Abs(clean); err == nil {
+		clean = absolute
+	}
+
+	sum := sha256.Sum256([]byte(clean))
+	socketName := hex.EncodeToString(sum[:12]) + ".sock"
+
+	root := strings.TrimSpace(os.Getenv("XDG_RUNTIME_DIR"))
+	if root != "" {
+		candidate := filepath.Join(root, "phonelink-linux", socketName)
+		if len(candidate) < maxUnixSocketPathLength {
+			return candidate
+		}
+	}
+
+	// Linux sockaddr_un paths are small (typically 108 bytes including the
+	// terminator). Use a deliberately short, user-scoped fallback instead of
+	// inheriting an arbitrarily deep XDG/TMP path.
+	return filepath.Join(
+		"/tmp",
+		"phonelink-linux-"+strconv.Itoa(os.Getuid()),
+		socketName,
+	)
 }
 
 func Success() Response {

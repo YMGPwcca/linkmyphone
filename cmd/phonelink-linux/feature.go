@@ -227,6 +227,11 @@ func runFeatureGet(args []string) error {
 	}
 	if live {
 		definition, definitionErr := features.Find(id)
+		if definitionErr != nil &&
+			liveResponse.Record == nil &&
+			liveResponse.Snapshot == nil {
+			return fmt.Errorf("%w: %s", kernel.ErrFeatureNotFound, id)
+		}
 		payload := struct {
 			Manifest  *kernel.Manifest      `json:"manifest,omitempty"`
 			Installed bool                  `json:"installed"`

@@ -133,7 +133,7 @@ phonelink-linux feature enable phonelink.clipboard
 phonelink-linux feature delete phonelink.clipboard
 ```
 
-When no daemon is running, these commands mutate persistent desired state directly. When `phonelink-linux run` owns the matching store, it also owns a versioned Unix socket at `runtime.sock` in the same directory. The CLI routes CRUD through that socket and the runtime applies persistence and lifecycle reconciliation in one serialized control path.
+When no daemon is running, these commands mutate persistent desired state directly. When `phonelink-linux run` owns the matching store, it also owns a versioned Unix socket keyed by the absolute feature-store path. The preferred location is `$XDG_RUNTIME_DIR/phonelink-linux/<store-hash>.sock`; a short `/tmp/phonelink-linux-<uid>/<store-hash>.sock` fallback is used when necessary. The CLI routes CRUD through that socket and the runtime applies persistence and lifecycle reconciliation in one serialized control path.
 
 The socket directory is forced to `0700` and the socket to `0600`. A stale socket is removed only when a local connection proves there is no live runtime. The socket is reserved before Phone Link bootstrap begins and initially responds with `runtime is starting`; this prevents CLI commands from falling back to offline writes while a daemon is still booting. During shutdown, the handler switches to `runtime is stopping`, in-flight mutations inherit runtime cancellation, and the server drains them before module teardown.
 
@@ -146,6 +146,20 @@ Live update semantics are:
 - list/get: return both persisted records and live kernel snapshots, including state and epoch.
 
 A removed implementation does not make its persisted record undeletable: stale records remain readable, disable-able, and delete-able. They cannot be enabled or reconfigured until an implementation with that ID is present again.
+
+### Live validation status
+
+The control path has been validated against a production S23 while one `phonelink-linux run` process remained alive throughout:
+
+1. `feature list` and `feature get` reported the installed record plus live `Ready` snapshot;
+2. `feature disable phonelink.clipboard` stopped the module in-process and persisted `enabled=false`;
+3. `feature enable phonelink.clipboard` started a replacement instance without reconnecting the shared Phone Link host;
+4. a live config update changed the poll interval, stopped/restarted the module, and returned a higher epoch;
+5. `feature delete phonelink.clipboard` removed the running module and persisted record while the host/session remained online;
+6. `feature create --enabled phonelink.clipboard` registered and started a new entry in the same process;
+7. final process shutdown stopped the recreated module cleanly.
+
+Epochs are per registry entry. Restarting an existing entry increments its epoch; deleting that entry and creating a new one intentionally begins a fresh epoch sequence at 1.
 
 ## Safe feature removal
 

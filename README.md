@@ -137,7 +137,6 @@ phone clipboard change
 
 ## Still required for an end-to-end usable client
 
-- live validation of live control-plane CRUD while the modular runtime remains connected
 - event-driven Wayland clipboard watching instead of polling
 - service/daemon packaging
 - reconnect/wake/token-refresh hardening for long-running parity with Phone Link
@@ -164,9 +163,13 @@ The first live Linux bootstrap probe against the Microsoft production services h
 - the `wl-copy` fork/pipe latency bug was fixed, phone-to-Linux logging became immediate, and reflected clipboard echo was eliminated;
 - the pre-modular continuous path passed both `go test ./...` and `go test -race ./...`;
 - the modular `feature create --enabled` + `run` path was live-validated end to end on the S23: the shared phone host reached SessionValidation, `phonelink.clipboard` reached Ready, live capabilities were published, two-way clipboard traffic remained functional, and Ctrl+C performed a clean module shutdown;
-- the modular branch passed full `go test ./...` and `go test -race ./...` after the lifecycle/router/generation refactor.
+- live control-plane CRUD was validated end to end without restarting the runtime process: `list/get` returned live state, `disable` transitioned Ready -> Stopped and revoked the module, `enable` started it again, a live config update stopped/restarted the module and increased its epoch, `delete` removed the running module while the shared Phone Link session stayed alive, and `create --enabled` instantiated a fresh Ready module again;
+- after delete + create, the new module entry starts a fresh epoch sequence at 1 by design; this is distinct from restarting the same registry entry, where the epoch increases monotonically;
+- the live runtime control socket was observed at the hashed XDG path (`/run/user/<uid>/phonelink-linux/<store-hash>.sock`) and the entire disable -> enable -> config update -> delete -> create sequence completed while the original `phonelink-linux run` process remained connected to the same S23;
+- final Ctrl+C after the live CRUD sequence shut the recreated clipboard module down cleanly with `module stopped`;
+- the modular/control-plane branch passed targeted stress tests plus full `go test ./...` and `go test -race ./...` after the lifecycle, router, generation, Unix-socket, and live-reconcile changes.
 
-The runtime now includes a local Unix control plane that applies feature CRUD to the running process without restart. The next validation milestone is live enable/disable/config-update/delete while the S23 session remains connected.
+The modular runtime and live feature CRUD path are now validated end to end. Remaining runtime work is focused on event-driven local clipboard observation, service packaging, and long-running reconnect/token-refresh resilience.
 
 ## Bootstrap probe
 
@@ -357,7 +360,7 @@ Then start all enabled modules over one shared Phone Link host session:
 go run ./cmd/phonelink-linux run
 ```
 
-The same commands work both offline and against a running daemon. When `run` is active, it owns a versioned Unix control socket next to the feature store (`runtime.sock`, mode `0600`). The CLI sends CRUD through that socket and the runtime reconciles persistence plus kernel lifecycle immediately. If no daemon owns the socket, the CLI falls back to offline desired-state edits.
+The same commands work both offline and against a running daemon. When `run` is active, it owns a versioned Unix control socket keyed by the absolute feature-store path. The preferred location is `$XDG_RUNTIME_DIR/phonelink-linux/<store-hash>.sock` (mode `0600`); if that path would exceed the Unix socket path limit or `XDG_RUNTIME_DIR` is unavailable, it falls back to `/tmp/phonelink-linux-<uid>/<store-hash>.sock`. The CLI sends CRUD through that socket and the runtime reconciles persistence plus kernel lifecycle immediately. If no daemon owns the socket, the CLI falls back to offline desired-state edits.
 
 During live updates, enabled modules are stopped before configuration changes and restarted afterward. Enable/disable maps directly to Start/Stop, delete revokes the live module before removing persistence, and failed persistence triggers runtime rollback. The socket exists throughout daemon startup so commands cannot silently fall back offline while the process is still booting.
 

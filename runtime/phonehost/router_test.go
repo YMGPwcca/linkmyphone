@@ -205,3 +205,42 @@ func TestSessionSubscribeStartsRouterAfterRegistration(t *testing.T) {
 		t.Fatal("router did not deliver message after first subscription")
 	}
 }
+
+func TestRouterRunDrainsWithoutSubscribers(t *testing.T) {
+	transport := newFakeTransport()
+	transport.recv = make(chan relay.Received)
+	router := newRouter(transport)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- router.Run(ctx)
+	}()
+
+	sent := make(chan struct{})
+	go func() {
+		transport.recv <- relay.Received{
+			Source:               "phone",
+			MessageID:            1,
+			TransportMessageType: dcg.TransportMessageTypePlatform,
+			Payload:              []byte("unmatched"),
+		}
+		close(sent)
+	}()
+
+	select {
+	case <-sent:
+	case <-time.After(time.Second):
+		t.Fatal("router did not drain raw relay traffic without subscribers")
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("router err=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("router did not stop after cancellation")
+	}
+}

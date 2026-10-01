@@ -198,12 +198,9 @@ func runManagedFeatureRuntime(
 
 	registry := kernel.NewRegistry(reporter)
 	controller := newRuntimeController(ctx, store, registry, session, reporter)
-	if err := controller.load(ctx); err != nil {
-		return err
-	}
 
-	// Stop accepting new mutations before tearing modules down. Existing
-	// control requests inherit ctx and are canceled with runtime shutdown.
+	// Register teardown before loading desired state so a partial startup
+	// failure still revokes any modules that already reached Ready.
 	defer func() {
 		switchHandler.Set(controlplane.HandlerFunc(
 			func(controlplane.Request) controlplane.Response {
@@ -223,6 +220,9 @@ func runManagedFeatureRuntime(
 		}
 	}()
 
+	if err := controller.load(ctx); err != nil {
+		return err
+	}
 	switchHandler.Set(controller)
 
 	printRuntimeState(registry)

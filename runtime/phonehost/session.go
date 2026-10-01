@@ -54,9 +54,13 @@ func (s *Session) Subscribe(name string, matcher Matcher, queueSize int) (*Endpo
 	if s == nil || s.router == nil {
 		return nil, errors.New("phonehost: session router is unavailable")
 	}
-	endpoint, err := s.router.Subscribe(name, matcher, queueSize)
-	if err != nil {
-		return nil, err
+	s.ensureRouting()
+	return s.router.Subscribe(name, matcher, queueSize)
+}
+
+func (s *Session) ensureRouting() {
+	if s == nil || s.router == nil {
+		return
 	}
 	s.routingOnce.Do(func() {
 		go func() {
@@ -66,7 +70,6 @@ func (s *Session) Subscribe(name string, matcher Matcher, queueSize int) (*Endpo
 			}
 		}()
 	})
-	return endpoint, nil
 }
 
 func (s *Session) Errors() <-chan error {
@@ -230,6 +233,11 @@ func Open(ctx context.Context, cfg Config, reporter kernel.Reporter) (*Session, 
 		Region:          cloud.Region,
 	}
 	session.router = newRouter(cloud.Relay)
+	// The host is the sole owner of the raw relay receive stream even when no
+	// feature is enabled. Keep draining unmatched application traffic so a
+	// zero-module runtime (or disabling the final module) cannot backpressure
+	// relay ACK/completion processing.
+	session.ensureRouting()
 
 	go func() {
 		select {

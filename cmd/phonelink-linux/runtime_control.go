@@ -131,8 +131,11 @@ func (c *runtimeController) HandleControl(request controlplane.Request) controlp
 func (c *runtimeController) handleGet(id string) controlplane.Response {
 	record, recordErr := c.store.Read(id)
 	snapshot, snapshotErr := c.registry.Read(id)
-	if recordErr != nil && snapshotErr != nil {
+	if recordErr != nil && !errors.Is(recordErr, kernel.ErrFeatureNotFound) {
 		return controlplane.Failure(recordErr)
+	}
+	if snapshotErr != nil && !errors.Is(snapshotErr, kernel.ErrFeatureNotFound) {
+		return controlplane.Failure(snapshotErr)
 	}
 	response := controlplane.Success()
 	if recordErr == nil {

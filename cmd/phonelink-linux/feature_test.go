@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/YMGPwcca/phonelink-linux/runtime/controlplane"
 	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
 )
 
@@ -103,5 +107,55 @@ func TestFeatureCommandCanDisableAndDeleteStaleRecord(t *testing.T) {
 		"phonelink.retired",
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestFeatureCommandDoesNotFallbackOfflineWhenRuntimeRejectsMutation(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	statePath := filepath.Join(t.TempDir(), "features.json")
+	store, err := kernel.OpenFeatureStore(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Create(kernel.FeatureRecord{
+		ID:      "phonelink.retired",
+		Enabled: false,
+		Config:  json.RawMessage(`{}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	socketPath := controlplane.SocketPathForStore(statePath)
+	server, err := controlplane.Listen(
+		socketPath,
+		controlplane.HandlerFunc(func(controlplane.Request) controlplane.Response {
+			return controlplane.Failure(errors.New("runtime is starting; retry the feature command"))
+		}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		_ = server.Serve(ctx)
+	}()
+
+	err = runFeatureDelete([]string{
+		"--state", statePath,
+		"phonelink.retired",
+	})
+	if err == nil || !strings.Contains(err.Error(), "runtime is starting") {
+		t.Fatalf("delete err=%v", err)
+	}
+
+	reopened, err := kernel.OpenFeatureStore(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reopened.Read("phonelink.retired"); err != nil {
+		t.Fatalf("offline fallback mutated store despite live runtime rejection: %v", err)
 	}
 }

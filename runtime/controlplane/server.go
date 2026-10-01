@@ -26,6 +26,7 @@ type Server struct {
 	clients chan struct{}
 	wg      sync.WaitGroup
 	once    sync.Once
+	done    chan struct{}
 }
 
 func Listen(path string, handler Handler) (*Server, error) {
@@ -79,6 +80,7 @@ func Listen(path string, handler Handler) (*Server, error) {
 		listener: listener,
 		handler:  handler,
 		clients:  make(chan struct{}, DefaultMaxClients),
+		done:     make(chan struct{}),
 	}, nil
 }
 
@@ -88,16 +90,29 @@ func (s *Server) Serve(ctx context.Context) error {
 	}
 
 	go func() {
-		<-ctx.Done()
+		select {
+		case <-ctx.Done():
+		case <-s.done:
+		}
 		_ = s.listener.Close()
 	}()
 
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
-			if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
+			if ctx.Err() != nil {
 				s.wg.Wait()
 				return ctx.Err()
+			}
+			select {
+			case <-s.done:
+				s.wg.Wait()
+				return nil
+			default:
+			}
+			if errors.Is(err, net.ErrClosed) {
+				s.wg.Wait()
+				return nil
 			}
 			return fmt.Errorf("controlplane: accept: %w", err)
 		}
@@ -126,6 +141,7 @@ func (s *Server) Close() error {
 	}
 	var closeErr error
 	s.once.Do(func() {
+		close(s.done)
 		if s.listener != nil {
 			if err := s.listener.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
 				closeErr = err
@@ -140,6 +156,15 @@ func (s *Server) Close() error {
 }
 
 func (s *Server) handleConnection(conn net.Conn) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			_ = json.NewEncoder(conn).Encode(Failure(fmt.Errorf(
+				"controlplane: handler panic: %v",
+				recovered,
+			)))
+		}
+	}()
+
 	decoder := json.NewDecoder(io.LimitReader(conn, MaxRequestBytes))
 	decoder.DisallowUnknownFields()
 
