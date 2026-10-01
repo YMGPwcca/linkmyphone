@@ -125,6 +125,42 @@ phone clipboard change
 - executable/daemon wiring and user configuration
 - reconnect/wake/token-refresh hardening for long-running parity with Phone Link
 
+## Bootstrap probe
+
+The repository includes an interactive production probe for bootstrap stages 1-4:
+
+```bash
+go run ./cmd/phonelink-linux bootstrap-probe
+```
+
+On first run it:
+
+1. starts Microsoft device-code login with the runtime-confirmed CrossDevice public client and migrated DCG scope;
+2. creates and enrolls one persistent DCG identity;
+3. persists the identity/trust keys and refresh token before later network stages;
+4. refreshes linked-device trust from DeviceInfoList;
+5. resolves an assigned SignalR shard and waits for Hub Relay `OnConnected`.
+
+Subsequent runs load the existing state, refresh the Microsoft token, call DCG `SignIn` with the same identity, refresh peer trust, and reconnect SignalR. They do not call `CreateIdentity` again.
+
+The default state path is the platform user-config directory, normally:
+
+```text
+~/.config/phonelink-linux/state.json
+```
+
+The state file is written with mode `0600` and its directory with `0700`. It contains private key material and refresh credentials, so do not share it.
+
+The compatibility profile defaults to the reverse-engineered CrossDevice build used for this work:
+
+```text
+app version: 1.26072.116.0
+ring:        Public
+OS version:  10.0.26100
+```
+
+These can be overridden with `--app-version`, `--ring`, and `--os-version` if runtime validation shows a deployment-specific requirement.
+
 ## Test
 
 ```bash
