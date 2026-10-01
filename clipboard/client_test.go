@@ -638,6 +638,7 @@ func TestPublishedSnapshotSurvivesDuplicateContentRequest(t *testing.T) {
 		}
 
 		deadline := time.Now().Add(time.Second)
+		gotReply := false
 		for time.Now().Before(deadline) {
 			fr.mu.Lock()
 			if len(fr.sent) >= 2+i {
@@ -660,10 +661,14 @@ func TestPublishedSnapshotSurvivesDuplicateContentRequest(t *testing.T) {
 					*clipReply.Items[0].Text != "stable snapshot" {
 					t.Fatalf("reply %d=%#v", i, clipReply)
 				}
+				gotReply = true
 				break
 			}
 			fr.mu.Unlock()
 			time.Sleep(time.Millisecond)
+		}
+		if !gotReply {
+			t.Fatalf("no CONTENT reply %d", i)
 		}
 	}
 }

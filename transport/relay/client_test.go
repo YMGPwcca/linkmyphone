@@ -805,3 +805,93 @@ func TestConcurrentSendsAreSerializedPerTarget(t *testing.T) {
 		t.Fatal("second send did not complete")
 	}
 }
+
+func TestCanceledSendWaitingOnTargetGateNeverHitsWire(t *testing.T) {
+	hub := newFakeHub()
+	c := New(hub, Config{FragmentSize: 1024, AckTimeout: time.Second, AckRetries: 1})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- c.Send(ctx, "phone", "session", dcg.TransportMessageTypePlatform, []byte("first"))
+	}()
+
+	var firstFrame []byte
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		hub.mu.Lock()
+		if len(hub.sent) > 0 {
+			firstFrame = append([]byte(nil), hub.sent[0]...)
+		}
+		hub.mu.Unlock()
+		if firstFrame != nil {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if firstFrame == nil {
+		t.Fatal("no first send")
+	}
+
+	secondCtx, secondCancel := context.WithCancel(ctx)
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- c.Send(
+			secondCtx,
+			"phone",
+			"session",
+			dcg.TransportMessageTypePlatform,
+			[]byte("second"),
+		)
+	}()
+	secondCancel()
+
+	select {
+	case err := <-secondDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("second send err=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled send stayed blocked on target gate")
+	}
+
+	hub.mu.Lock()
+	count := len(hub.sent)
+	hub.mu.Unlock()
+	if count != 1 {
+		t.Fatalf("canceled send reached wire: sent=%d", count)
+	}
+
+	frames, err := psignalr.SplitFrames(firstFrame)
+	if err != nil || len(frames) != 1 {
+		t.Fatalf("frames=%d err=%v", len(frames), err)
+	}
+	inv, err := psignalr.ParseInvocation(frames[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	packetMap, ok := inv.Arguments[2].(map[string]any)
+	if !ok {
+		t.Fatal("first packet missing")
+	}
+	packet, err := packetFromMapForTest(packetMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fragment, err := dcg.ParseFragmentPacket(packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub.reads <- onReceiveFrame(t, "phone", dcg.SuccessAckPacket(fragment))
+
+	select {
+	case err := <-firstDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("first send did not complete")
+	}
+}

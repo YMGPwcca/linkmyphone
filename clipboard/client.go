@@ -464,6 +464,7 @@ func (c *Client) handleIncomingRequest(ctx context.Context, msg relay.Received, 
 		response = proto.NewFeatureOnResponse(req.CorrelationID)
 	case proto.RequestContent:
 		c.mu.Lock()
+		c.prunePublishedLocked(time.Now())
 		snapshot, published := c.published[req.CorrelationID]
 		c.mu.Unlock()
 		if published {
