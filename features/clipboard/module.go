@@ -93,9 +93,6 @@ func (m *Module) Start(
 		clientErr <- client.Run(runCtx)
 	}()
 
-	instance.publishQueue, instance.publishResults = startClipboardPublisher(runCtx, client)
-	go instance.run(runCtx, clientErr)
-
 	kernel.Report(reporter, kernel.Event{
 		ModuleID: m.manifest.ID,
 		Level:    "info",
@@ -147,6 +144,9 @@ func (m *Module) Start(
 			},
 		})
 	}
+
+	instance.publishQueue, instance.publishResults = startClipboardPublisher(runCtx, client)
+	go instance.run(runCtx, clientErr)
 
 	return instance, nil
 }

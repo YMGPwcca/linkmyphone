@@ -9,11 +9,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type State string
 
 const (
+	DefaultRollbackStopTimeout = 10 * time.Second
+
 	StateValidated State = "validated"
 	StateResolved  State = "resolved"
 	StateBlocked   State = "blocked"
@@ -344,7 +347,7 @@ func (r *Registry) startEntry(ctx context.Context, entry *registryEntry) error {
 	}
 
 	if err := r.capabilities.RegisterAll(entry.manifest, instance.Capabilities()); err != nil {
-		_ = instance.Stop(context.Background())
+		stopInstanceForRollback(instance)
 		r.mu.Lock()
 		if entry.epoch == epoch {
 			entry.state = StateFailed
@@ -358,7 +361,7 @@ func (r *Registry) startEntry(ctx context.Context, entry *registryEntry) error {
 	if entry.epoch != epoch {
 		r.mu.Unlock()
 		r.capabilities.RemoveProvider(entry.manifest.ID)
-		_ = instance.Stop(context.Background())
+		stopInstanceForRollback(instance)
 		return fmt.Errorf("kernel: stale start completion for module %s", entry.manifest.ID)
 	}
 	entry.instance = instance
@@ -460,6 +463,15 @@ func (r *Registry) monitorInstance(entry *registryEntry, epoch uint64, instance 
 	case r.errors <- runtimeErr:
 	default:
 	}
+}
+
+func stopInstanceForRollback(instance Instance) {
+	if instance == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), DefaultRollbackStopTimeout)
+	defer cancel()
+	_ = instance.Stop(ctx)
 }
 
 func (r *Registry) activeRequiredDependentsLocked(providerID string) []string {

@@ -182,16 +182,11 @@ func runFeatureRuntime(
 	}
 	prepared := make([]preparedFeature, 0, len(records))
 	for _, record := range records {
+		if !record.Enabled {
+			continue
+		}
 		definition, err := features.Find(record.ID)
 		if err != nil {
-			if !record.Enabled {
-				kernel.Report(reporter, kernel.Event{
-					ModuleID: record.ID,
-					Level:    "warning",
-					Message:  "disabled feature implementation is unavailable; record retained for CRUD",
-				})
-				continue
-			}
 			return fmt.Errorf("enabled feature %s is unavailable: %w", record.ID, err)
 		}
 		if err := definition.Validate(record.Config); err != nil {

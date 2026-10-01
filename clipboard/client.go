@@ -233,13 +233,6 @@ func (c *Client) ReserveLocalGeneration() uint64 {
 	return c.generation.Add(1)
 }
 
-// CurrentGeneration returns the latest observed clipboard generation. It is
-// intended for diagnostics; ordering decisions must reserve/compare inside the
-// client rather than deriving a new generation from this value.
-func (c *Client) CurrentGeneration() uint64 {
-	return c.generation.Load()
-}
-
 // SupersedeLocalPublications tombstones versioned local snapshots older than
 // generation. If an old Context/Publish is already in flight, a later CONTENT
 // request is rejected instead of being answered with unrelated current text.
