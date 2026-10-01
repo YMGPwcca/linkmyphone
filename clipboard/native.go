@@ -65,18 +65,13 @@ func (l *NativeLocal) WriteText(ctx context.Context, text string) error {
 	}
 	cmd := exec.CommandContext(ctx, l.write.name, l.write.args...)
 	cmd.Stdin = strings.NewReader(text)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		if detail := strings.TrimSpace(string(out)); detail != "" {
-			if len(detail) > 256 {
-				detail = detail[:256] + "..."
-			}
-			return fmt.Errorf(
-				"clipboard: %s write failed: %w: %s",
-				l.backend,
-				err,
-				detail,
-			)
-		}
+
+	// wl-copy forks by default and serves the selection from its background
+	// child. Do not use Output/CombinedOutput here: the forked child can inherit
+	// the capture pipe descriptors and keep Go waiting for EOF until the
+	// selection is replaced. With nil Stdout/Stderr, os/exec connects them to
+	// the null device and Run only waits for the invoked parent process.
+	if err := cmd.Run(); err != nil {
 		return nativeCommandError("write", l.backend, err)
 	}
 	return nil

@@ -135,3 +135,28 @@ func TestQueueLatestClipboardTextCoalescesPendingChanges(t *testing.T) {
 		t.Fatal("expected queued clipboard text")
 	}
 }
+
+func TestClipboardTrackingHashNormalizesProviderNewlineVariants(t *testing.T) {
+	cases := [][2]string{
+		{"phone text", "phone text\n"},
+		{"line1\r\nline2", "line1\nline2"},
+		{"line1\r\nline2\r\n", "line1\nline2\n"},
+	}
+	for _, pair := range cases {
+		if clipboardTrackingHash(pair[0]) != clipboardTrackingHash(pair[1]) {
+			t.Fatalf("tracking hash mismatch for %q and %q", pair[0], pair[1])
+		}
+	}
+}
+
+func TestTrackedLocalClipboardSuppressesRemoteTextWithProviderNewline(t *testing.T) {
+	base := &syncFakeLocal{text: "initial"}
+	tracked := newTrackedLocalClipboard(base, "initial")
+
+	if err := tracked.WriteText(context.Background(), "fromphone"); err != nil {
+		t.Fatal(err)
+	}
+	if tracked.MarkIfChanged("fromphone\n") {
+		t.Fatal("provider-added terminal newline must not echo remote text")
+	}
+}

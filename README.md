@@ -339,6 +339,8 @@ Android can also reflect a desktop-originated clipboard value back through its o
 
 Outbound `/Context/Publish` calls run on a separate publisher worker. Waiting for a DCG ACK therefore no longer blocks receive-side logging or phone-to-Linux clipboard handling. Pending rapid local changes are coalesced to the newest text while one publication is in flight.
 
+On Wayland, `wl-copy` forks by default to keep serving the selection. Native writes therefore use `exec.Cmd.Run` without captured stdout/stderr pipes; capturing those descriptors can leave the Go process waiting on the forked clipboard owner until the selection changes again. Echo tracking also treats CRLF/LF and a single terminal newline as equivalent during the remote-write suppression window, while preserving the original clipboard bytes for protocol payloads.
+
 ## Test
 
 ```bash

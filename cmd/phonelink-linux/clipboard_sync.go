@@ -55,7 +55,7 @@ type trackedLocalClipboard struct {
 func newTrackedLocalClipboard(base clipclient.Local, initial string) *trackedLocalClipboard {
 	return &trackedLocalClipboard{
 		base:        base,
-		lastHash:    sha256.Sum256([]byte(initial)),
+		lastHash:    clipboardTrackingHash(initial),
 		initialized: true,
 		suppress:    make(map[[32]byte]time.Time),
 		remoteWrite: make(chan int, 8),
@@ -70,7 +70,7 @@ func (l *trackedLocalClipboard) WriteText(ctx context.Context, text string) erro
 	l.writeMu.Lock()
 	defer l.writeMu.Unlock()
 
-	nextHash := sha256.Sum256([]byte(text))
+	nextHash := clipboardTrackingHash(text)
 	now := time.Now()
 
 	l.mu.Lock()
@@ -103,7 +103,7 @@ func (l *trackedLocalClipboard) WriteText(ctx context.Context, text string) erro
 }
 
 func (l *trackedLocalClipboard) MarkIfChanged(text string) bool {
-	hash := sha256.Sum256([]byte(text))
+	hash := clipboardTrackingHash(text)
 	now := time.Now()
 
 	l.mu.Lock()
@@ -125,6 +125,16 @@ func (l *trackedLocalClipboard) MarkIfChanged(text string) bool {
 	l.lastHash = hash
 	l.initialized = true
 	return true
+}
+
+func clipboardTrackingHash(text string) [32]byte {
+	// Clipboard providers and Android clients can normalize CRLF to LF and some
+	// Wayland paths preserve or add one terminal newline. Those representations
+	// are equivalent for echo suppression only; the actual clipboard payload is
+	// never modified before being sent or applied.
+	normalized := strings.ReplaceAll(text, "\r\n", "\n")
+	normalized = strings.TrimSuffix(normalized, "\n")
+	return sha256.Sum256([]byte(normalized))
 }
 
 func (l *trackedLocalClipboard) pruneSuppressedLocked(now time.Time) {
