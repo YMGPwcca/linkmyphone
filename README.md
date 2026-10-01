@@ -174,6 +174,32 @@ OS version:  10.0.26100
 
 These can be overridden with `--app-version`, `--ring`, and `--os-version` if runtime validation shows a deployment-specific requirement.
 
+## Peer presence / wake probe
+
+After `bootstrap-probe` has created persistent state, the next production probe is:
+
+```bash
+go run ./cmd/phonelink-linux peer-probe
+```
+
+The command:
+
+- refreshes the Microsoft token and signs the existing DCG identity back in;
+- refreshes linked-device trust;
+- selects the sole linked Android device by default (or accepts `--target`);
+- connects the account-level Hub Relay;
+- if the target is not already present, sends the signed `Dispatcher/Wake` payload using the persisted `trust_<localDcgClientId>` identity;
+- waits for `OnPartnerConnected` / peer traffic to mark the target online.
+
+Useful overrides:
+
+```bash
+go run ./cmd/phonelink-linux peer-probe --target "Pwcca's S23"
+go run ./cmd/phonelink-linux peer-probe --wake-timeout 60s
+```
+
+This probe does not send PLATFORM SessionValidation or clipboard traffic yet.
+
 ## Test
 
 ```bash
