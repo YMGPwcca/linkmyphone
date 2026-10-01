@@ -1,0 +1,24 @@
+[Unit]
+Description=Phone Link Linux user runtime
+Documentation=https://github.com/YMGPwcca/phonelink-linux
+After=graphical-session.target
+PartOf=graphical-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=90s
+ExecStart=%h/.local/bin/phonelink-linux run
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+KillMode=mixed
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=phonelink-linux
+
+[Install]
+WantedBy=graphical-session.target

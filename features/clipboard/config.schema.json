@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://phonelink-linux.local/schema/features/clipboard/1.0",
+  "title": "Phone Link Linux clipboard module configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "poll_interval_ms": {
+      "description": "Polling interval used when native event watching is unavailable or fails.",
+      "type": "integer",
+      "minimum": 50,
+      "maximum": 60000,
+      "default": 500
+    },
+    "request_timeout_ms": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 120000,
+      "default": 10000
+    },
+    "publish_initial": {
+      "type": "boolean",
+      "default": false
+    }
+  }
+}

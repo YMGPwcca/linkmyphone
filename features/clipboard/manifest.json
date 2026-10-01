@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0",
+  "id": "phonelink.clipboard",
+  "version": "0.1.0",
+  "kind": "builtin",
+  "runtime": {
+    "api_version": "1.0"
+  },
+  "capabilities": {
+    "potential": [
+      {
+        "id": "clipboard.text.read",
+        "contract_version": "1.0.0"
+      },
+      {
+        "id": "clipboard.text.write",
+        "contract_version": "1.0.0"
+      },
+      {
+        "id": "clipboard.text.bidirectional",
+        "contract_version": "1.0.0"
+      }
+    ]
+  },
+  "dependencies": {
+    "required": [],
+    "optional": []
+  },
+  "permissions": {
+    "requested": [
+      "clipboard.local.read",
+      "clipboard.local.write",
+      "network.dcg"
+    ]
+  },
+  "configuration_schema": "config.schema.json",
+  "metadata": {
+    "display_name": "Clipboard Sync",
+    "description": "Bidirectional text clipboard synchronization with a linked Android peer.",
+    "diagnostic_label": "phonelink.clipboard"
+  }
+}
