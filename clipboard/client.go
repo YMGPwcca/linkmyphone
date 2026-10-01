@@ -315,13 +315,27 @@ func (c *Client) request(ctx context.Context, req proto.Request) (proto.Response
 		if got.response.ResponseType != proto.DeviceResourceResponseSuccess {
 			return proto.Response{}, fmt.Errorf("clipboard: DRM response type %d", got.response.ResponseType)
 		}
-		return proto.UnmarshalResponse(got.response.Payload)
+		response, err := proto.UnmarshalResponse(got.response.Payload)
+		if err != nil {
+			return proto.Response{}, err
+		}
+		if req.CorrelationID != "" && response.CorrelationID != req.CorrelationID {
+			return proto.Response{}, fmt.Errorf(
+				"clipboard: response correlation id %q does not match request %q",
+				response.CorrelationID,
+				req.CorrelationID,
+			)
+		}
+		return response, nil
 	case <-waitCtx.Done():
 		return proto.Response{}, waitCtx.Err()
 	}
 }
 
 func (c *Client) handlePlatform(ctx context.Context, msg relay.Received) error {
+	if c.cfg.Target != "" && msg.Source != c.cfg.Target {
+		return nil
+	}
 	pm, err := platform.Unmarshal(msg.Payload)
 	if err != nil {
 		return err
@@ -359,9 +373,6 @@ func (c *Client) handleIncomingPublication(
 	msg relay.Received,
 	pm platform.Message,
 ) error {
-	if c.cfg.Target != "" && msg.Source != c.cfg.Target {
-		return nil
-	}
 	envelope, err := msaep.Unmarshal(pm.Payload)
 	if err != nil {
 		return err

@@ -330,7 +330,15 @@ func TestPullToLocalSkipsIdenticalReflectedText(t *testing.T) {
 		t.Fatal(err)
 	}
 	requestID, _ := pm.Header(platform.HeaderRequestID)
-	response := proto.NewTextResponse("", "same text", nil)
+	requestDRM, err := proto.UnmarshalDeviceResourceMessage(pm.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestClipboard, err := proto.UnmarshalRequest(requestDRM.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := proto.NewTextResponse(requestClipboard.CorrelationID, "same text", nil)
 	drm := proto.DeviceResourceResponse{
 		ResponseType: proto.DeviceResourceResponseSuccess,
 		Payload:      proto.MarshalResponse(response),
