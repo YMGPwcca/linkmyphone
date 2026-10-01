@@ -215,3 +215,63 @@ func TestPublishLocalChangeBuildsContextPublishMSAEP(t *testing.T) {
 		t.Fatalf("change=%#v", change)
 	}
 }
+
+func TestPublishLocalTextSnapshotsContentByCorrelation(t *testing.T) {
+	fr := newFakeRelay()
+	local := &fakeLocal{text: "newer clipboard"}
+	c := New(fr, local, Config{
+		Target: "phone", SessionID: "session", SelfDcgClientID: "desktop-dcg",
+	})
+
+	correlationID, err := c.PublishLocalText(context.Background(), "published snapshot", "cid-snapshot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if correlationID != "cid-snapshot" {
+		t.Fatalf("correlation id=%q", correlationID)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.Run(ctx)
+
+	req := proto.MarshalDeviceResourceMessage(
+		proto.WrapClipboardRequest(proto.NewContentRequest(correlationID)),
+	)
+	pm := platform.NewDeviceResourceRequest(req, "req-content")
+	wire, _ := platform.Marshal(pm)
+	fr.recv <- relay.Received{
+		Source: "phone", SessionID: "session",
+		TransportMessageType: dcg.TransportMessageTypePlatform, Payload: wire,
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		fr.mu.Lock()
+		if len(fr.sent) >= 2 {
+			sent := fr.sent[1]
+			fr.mu.Unlock()
+			rpm, err := platform.Unmarshal(sent.Payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			drm, err := proto.UnmarshalDeviceResourceResponse(rpm.Payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			clip, err := proto.UnmarshalResponse(drm.Payload)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(clip.Items) != 1 ||
+				clip.Items[0].Text == nil ||
+				*clip.Items[0].Text != "published snapshot" {
+				t.Fatalf("clip=%#v", clip)
+			}
+			return
+		}
+		fr.mu.Unlock()
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("no CONTENT response")
+}

@@ -46,9 +46,10 @@ type Client struct {
 	local Local
 	cfg   Config
 
-	mu      sync.Mutex
-	pending map[string]chan pendingResponse
-	asyncErr chan error
+	mu        sync.Mutex
+	pending   map[string]chan pendingResponse
+	published map[string]string
+	asyncErr  chan error
 }
 
 func New(r Relay, local Local, cfg Config) *Client {
@@ -59,8 +60,9 @@ func New(r Relay, local Local, cfg Config) *Client {
 		relay: r,
 		local: local,
 		cfg: cfg,
-		pending: make(map[string]chan pendingResponse),
-		asyncErr: make(chan error, 8),
+		pending:   make(map[string]chan pendingResponse),
+		published: make(map[string]string),
+		asyncErr:  make(chan error, 8),
 	}
 }
 
@@ -148,6 +150,28 @@ func (c *Client) PublishLocalChange(ctx context.Context, correlationID string) (
 		return "", err
 	}
 	return correlationID, nil
+}
+
+// PublishLocalText snapshots the text under the publication correlation id
+// before advertising CLIPBOARD_CHANGE. A later CONTENT request carrying that
+// correlation id receives the exact advertised snapshot even if the desktop
+// clipboard changes again in the meantime.
+func (c *Client) PublishLocalText(ctx context.Context, text, correlationID string) (string, error) {
+	if correlationID == "" {
+		correlationID = newID()
+	}
+	c.mu.Lock()
+	c.published[correlationID] = text
+	c.mu.Unlock()
+
+	publishedID, err := c.PublishLocalChange(ctx, correlationID)
+	if err != nil {
+		c.mu.Lock()
+		delete(c.published, correlationID)
+		c.mu.Unlock()
+		return "", err
+	}
+	return publishedID, nil
 }
 
 // HandlePhoneClipboardPublication implements the Windows receive-side clipboard
@@ -315,7 +339,15 @@ func (c *Client) handleIncomingRequest(ctx context.Context, msg relay.Received, 
 	case proto.RequestStatus:
 		response = proto.NewFeatureOnResponse(req.CorrelationID)
 	case proto.RequestContent:
-		if c.local == nil {
+		c.mu.Lock()
+		text, published := c.published[req.CorrelationID]
+		if published {
+			delete(c.published, req.CorrelationID)
+		}
+		c.mu.Unlock()
+		if published {
+			response = proto.NewTextResponse(req.CorrelationID, text, nil)
+		} else if c.local == nil {
 			response = proto.Response{Status: proto.ResponseInvalidContent, CorrelationID: req.CorrelationID, ErrorType: proto.ErrorFail, ErrorDetail: "local clipboard unavailable"}
 		} else {
 			text, err := c.local.ReadText(ctx)
