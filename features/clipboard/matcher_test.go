@@ -70,3 +70,32 @@ func TestMatcherScopesClipboardTraffic(t *testing.T) {
 		t.Fatal("clipboard matcher rejected tag 9 publication")
 	}
 }
+
+func TestMatcherRejectsClipboardTrafficFromOtherPeer(t *testing.T) {
+	request := platform.NewDeviceResourceRequest(
+		clipproto.MarshalDeviceResourceMessage(
+			clipproto.WrapClipboardRequest(clipproto.NewStatusRequest("cid")),
+		),
+		"request",
+	)
+	wire, err := platform.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	matcher := matcherForTarget("phone")
+	if !matcher(relay.Received{
+		Source:               "phone",
+		TransportMessageType: dcg.TransportMessageTypePlatform,
+		Payload:              wire,
+	}) {
+		t.Fatal("target clipboard traffic was rejected")
+	}
+	if matcher(relay.Received{
+		Source:               "other-phone",
+		TransportMessageType: dcg.TransportMessageTypePlatform,
+		Payload:              wire,
+	}) {
+		t.Fatal("clipboard traffic from another peer reached target-scoped subscription")
+	}
+}

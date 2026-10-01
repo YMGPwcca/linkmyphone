@@ -265,7 +265,14 @@ func runFeatureRuntime(
 			}
 			return fmt.Errorf("Phone Link host: %w", err)
 		case runtimeErr := <-registry.Errors():
-			return runtimeErr
+			kernel.Report(reporter, kernel.Event{
+				ModuleID: runtimeErr.ModuleID,
+				Level:    "error",
+				Message:  "module failed; shared runtime remains online",
+				Fields: map[string]string{
+					"error": runtimeErr.Err.Error(),
+				},
+			})
 		}
 	}
 }

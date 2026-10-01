@@ -14,6 +14,8 @@ import (
 	"github.com/YMGPwcca/phonelink-linux/runtime/phonehost"
 )
 
+const defaultFeatureOffTimeout = time.Second
+
 type Module struct {
 	session  *phonehost.Session
 	manifest kernel.Manifest
@@ -59,7 +61,11 @@ func (m *Module) Start(
 	}
 
 	local := newTrackedLocalClipboard(native, initialText)
-	endpoint, err := m.session.Subscribe(m.manifest.ID, matchesMessage, phonehost.DefaultSubscriptionQueue)
+	endpoint, err := m.session.Subscribe(
+		m.manifest.ID,
+		matcherForTarget(m.session.Target.ID),
+		phonehost.DefaultSubscriptionQueue,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("clipboard module: subscribe transport: %w", err)
 	}
@@ -85,7 +91,8 @@ func (m *Module) Start(
 		cancel:         cancel,
 		done:           make(chan struct{}),
 		errors:         make(chan error, 1),
-		requestTimeout: cfg.RequestTimeout(),
+		requestTimeout:    cfg.RequestTimeout(),
+		featureOffTimeout: defaultFeatureOffTimeout,
 	}
 
 	clientErr := make(chan error, 1)
@@ -144,6 +151,11 @@ func (m *Module) Start(
 			},
 		})
 	}
+	if err := ctx.Err(); err != nil {
+		cancel()
+		endpoint.Close()
+		return nil, fmt.Errorf("clipboard module: start canceled: %w", err)
+	}
 
 	instance.publishQueue, instance.publishResults = startClipboardPublisher(runCtx, client)
 	go instance.run(runCtx, clientErr)
@@ -164,7 +176,8 @@ type instance struct {
 	publishQueue   chan publishJob
 	publishResults <-chan publishResult
 
-	requestTimeout time.Duration
+	requestTimeout    time.Duration
+	featureOffTimeout time.Duration
 
 	cancel   context.CancelFunc
 	stopOnce sync.Once
@@ -192,20 +205,37 @@ func (i *instance) Stop(ctx context.Context) error {
 			running = false
 		default:
 		}
-		if running {
-			featureCtx, cancel := context.WithTimeout(ctx, i.requestTimeout)
-			if _, err := i.client.PushFeatureState(featureCtx, clipproto.RequestFeatureOff); err != nil &&
-				!errors.Is(err, context.Canceled) &&
-				!errors.Is(err, context.DeadlineExceeded) {
-				kernel.Report(i.reporter, kernel.Event{
-					ModuleID: i.moduleID,
-					Level:    "warning",
-					Message:  "FEATURE_OFF synchronization failed",
-					Fields:   map[string]string{"error": err.Error()},
-				})
+
+		// FEATURE_OFF is advisory shutdown synchronization, not a prerequisite
+		// for reclaiming local resources. Never let an unresponsive phone spend
+		// the module's entire Stop deadline before cancellation can begin.
+		if running && ctx.Err() == nil {
+			timeout := i.featureOffTimeout
+			if timeout <= 0 || timeout > i.requestTimeout {
+				timeout = i.requestTimeout
 			}
-			cancel()
+			if deadline, ok := ctx.Deadline(); ok {
+				remaining := time.Until(deadline)
+				if remaining < timeout {
+					timeout = remaining
+				}
+			}
+			if timeout > 0 {
+				featureCtx, cancel := context.WithTimeout(ctx, timeout)
+				if _, err := i.client.PushFeatureState(featureCtx, clipproto.RequestFeatureOff); err != nil &&
+					!errors.Is(err, context.Canceled) &&
+					!errors.Is(err, context.DeadlineExceeded) {
+					kernel.Report(i.reporter, kernel.Event{
+						ModuleID: i.moduleID,
+						Level:    "warning",
+						Message:  "FEATURE_OFF synchronization failed",
+						Fields:   map[string]string{"error": err.Error()},
+					})
+				}
+				cancel()
+			}
 		}
+
 		i.cancel()
 		if i.endpoint != nil {
 			i.endpoint.Close()

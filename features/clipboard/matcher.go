@@ -5,8 +5,18 @@ import (
 	"github.com/YMGPwcca/phonelink-linux/protocol/msaep"
 	clipproto "github.com/YMGPwcca/phonelink-linux/protocol/clipboard"
 	"github.com/YMGPwcca/phonelink-linux/protocol/platform"
+	"github.com/YMGPwcca/phonelink-linux/runtime/phonehost"
 	"github.com/YMGPwcca/phonelink-linux/transport/relay"
 )
+
+func matcherForTarget(target string) phonehost.Matcher {
+	return func(message relay.Received) bool {
+		if target != "" && message.Source != target {
+			return false
+		}
+		return matchesMessage(message)
+	}
+}
 
 func matchesMessage(message relay.Received) bool {
 	if message.TransportMessageType != dcg.TransportMessageTypePlatform {

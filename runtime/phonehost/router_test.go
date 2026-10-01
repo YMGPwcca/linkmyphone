@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
 	"github.com/YMGPwcca/phonelink-linux/transport/relay"
@@ -44,7 +45,7 @@ func (f *fakeTransport) Received() <-chan relay.Received {
 
 func TestRouterFanoutAndFilter(t *testing.T) {
 	transport := newFakeTransport()
-	router := newRouter(transport, nil)
+	router := newRouter(transport)
 
 	a, err := router.Subscribe("a", func(message relay.Received) bool {
 		return message.MessageID%2 == 0
@@ -87,37 +88,53 @@ func TestRouterFanoutAndFilter(t *testing.T) {
 	}
 }
 
-func TestRouterReportsBoundedSubscriberOverflow(t *testing.T) {
+func TestRouterOverflowRevokesOnlySlowSubscriber(t *testing.T) {
 	transport := newFakeTransport()
-	errs := make(chan error, 1)
-	router := newRouter(transport, func(err error) {
-		select {
-		case errs <- err:
-		default:
-		}
-	})
-	endpoint, err := router.Subscribe("slow", func(relay.Received) bool { return true }, 1)
+	router := newRouter(transport)
+
+	slow, err := router.Subscribe("slow", func(relay.Received) bool { return true }, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer endpoint.Close()
+	fast, err := router.Subscribe("fast", func(relay.Received) bool { return true }, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fast.Close()
 
 	router.dispatch(relay.Received{MessageID: 1})
 	router.dispatch(relay.Received{MessageID: 2})
 
-	select {
-	case err := <-errs:
-		if err == nil {
-			t.Fatal("expected overflow error")
+	// The slow subscriber filled on message 1 and is revoked on message 2.
+	first, ok := <-slow.Received()
+	if !ok || first.MessageID != 1 {
+		t.Fatalf("slow first=%#v ok=%t", first, ok)
+	}
+	if _, ok := <-slow.Received(); ok {
+		t.Fatal("overflowed subscriber channel remained open")
+	}
+	if err := slow.Send(
+		context.Background(),
+		"phone",
+		"session",
+		dcg.TransportMessageTypePlatform,
+		[]byte("must-not-send"),
+	); err == nil {
+		t.Fatal("overflowed subscriber retained send capability")
+	}
+
+	// The healthy subscriber remains alive and receives both messages.
+	for _, want := range []int{1, 2} {
+		got, ok := <-fast.Received()
+		if !ok || got.MessageID != want {
+			t.Fatalf("fast got=%#v ok=%t want=%d", got, ok, want)
 		}
-	default:
-		t.Fatal("subscriber overflow was not reported")
 	}
 }
 
 func TestEndpointCloseRevokesSubscription(t *testing.T) {
 	transport := newFakeTransport()
-	router := newRouter(transport, nil)
+	router := newRouter(transport)
 	endpoint, err := router.Subscribe("feature", func(relay.Received) bool { return true }, 1)
 	if err != nil {
 		t.Fatal(err)
@@ -144,10 +161,47 @@ func TestEndpointCloseRevokesSubscription(t *testing.T) {
 
 func TestRouterRunHonorsCancellation(t *testing.T) {
 	transport := newFakeTransport()
-	router := newRouter(transport, nil)
+	router := newRouter(transport)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := router.Run(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestSessionSubscribeStartsRouterAfterRegistration(t *testing.T) {
+	transport := newFakeTransport()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	session := &Session{
+		router: newRouter(transport),
+		runCtx: ctx,
+		cancel: cancel,
+		errors: make(chan error, 1),
+	}
+	endpoint, err := session.Subscribe(
+		"feature",
+		func(relay.Received) bool { return true },
+		1,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer endpoint.Close()
+
+	transport.recv <- relay.Received{
+		Source: "phone",
+		MessageID: 7,
+		Payload: []byte("ready"),
+	}
+
+	select {
+	case got, ok := <-endpoint.Received():
+		if !ok || got.MessageID != 7 || string(got.Payload) != "ready" {
+			t.Fatalf("got=%#v ok=%t", got, ok)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("router did not deliver message after first subscription")
 	}
 }

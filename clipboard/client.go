@@ -22,6 +22,7 @@ const (
 	DefaultRequestTimeout       = 10 * time.Second
 	publishedSnapshotTTL        = 2 * time.Minute
 	maxPublishedSnapshotCount   = 64
+	maxRetiredSnapshotCount     = 256
 	incomingRequestQueueSize    = 16
 )
 
@@ -81,6 +82,7 @@ type Client struct {
 	mu               sync.Mutex
 	pending          map[string]chan pendingResponse
 	published        map[string]publishedSnapshot
+	retired          map[string]time.Time
 	publicationFloor uint64
 	generationMu     sync.Mutex
 	generation       atomic.Uint64
@@ -102,6 +104,7 @@ func New(r Relay, local Local, cfg Config) *Client {
 		cfg: cfg,
 		pending:          make(map[string]chan pendingResponse),
 		published:        make(map[string]publishedSnapshot),
+		retired:          make(map[string]time.Time),
 		asyncErr:         make(chan error, 8),
 		incomingRequests: make(chan incomingRequest, incomingRequestQueueSize),
 		publications:     make(chan phonePublication, 1),
@@ -319,6 +322,7 @@ func (c *Client) publishLocalText(
 			snapshot.generation == generation &&
 			snapshot.versioned == versioned {
 			delete(c.published, correlationID)
+			c.retireCorrelationLocked(correlationID, time.Now())
 		}
 		c.mu.Unlock()
 		return "", err
@@ -358,6 +362,7 @@ func (c *Client) prunePublishedLocked(now time.Time) {
 	for correlationID, snapshot := range c.published {
 		if now.Sub(snapshot.createdAt) > publishedSnapshotTTL {
 			delete(c.published, correlationID)
+			c.retireCorrelationLocked(correlationID, now)
 		}
 	}
 	for len(c.published) >= maxPublishedSnapshotCount {
@@ -373,7 +378,30 @@ func (c *Client) prunePublishedLocked(now time.Time) {
 			break
 		}
 		delete(c.published, oldestID)
+		c.retireCorrelationLocked(oldestID, now)
 	}
+
+	for len(c.retired) > maxRetiredSnapshotCount {
+		var oldestID string
+		var oldestTime time.Time
+		for correlationID, retiredAt := range c.retired {
+			if oldestID == "" || retiredAt.Before(oldestTime) {
+				oldestID = correlationID
+				oldestTime = retiredAt
+			}
+		}
+		if oldestID == "" {
+			break
+		}
+		delete(c.retired, oldestID)
+	}
+}
+
+func (c *Client) retireCorrelationLocked(correlationID string, now time.Time) {
+	if correlationID == "" {
+		return
+	}
+	c.retired[correlationID] = now
 }
 
 func (c *Client) pullToLocal(ctx context.Context, correlationID string, generation uint64) error {
@@ -582,9 +610,25 @@ func (c *Client) runPhonePublicationWorker(ctx context.Context) {
 			return
 		case publication := <-c.publications:
 			pullCtx, cancel := context.WithCancel(ctx)
+
+			// Publish the cancel handle before beginning any pull work. A newer
+			// publication arriving from this point onward can always supersede
+			// this one. Then coalesce anything that was queued in the tiny gap
+			// between receiving the item and installing the cancel handle.
 			c.publicationMu.Lock()
 			c.phonePullCancel = cancel
 			c.publicationMu.Unlock()
+
+			select {
+			case newer := <-c.publications:
+				cancel()
+				publication = newer
+				pullCtx, cancel = context.WithCancel(ctx)
+				c.publicationMu.Lock()
+				c.phonePullCancel = cancel
+				c.publicationMu.Unlock()
+			default:
+			}
 
 			err := c.pullToLocal(
 				pullCtx,
@@ -594,7 +638,9 @@ func (c *Client) runPhonePublicationWorker(ctx context.Context) {
 			cancel()
 
 			c.publicationMu.Lock()
-			c.phonePullCancel = nil
+			if c.phonePullCancel != nil {
+				c.phonePullCancel = nil
+			}
 			c.publicationMu.Unlock()
 
 			if err == nil {
@@ -665,8 +711,16 @@ func (c *Client) handleIncomingRequest(ctx context.Context, msg relay.Received, 
 		c.mu.Lock()
 		c.prunePublishedLocked(time.Now())
 		snapshot, published := c.published[req.CorrelationID]
+		_, retired := c.retired[req.CorrelationID]
 		c.mu.Unlock()
-		if published && snapshot.superseded {
+		if !published && retired {
+			response = proto.Response{
+				Status:        proto.ResponseInvalidContent,
+				CorrelationID: req.CorrelationID,
+				ErrorType:     proto.ErrorReject,
+				ErrorDetail:   "clipboard publication snapshot expired",
+			}
+		} else if published && snapshot.superseded {
 			response = proto.Response{
 				Status:        proto.ResponseInvalidContent,
 				CorrelationID: req.CorrelationID,

@@ -162,6 +162,9 @@ func (r *Registry) Update(id string, enabled *bool, config *json.RawMessage) (Sn
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.entries[id] != entry {
+		return Snapshot{}, fmt.Errorf("%w: %s", ErrFeatureNotFound, id)
+	}
 	if entry.instance != nil || entry.state == StateStarting || entry.state == StateStopping {
 		return Snapshot{}, fmt.Errorf("kernel: module %s must be stopped before update", id)
 	}
@@ -187,18 +190,27 @@ func (r *Registry) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	if err := r.stopEntry(ctx, entry, true); err != nil {
-		return err
-	}
 	entry.opMu.Lock()
 	defer entry.opMu.Unlock()
 
+	r.mu.RLock()
+	current := r.entries[id]
+	r.mu.RUnlock()
+	if current != entry {
+		return fmt.Errorf("%w: %s", ErrFeatureNotFound, id)
+	}
+	if err := r.stopEntryLocked(ctx, entry, true); err != nil {
+		return err
+	}
+
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if current := r.entries[id]; current != entry {
+		r.mu.Unlock()
 		return fmt.Errorf("kernel: module %s changed during delete", id)
 	}
 	delete(r.entries, id)
+	r.removeStartOrderLocked(id)
+	r.mu.Unlock()
 	r.capabilities.RemoveProvider(id)
 	return nil
 }
@@ -291,6 +303,10 @@ func (r *Registry) startEntry(ctx context.Context, entry *registryEntry) error {
 	defer entry.opMu.Unlock()
 
 	r.mu.Lock()
+	if r.entries[entry.manifest.ID] != entry {
+		r.mu.Unlock()
+		return fmt.Errorf("%w: %s", ErrFeatureNotFound, entry.manifest.ID)
+	}
 	if !entry.enabled {
 		r.mu.Unlock()
 		return fmt.Errorf("kernel: module %s is disabled", entry.manifest.ID)
@@ -309,14 +325,17 @@ func (r *Registry) startEntry(ctx context.Context, entry *registryEntry) error {
 		r.mu.Unlock()
 		return fmt.Errorf("kernel: module %s is busy in state %s", entry.manifest.ID, state)
 	}
-	r.mu.Unlock()
-
-	if ready, reason := r.dependenciesReady(entry); !ready {
-		r.setBlocked(entry, reason)
+	ready, reason := r.dependenciesReadyLocked(entry)
+	if !ready {
+		entry.state = StateBlocked
+		entry.lastErr = reason
+		r.mu.Unlock()
+		if reason == "" {
+			reason = "required dependency is not ready"
+		}
 		return fmt.Errorf("kernel: module %s blocked: %s", entry.manifest.ID, reason)
 	}
 
-	r.mu.Lock()
 	entry.state = StateResolved
 	entry.epoch++
 	epoch := entry.epoch
@@ -344,6 +363,17 @@ func (r *Registry) startEntry(ctx context.Context, entry *registryEntry) error {
 		}
 		r.mu.Unlock()
 		return fmt.Errorf("kernel: start module %s: %w", entry.manifest.ID, err)
+	}
+
+	// A dependency can fail while Module.Start is executing. Reject the stale
+	// completion before publishing any live capability; otherwise there is a
+	// short window where a degraded instance becomes discoverable as Ready.
+	r.mu.RLock()
+	staleBeforeCapabilities := entry.epoch != epoch
+	r.mu.RUnlock()
+	if staleBeforeCapabilities {
+		stopInstanceForRollback(instance)
+		return fmt.Errorf("kernel: stale start completion for module %s", entry.manifest.ID)
 	}
 
 	if err := r.capabilities.RegisterAll(entry.manifest, instance.Capabilities()); err != nil {
@@ -386,7 +416,20 @@ func (r *Registry) stopEntry(
 ) error {
 	entry.opMu.Lock()
 	defer entry.opMu.Unlock()
+	r.mu.RLock()
+	current := r.entries[entry.manifest.ID]
+	r.mu.RUnlock()
+	if current != entry {
+		return fmt.Errorf("%w: %s", ErrFeatureNotFound, entry.manifest.ID)
+	}
+	return r.stopEntryLocked(ctx, entry, enforceDependents)
+}
 
+func (r *Registry) stopEntryLocked(
+	ctx context.Context,
+	entry *registryEntry,
+	enforceDependents bool,
+) error {
 	r.mu.Lock()
 	if enforceDependents {
 		dependents := r.activeRequiredDependentsLocked(entry.manifest.ID)
@@ -455,14 +498,85 @@ func (r *Registry) monitorInstance(entry *registryEntry, epoch uint64, instance 
 	}
 	entry.state = StateFailed
 	entry.lastErr = err.Error()
+	degraded := r.degradeRequiredDependentsLocked(entry.manifest.ID, err)
 	r.mu.Unlock()
 
 	r.capabilities.RemoveProvider(entry.manifest.ID)
+	for _, id := range degraded {
+		r.capabilities.RemoveProvider(id)
+		Report(r.reporter, Event{
+			ModuleID: id,
+			Level:    "warning",
+			Message:  "module degraded after required dependency failure",
+			Fields: map[string]string{
+				"dependency": entry.manifest.ID,
+			},
+		})
+	}
+
 	runtimeErr := RuntimeError{ModuleID: entry.manifest.ID, Err: err}
 	select {
 	case r.errors <- runtimeErr:
 	default:
 	}
+}
+
+func (r *Registry) degradeRequiredDependentsLocked(
+	failedProviderID string,
+	cause error,
+) []string {
+	affected := map[string]struct{}{failedProviderID: {}}
+	degraded := make([]string, 0)
+
+	for {
+		changed := false
+		for id, candidate := range r.entries {
+			if _, seen := affected[id]; seen {
+				continue
+			}
+			active := candidate.instance != nil ||
+				candidate.state == StateStarting ||
+				candidate.state == StateReady ||
+				candidate.state == StateDegraded
+			if !active {
+				continue
+			}
+			var brokenDependency string
+			for _, dependency := range candidate.manifest.Dependencies.Required {
+				if _, broken := affected[dependency.ID]; broken {
+					brokenDependency = dependency.ID
+					break
+				}
+			}
+			if brokenDependency == "" {
+				continue
+			}
+
+			affected[id] = struct{}{}
+			changed = true
+			if candidate.state == StateReady || candidate.state == StateStarting {
+				if candidate.state == StateStarting {
+					// Invalidate the in-flight Start completion. startEntry will
+					// rollback the returned instance when its epoch no longer
+					// matches instead of resurrecting this module as Ready.
+					candidate.epoch++
+				}
+				candidate.state = StateDegraded
+				candidate.lastErr = fmt.Sprintf(
+					"required dependency %s became unavailable after %s failed: %v",
+					brokenDependency,
+					failedProviderID,
+					cause,
+				)
+				degraded = append(degraded, id)
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	sort.Strings(degraded)
+	return degraded
 }
 
 func stopInstanceForRollback(instance Instance) {
@@ -477,7 +591,17 @@ func stopInstanceForRollback(instance Instance) {
 func (r *Registry) activeRequiredDependentsLocked(providerID string) []string {
 	dependents := make([]string, 0)
 	for id, candidate := range r.entries {
-		if id == providerID || candidate.instance == nil {
+		if id == providerID {
+			continue
+		}
+		// A dependent blocks provider teardown while it owns a live
+		// instance, is still constructing one, or is in the middle of stopping
+		// one. A degraded entry with no instance (for example an invalidated
+		// Start completion) owns no runtime resource and must not block cleanup.
+		active := candidate.instance != nil ||
+			candidate.state == StateStarting ||
+			candidate.state == StateStopping
+		if !active {
 			continue
 		}
 		for _, dependency := range candidate.manifest.Dependencies.Required {
@@ -504,6 +628,10 @@ func (r *Registry) removeStartOrderLocked(id string) {
 func (r *Registry) dependenciesReady(entry *registryEntry) (bool, string) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	return r.dependenciesReadyLocked(entry)
+}
+
+func (r *Registry) dependenciesReadyLocked(entry *registryEntry) (bool, string) {
 	for _, dependency := range entry.manifest.Dependencies.Required {
 		dep := r.entries[dependency.ID]
 		if dep == nil {
@@ -513,7 +641,7 @@ func (r *Registry) dependenciesReady(entry *registryEntry) (bool, string) {
 			return false, "incompatible required dependency " + dependency.ID
 		}
 		if dep.state != StateReady {
-			return false, ""
+			return false, "required dependency " + dependency.ID + " is not ready"
 		}
 	}
 	return true, ""
@@ -521,9 +649,12 @@ func (r *Registry) dependenciesReady(entry *registryEntry) (bool, string) {
 
 func (r *Registry) setBlocked(entry *registryEntry, reason string) {
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.entries[entry.manifest.ID] != entry {
+		return
+	}
 	entry.state = StateBlocked
 	entry.lastErr = reason
-	r.mu.Unlock()
 }
 
 func (r *Registry) entry(id string) (*registryEntry, error) {

@@ -84,6 +84,8 @@ A manifest declares:
 
 Potential capabilities are not live capabilities. They become discoverable only after the instance reaches `Ready`, and are revoked before/during stop or failure.
 
+Requested permissions are declarative metadata in runtime API v1. They document ownership/security intent but are not yet a sandbox or authorization grant. Enforcement belongs in a future host policy layer; modules must not treat declaration as proof of access.
+
 Version 1 supports `kind: "builtin"` only. Out-of-process modules require a separate versioned control bridge; they must not be smuggled into the built-in ABI.
 
 ## Lifecycle
@@ -161,7 +163,7 @@ The owner of mutable state is explicit:
 - clipboard cross-device ordering: one generation domain in `clipboard.Client`;
 - native clipboard echo suppression: `features/clipboard`.
 
-Clipboard local and phone changes share a generation sequence. A phone publication tombstones older outbound snapshots; stale CONTENT requests are rejected rather than answered with unrelated current text. A newer local event prevents an older phone response from overwriting it.
+Clipboard local and phone changes share a generation sequence once observed by the runtime. A phone publication tombstones older outbound snapshots; stale CONTENT requests are rejected rather than answered with unrelated current text. A newer observed local event prevents an older phone response from overwriting it. The current Wayland watcher still polls, so a compositor-local change that occurs but has not yet been observed cannot participate in ordering until the next poll.
 
 ## Adding a feature
 

@@ -32,7 +32,14 @@ func DecodeConfig(raw json.RawMessage) (Config, error) {
 	if len(raw) == 0 {
 		return cfg, nil
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 {
+		return cfg, nil
+	}
+	if trimmed[0] != '{' {
+		return Config{}, errors.New("clipboard module: config must be a JSON object")
+	}
+	dec := json.NewDecoder(bytes.NewReader(trimmed))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&cfg); err != nil {
 		return Config{}, fmt.Errorf("clipboard module: decode config: %w", err)

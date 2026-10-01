@@ -221,6 +221,10 @@ func queueLatestRemoteApply(
 func (i *instance) run(ctx context.Context, clientErr <-chan error) {
 	defer close(i.done)
 	defer close(i.errors)
+	defer i.cancel()
+	if i.endpoint != nil {
+		defer i.endpoint.Close()
+	}
 
 	ticker := time.NewTicker(i.cfg.PollInterval())
 	defer ticker.Stop()

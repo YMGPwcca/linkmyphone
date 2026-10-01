@@ -3,7 +3,6 @@ package phonehost
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
@@ -21,7 +20,6 @@ type transport interface {
 
 type Router struct {
 	transport transport
-	reportErr func(error)
 
 	mu          sync.RWMutex
 	subscribers map[uint64]*subscriber
@@ -29,9 +27,21 @@ type Router struct {
 }
 
 type subscriber struct {
-	name    string
-	matcher Matcher
-	recv    chan relay.Received
+	name      string
+	matcher   Matcher
+	recv      chan relay.Received
+	revoked   chan struct{}
+	closeOnce sync.Once
+}
+
+func (s *subscriber) close() {
+	if s == nil {
+		return
+	}
+	s.closeOnce.Do(func() {
+		close(s.revoked)
+		close(s.recv)
+	})
 }
 
 type Endpoint struct {
@@ -40,13 +50,13 @@ type Endpoint struct {
 	transport transport
 	id        uint64
 	recv      <-chan relay.Received
+	revoked   <-chan struct{}
 	closeOnce sync.Once
 }
 
-func newRouter(transport transport, reportErr func(error)) *Router {
+func newRouter(transport transport) *Router {
 	return &Router{
 		transport:   transport,
-		reportErr:   reportErr,
 		subscribers: make(map[uint64]*subscriber),
 	}
 }
@@ -70,16 +80,19 @@ func (r *Router) Subscribe(name string, matcher Matcher, queueSize int) (*Endpoi
 	r.nextID++
 	id := r.nextID
 	ch := make(chan relay.Received, queueSize)
-	r.subscribers[id] = &subscriber{
+	sub := &subscriber{
 		name:    name,
 		matcher: matcher,
 		recv:    ch,
+		revoked: make(chan struct{}),
 	}
+	r.subscribers[id] = sub
 	return &Endpoint{
 		router:    r,
 		transport: r.transport,
 		id:        id,
 		recv:      ch,
+		revoked:   sub.revoked,
 	}, nil
 }
 
@@ -99,19 +112,25 @@ func (r *Router) Run(ctx context.Context) error {
 
 func (r *Router) dispatch(message relay.Received) {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-	for _, sub := range r.subscribers {
+	overflowed := make([]uint64, 0)
+	for id, sub := range r.subscribers {
 		if !sub.matcher(message) {
 			continue
 		}
 		select {
 		case sub.recv <- cloneReceived(message):
 		default:
-			r.report(fmt.Errorf(
-				"phonehost: subscription %s receive queue is full",
-				sub.name,
-			))
+			overflowed = append(overflowed, id)
 		}
+	}
+	r.mu.RUnlock()
+
+	// A feature queue overflow is a feature failure, not a shared transport
+	// failure. Revoke only that subscription; the feature's receive channel
+	// closes and its client/lifecycle reports failure without taking down the
+	// Phone Link host or unrelated modules.
+	for _, id := range overflowed {
+		r.unsubscribe(id)
 	}
 }
 
@@ -123,7 +142,7 @@ func (r *Router) unsubscribe(id uint64) {
 		return
 	}
 	delete(r.subscribers, id)
-	close(sub.recv)
+	sub.close()
 }
 
 func (r *Router) Close() {
@@ -131,13 +150,7 @@ func (r *Router) Close() {
 	defer r.mu.Unlock()
 	for id, sub := range r.subscribers {
 		delete(r.subscribers, id)
-		close(sub.recv)
-	}
-}
-
-func (r *Router) report(err error) {
-	if err != nil && r.reportErr != nil {
-		r.reportErr(err)
+		sub.close()
 	}
 }
 
@@ -155,6 +168,11 @@ func (e *Endpoint) Send(
 	defer e.mu.RUnlock()
 	if e.transport == nil {
 		return errors.New("phonehost: endpoint is closed")
+	}
+	select {
+	case <-e.revoked:
+		return errors.New("phonehost: endpoint is revoked")
+	default:
 	}
 	return e.transport.Send(ctx, target, sessionID, messageType, payload)
 }

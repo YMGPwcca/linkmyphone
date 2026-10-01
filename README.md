@@ -69,7 +69,7 @@ The repository now includes:
   - publishes Linux clipboard changes and applies phone clipboard publications
   - suppresses immediate phone -> Linux -> phone echo loops
   - snapshots outbound text by correlation id so CONTENT replies match the advertised change
-  - uses one cross-device generation domain so newer local/phone changes supersede stale work deterministically
+  - uses one cross-device generation domain so newer observed local/phone changes supersede stale protocol work deterministically
 - `clipboard-sync` remains as a compatibility alias that starts the same `phonelink.clipboard` module through the modular lifecycle
 
 ## Source-confirmed clipboard cloud path
@@ -162,9 +162,11 @@ The first live Linux bootstrap probe against the Microsoft production services h
 - returning a successful text/plain CONTENT response was live-validated end to end: the explicit Linux probe text appeared in the S23 clipboard and was pasteable on the phone;
 - continuous native text synchronization was live-validated in both directions on Wayland with an S23;
 - the `wl-copy` fork/pipe latency bug was fixed, phone-to-Linux logging became immediate, and reflected clipboard echo was eliminated;
-- the pre-modular continuous path passed both `go test ./...` and `go test -race ./...`.
+- the pre-modular continuous path passed both `go test ./...` and `go test -race ./...`;
+- the modular `feature create --enabled` + `run` path was live-validated end to end on the S23: the shared phone host reached SessionValidation, `phonelink.clipboard` reached Ready, live capabilities were published, two-way clipboard traffic remained functional, and Ctrl+C performed a clean module shutdown;
+- the modular branch passed full `go test ./...` and `go test -race ./...` after the lifecycle/router/generation refactor.
 
-The next live validation point is the same confirmed clipboard behavior through the new modular host/router/feature lifecycle.
+The next runtime milestone is a local control plane that applies feature CRUD to the running process without restart.
 
 ## Bootstrap probe
 

@@ -39,7 +39,9 @@ type Config struct {
 type Session struct {
 	cloud           *bootstrap.CloudRelay
 	router          *Router
+	runCtx          context.Context
 	cancel          context.CancelFunc
+	routingOnce     sync.Once
 	errors          chan error
 	closeOnce       sync.Once
 	closeErr        error
@@ -52,7 +54,19 @@ func (s *Session) Subscribe(name string, matcher Matcher, queueSize int) (*Endpo
 	if s == nil || s.router == nil {
 		return nil, errors.New("phonehost: session router is unavailable")
 	}
-	return s.router.Subscribe(name, matcher, queueSize)
+	endpoint, err := s.router.Subscribe(name, matcher, queueSize)
+	if err != nil {
+		return nil, err
+	}
+	s.routingOnce.Do(func() {
+		go func() {
+			if err := s.router.Run(s.runCtx); err != nil &&
+				!errors.Is(err, context.Canceled) {
+				s.reportRuntimeError(err)
+			}
+		}()
+	})
+	return endpoint, nil
 }
 
 func (s *Session) Errors() <-chan error {
@@ -208,19 +222,15 @@ func Open(ctx context.Context, cfg Config, reporter kernel.Reporter) (*Session, 
 	runCtx, runCancel := context.WithCancel(context.Background())
 	session := &Session{
 		cloud:           cloud,
+		runCtx:          runCtx,
 		cancel:          runCancel,
 		errors:          make(chan error, 8),
 		Target:          target,
 		SelfDcgClientID: resumed.Identity.DeviceID,
 		Region:          cloud.Region,
 	}
-	session.router = newRouter(cloud.Relay, session.reportRuntimeError)
+	session.router = newRouter(cloud.Relay)
 
-	go func() {
-		if err := session.router.Run(runCtx); err != nil && !errors.Is(err, context.Canceled) {
-			session.reportRuntimeError(err)
-		}
-	}()
 	go func() {
 		select {
 		case <-runCtx.Done():
