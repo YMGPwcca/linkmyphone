@@ -35,7 +35,7 @@ type NativeTextEvent struct {
 
 // WatchText blocks while a native clipboard watch is active and calls emit for
 // each complete text selection event. Wayland uses wl-paste --watch and a
-// hidden helper command in the current phonelink-linux executable so clipboard
+// hidden helper command in the current linkmyphone executable so clipboard
 // bytes can be framed without invoking a shell.
 func (l *NativeLocal) WatchText(
 	ctx context.Context,

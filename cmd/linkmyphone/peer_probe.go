@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
-	"github.com/YMGPwcca/phonelink-linux/auth/msa"
-	authstate "github.com/YMGPwcca/phonelink-linux/auth/state"
-	"github.com/YMGPwcca/phonelink-linux/bootstrap"
-	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
+	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
+	"github.com/YMGPwcca/linkmyphone/auth/msa"
+	authstate "github.com/YMGPwcca/linkmyphone/auth/state"
+	"github.com/YMGPwcca/linkmyphone/bootstrap"
+	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
 )
 
 type peerProbeOptions struct {
@@ -54,7 +54,7 @@ func runPeerProbe(ctx context.Context, args []string) error {
 		return errors.New("signalr timeout, wake timeout, and wake TTL must be positive")
 	}
 
-	fmt.Println("Phone Link Linux peer probe")
+	fmt.Println("LinkMyPhone peer probe")
 	fmt.Printf("State: %s\n", opts.statePath)
 	fmt.Println("Secrets are not printed.")
 	fmt.Println()

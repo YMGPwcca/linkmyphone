@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"time"
 
-	clipproto "github.com/YMGPwcca/phonelink-linux/protocol/clipboard"
-	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
-	"github.com/YMGPwcca/phonelink-linux/protocol/msaep"
-	"github.com/YMGPwcca/phonelink-linux/protocol/platform"
+	clipproto "github.com/YMGPwcca/linkmyphone/protocol/clipboard"
+	"github.com/YMGPwcca/linkmyphone/protocol/dcg"
+	"github.com/YMGPwcca/linkmyphone/protocol/msaep"
+	"github.com/YMGPwcca/linkmyphone/protocol/platform"
 )
 
 const (

@@ -45,7 +45,7 @@ sequenceDiagram
 
 </details>
 
-The state write precedes relay connection. If the relay fails after persistence, the result can resume without creating a second DCG identity. The public `bootstrap-probe` CLI has a deliberate difference: it saves after enrollment, synchronizes trust, saves again, and only then connects the account relay. That preserves new keys when trust discovery fails. The two paths are implemented in [`bootstrap/first_run.go`](../../bootstrap/first_run.go#L47-L165), [`bootstrap/enroll.go`](../../bootstrap/enroll.go#L25-L70), and [`cmd/phonelink-linux/main.go`](../../cmd/phonelink-linux/main.go#L160-L264).
+The state write precedes relay connection. If the relay fails after persistence, the result can resume without creating a second DCG identity. The public `bootstrap-probe` CLI has a deliberate difference: it saves after enrollment, synchronizes trust, saves again, and only then connects the account relay. That preserves new keys when trust discovery fails. The two paths are implemented in [`bootstrap/first_run.go`](../../bootstrap/first_run.go#L47-L165), [`bootstrap/enroll.go`](../../bootstrap/enroll.go#L25-L70), and [`cmd/linkmyphone/main.go`](../../cmd/linkmyphone/main.go#L160-L264).
 
 The production service base is `https://dcg.microsoft.com/`, with default Hub endpoint `relayhub/`. Compatibility metadata defaults to app version `1.26072.116.0`, ring `Public`, and advertised OS version `10.0.26100`. The OS value describes a Windows-compatible service profile, not the Linux host version. Defaults are in [`auth constants`](../../auth/dcgauth/constants.go#L5-L26) and [`phone-host defaults`](../../runtime/phonehost/session.go#L21-L24); the [CLI reference](../reference/cli.md) lists overrides.
 
@@ -170,7 +170,7 @@ Trust and feature permissions are separate. Device metadata capabilities describ
 
 ## Persistence and resume
 
-The default auth state path is the platform user configuration directory followed by `phonelink-linux/state.json`, normally `~/.config/phonelink-linux/state.json`. The state directory is mode `0700`; the state file is mode `0600`.
+The default auth state path is the platform user configuration directory followed by `linkmyphone/state.json`, normally `~/.config/linkmyphone/state.json`. The state directory is mode `0700`; the state file is mode `0600`.
 
 The JSON snapshot contains:
 

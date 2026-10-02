@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/dcgheaders"
-	psignalr "github.com/YMGPwcca/phonelink-linux/protocol/signalr"
-	"github.com/YMGPwcca/phonelink-linux/transport/relay"
-	signalrtransport "github.com/YMGPwcca/phonelink-linux/transport/signalr"
-	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
+	"github.com/YMGPwcca/linkmyphone/dcgheaders"
+	psignalr "github.com/YMGPwcca/linkmyphone/protocol/signalr"
+	"github.com/YMGPwcca/linkmyphone/transport/relay"
+	signalrtransport "github.com/YMGPwcca/linkmyphone/transport/signalr"
+	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
 )
 
 type cloudFakeHub struct {

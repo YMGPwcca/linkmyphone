@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
-	"github.com/YMGPwcca/phonelink-linux/dcgheaders"
-	psignalr "github.com/YMGPwcca/phonelink-linux/protocol/signalr"
-	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
-	"github.com/YMGPwcca/phonelink-linux/transport/relay"
-	signalrtransport "github.com/YMGPwcca/phonelink-linux/transport/signalr"
+	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
+	"github.com/YMGPwcca/linkmyphone/dcgheaders"
+	psignalr "github.com/YMGPwcca/linkmyphone/protocol/signalr"
+	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
+	"github.com/YMGPwcca/linkmyphone/transport/relay"
+	signalrtransport "github.com/YMGPwcca/linkmyphone/transport/signalr"
 )
 
 func TestEnsurePeerOnlineWakesAndWaitsForPresence(t *testing.T) {

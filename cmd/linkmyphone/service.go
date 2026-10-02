@@ -11,12 +11,12 @@ import (
 	"strconv"
 	"strings"
 
-	systemdunit "github.com/YMGPwcca/phonelink-linux/packaging/systemd"
+	systemdunit "github.com/YMGPwcca/linkmyphone/packaging/systemd"
 )
 
 const (
-	userServiceUnitName = "phonelink-linux.service"
-	installedBinaryName  = "phonelink-linux"
+	userServiceUnitName = "linkmyphone.service"
+	installedBinaryName  = "linkmyphone"
 )
 
 var graphicalEnvironmentKeys = []string{
@@ -177,7 +177,7 @@ func runServiceInstall(args []string) error {
 	if start {
 		fmt.Printf("Started: %s\n", userServiceUnitName)
 	}
-	fmt.Println("Logs: phonelink-linux service logs --follow")
+	fmt.Println("Logs: linkmyphone service logs --follow")
 	return nil
 }
 
@@ -198,7 +198,7 @@ func runServiceUninstall(args []string) error {
 	fs := flag.NewFlagSet("service uninstall", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	keepBinary := false
-	fs.BoolVar(&keepBinary, "keep-binary", false, "leave ~/.local/bin/phonelink-linux installed")
+	fs.BoolVar(&keepBinary, "keep-binary", false, "leave ~/.local/bin/linkmyphone installed")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -337,7 +337,7 @@ func installCurrentExecutable(destination string) error {
 	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return fmt.Errorf("create binary install directory: %w", err)
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(destination), ".phonelink-linux-*")
+	tmp, err := os.CreateTemp(filepath.Dir(destination), ".linkmyphone-*")
 	if err != nil {
 		return fmt.Errorf("create temporary installed executable: %w", err)
 	}
@@ -374,7 +374,7 @@ func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(dir, ".phonelink-linux-*")
+	tmp, err := os.CreateTemp(dir, ".linkmyphone-*")
 	if err != nil {
 		return err
 	}
@@ -441,10 +441,10 @@ func runInteractiveCommand(name string, args ...string) error {
 
 func serviceUsage() {
 	fmt.Fprintln(os.Stderr, "Usage:")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux service install [--enable=true] [--start=true]")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux service uninstall [--keep-binary]")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux service start|stop|restart")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux service enable|disable|status")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux service logs [--follow] [--lines N]")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux service import-environment")
+	fmt.Fprintln(os.Stderr, "  linkmyphone service install [--enable=true] [--start=true]")
+	fmt.Fprintln(os.Stderr, "  linkmyphone service uninstall [--keep-binary]")
+	fmt.Fprintln(os.Stderr, "  linkmyphone service start|stop|restart")
+	fmt.Fprintln(os.Stderr, "  linkmyphone service enable|disable|status")
+	fmt.Fprintln(os.Stderr, "  linkmyphone service logs [--follow] [--lines N]")
+	fmt.Fprintln(os.Stderr, "  linkmyphone service import-environment")
 }

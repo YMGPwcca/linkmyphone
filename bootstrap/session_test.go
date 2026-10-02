@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
-	"github.com/YMGPwcca/phonelink-linux/protocol/platform"
-	sessionproto "github.com/YMGPwcca/phonelink-linux/protocol/sessionvalidation"
-	"github.com/YMGPwcca/phonelink-linux/transport/relay"
+	"github.com/YMGPwcca/linkmyphone/protocol/dcg"
+	"github.com/YMGPwcca/linkmyphone/protocol/platform"
+	sessionproto "github.com/YMGPwcca/linkmyphone/protocol/sessionvalidation"
+	"github.com/YMGPwcca/linkmyphone/transport/relay"
 )
 
 type sessionFakeRelay struct {

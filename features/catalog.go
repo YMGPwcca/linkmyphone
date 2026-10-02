@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"sort"
 
-	clipboardfeature "github.com/YMGPwcca/phonelink-linux/features/clipboard"
-	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
-	"github.com/YMGPwcca/phonelink-linux/runtime/phonehost"
+	clipboardfeature "github.com/YMGPwcca/linkmyphone/features/clipboard"
+	"github.com/YMGPwcca/linkmyphone/runtime/kernel"
+	"github.com/YMGPwcca/linkmyphone/runtime/phonehost"
 )
 
 type Definition struct {

@@ -8,10 +8,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/YMGPwcca/phonelink-linux/features"
-	"github.com/YMGPwcca/phonelink-linux/runtime/controlplane"
-	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
-	"github.com/YMGPwcca/phonelink-linux/runtime/phonehost"
+	"github.com/YMGPwcca/linkmyphone/features"
+	"github.com/YMGPwcca/linkmyphone/runtime/controlplane"
+	"github.com/YMGPwcca/linkmyphone/runtime/kernel"
+	"github.com/YMGPwcca/linkmyphone/runtime/phonehost"
 )
 
 type fakeLiveModule struct {
@@ -71,14 +71,14 @@ func (i *fakeLiveInstance) Stop(context.Context) error {
 func testLiveManifest() kernel.Manifest {
 	manifest := kernel.Manifest{
 		SchemaVersion: "1.0",
-		ID:            "phonelink.test",
+		ID:            "linkmyphone.test",
 		Version:       "1.0.0",
 		Kind:          "builtin",
 	}
 	manifest.Runtime.APIVersion = "1.0"
 	manifest.Metadata.DisplayName = "Test"
 	manifest.Metadata.Description = "Test live feature"
-	manifest.Metadata.DiagnosticLabel = "phonelink.test"
+	manifest.Metadata.DiagnosticLabel = "linkmyphone.test"
 	return manifest
 }
 
@@ -120,7 +120,7 @@ func TestRuntimeControllerLiveCRUD(t *testing.T) {
 		Version:   controlplane.ProtocolVersion,
 		Operation: controlplane.OperationCreate,
 		Record: &kernel.FeatureRecord{
-			ID:      "phonelink.test",
+			ID:      "linkmyphone.test",
 			Enabled: true,
 			Config:  json.RawMessage(`{"value":1}`),
 		},
@@ -136,7 +136,7 @@ func TestRuntimeControllerLiveCRUD(t *testing.T) {
 	update := controller.HandleControl(controlplane.Request{
 		Version:   controlplane.ProtocolVersion,
 		Operation: controlplane.OperationUpdate,
-		ID:        "phonelink.test",
+		ID:        "linkmyphone.test",
 		Config:    &config,
 	})
 	if !update.OK || update.Record == nil || update.Snapshot == nil {
@@ -150,7 +150,7 @@ func TestRuntimeControllerLiveCRUD(t *testing.T) {
 	disable := controller.HandleControl(controlplane.Request{
 		Version:   controlplane.ProtocolVersion,
 		Operation: controlplane.OperationUpdate,
-		ID:        "phonelink.test",
+		ID:        "linkmyphone.test",
 		Enabled:   &disabled,
 	})
 	if !disable.OK || disable.Record == nil || disable.Snapshot == nil {
@@ -164,7 +164,7 @@ func TestRuntimeControllerLiveCRUD(t *testing.T) {
 	enable := controller.HandleControl(controlplane.Request{
 		Version:   controlplane.ProtocolVersion,
 		Operation: controlplane.OperationUpdate,
-		ID:        "phonelink.test",
+		ID:        "linkmyphone.test",
 		Enabled:   &enabled,
 	})
 	if !enable.OK || enable.Record == nil || enable.Snapshot == nil {
@@ -185,7 +185,7 @@ func TestRuntimeControllerLiveCRUD(t *testing.T) {
 	get := controller.HandleControl(controlplane.Request{
 		Version:   controlplane.ProtocolVersion,
 		Operation: controlplane.OperationGet,
-		ID:        "phonelink.test",
+		ID:        "linkmyphone.test",
 	})
 	if !get.OK || get.Record == nil || get.Snapshot == nil {
 		t.Fatalf("get=%#v", get)
@@ -194,15 +194,15 @@ func TestRuntimeControllerLiveCRUD(t *testing.T) {
 	deleted := controller.HandleControl(controlplane.Request{
 		Version:   controlplane.ProtocolVersion,
 		Operation: controlplane.OperationDelete,
-		ID:        "phonelink.test",
+		ID:        "linkmyphone.test",
 	})
 	if !deleted.OK {
 		t.Fatalf("delete=%#v", deleted)
 	}
-	if _, err := controller.store.Read("phonelink.test"); !errors.Is(err, kernel.ErrFeatureNotFound) {
+	if _, err := controller.store.Read("linkmyphone.test"); !errors.Is(err, kernel.ErrFeatureNotFound) {
 		t.Fatalf("store read after delete err=%v", err)
 	}
-	if _, err := controller.registry.Read("phonelink.test"); !errors.Is(err, kernel.ErrFeatureNotFound) {
+	if _, err := controller.registry.Read("linkmyphone.test"); !errors.Is(err, kernel.ErrFeatureNotFound) {
 		t.Fatalf("registry read after delete err=%v", err)
 	}
 
@@ -218,7 +218,7 @@ func TestRuntimeControllerLiveCRUD(t *testing.T) {
 func TestRuntimeControllerLoadsDisabledFeatureWithoutStartingIt(t *testing.T) {
 	controller, module := newTestRuntimeController(t)
 	if err := controller.store.Create(kernel.FeatureRecord{
-		ID:      "phonelink.test",
+		ID:      "linkmyphone.test",
 		Enabled: false,
 		Config:  json.RawMessage(`{"value":1}`),
 	}); err != nil {
@@ -228,7 +228,7 @@ func TestRuntimeControllerLoadsDisabledFeatureWithoutStartingIt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	snapshot, err := controller.registry.Read("phonelink.test")
+	snapshot, err := controller.registry.Read("linkmyphone.test")
 	if err != nil {
 		t.Fatal(err)
 	}

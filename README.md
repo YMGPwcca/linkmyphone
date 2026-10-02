@@ -1,4 +1,4 @@
-# Phone Link Linux
+# LinkMyPhone
 
 Copy text between your Linux desktop and Android phone.
 
@@ -12,6 +12,8 @@ Copy text between your Linux desktop and Android phone.
 </picture>
 
 A reverse-engineered, command-line client. A personal Microsoft account and an internet connection are required.
+
+LinkMyPhone is an independent, unofficial project, not affiliated with, endorsed by, or sponsored by Microsoft. Microsoft, Phone Link, and Link to Windows are trademarks of the Microsoft group of companies.
 
 > [!NOTE]
 >
@@ -28,9 +30,9 @@ You need:
 ### 1. Build
 
 ```bash
-git clone https://github.com/YMGPwcca/phonelink-linux.git
-cd phonelink-linux
-go build -o phonelink-linux ./cmd/phonelink-linux
+git clone https://github.com/YMGPwcca/linkmyphone.git
+cd linkmyphone
+go build -o linkmyphone ./cmd/linkmyphone
 ```
 
 See [installation](docs/getting-started/installation.md) for source access and desktop setup.
@@ -38,7 +40,7 @@ See [installation](docs/getting-started/installation.md) for source access and d
 ### 2. Sign in
 
 ```bash
-./phonelink-linux bootstrap-probe
+./linkmyphone bootstrap-probe
 ```
 
 Follow the device-code instructions printed in the terminal.
@@ -50,8 +52,8 @@ Follow the device-code instructions printed in the terminal.
 > New clipboard text, including secrets, is sent through Microsoft's services. The client does not filter sensitive selections. Do not share `state.json`: it contains refresh credentials and private keys. [Privacy and local state](docs/operations/privacy-and-state.md).
 
 ```bash
-./phonelink-linux feature create --enabled phonelink.clipboard
-./phonelink-linux run
+./linkmyphone feature create --enabled linkmyphone.clipboard
+./linkmyphone run
 ```
 
 Wait for `Modular runtime is running`, then copy fresh, non-sensitive text and try pasting on the other device. The existing clipboard is not published at startup by default. Press Ctrl+C to stop.
@@ -62,7 +64,7 @@ Wait for `Modular runtime is running`, then copy fresh, non-sensitive text and t
 Enable an existing clipboard feature record instead of creating it again. If several Android peers are linked, select one explicitly:
 
 ```bash
-./phonelink-linux run --target "PHONE_NAME"
+./linkmyphone run --target "PHONE_NAME"
 ```
 
 The [first-run guide](docs/getting-started/first-run.md) covers resuming a profile, target selection, and checking both clipboard directions.
@@ -85,11 +87,13 @@ Image and HTML codecs exist, but the clipboard feature syncs text only. Notifica
 Stop the foreground runtime first, then install the user service:
 
 ```bash
-./phonelink-linux service install
-~/.local/bin/phonelink-linux service status
+./linkmyphone service install
+~/.local/bin/linkmyphone service status
 ```
 
 Custom state paths or phone target? Configure them with the [systemd guide](docs/operations/systemd.md) before starting the service.
+
+Upgrading from Phone Link Linux? There is **no automatic migration**. Stop and disable the old daemon before moving private state or starting LinkMyPhone; follow [state migration](docs/reference/configuration.md#migrate-from-phone-link-linux) and [service migration](docs/operations/systemd.md#migrate-the-old-service).
 
 ## Find your next step
 

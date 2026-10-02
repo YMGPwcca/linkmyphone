@@ -3,7 +3,7 @@ package phonehost
 import (
 	"testing"
 
-	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
+	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
 )
 
 func TestSelectPeerPrefersSoleAndroid(t *testing.T) {

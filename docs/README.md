@@ -1,6 +1,6 @@
 # Documentation
 
-[Phone Link Linux](../README.md) · [CLI reference](reference/cli.md) · [Troubleshooting](operations/troubleshooting.md)
+[LinkMyPhone](../README.md) · [CLI reference](reference/cli.md) · [Troubleshooting](operations/troubleshooting.md)
 
 ## Start with your task
 

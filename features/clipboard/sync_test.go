@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	clipclient "github.com/YMGPwcca/phonelink-linux/clipboard"
+	clipclient "github.com/YMGPwcca/linkmyphone/clipboard"
 )
 
 type fakeLocal struct {

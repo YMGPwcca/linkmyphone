@@ -15,7 +15,7 @@ func TestFeatureStoreCRUD(t *testing.T) {
 	}
 
 	record := FeatureRecord{
-		ID:      "phonelink.clipboard",
+		ID:      "linkmyphone.clipboard",
 		Enabled: true,
 		Config:  json.RawMessage(`{"poll_interval_ms":500}`),
 	}
@@ -74,7 +74,7 @@ func TestFeatureStoreRejectsNonObjectConfig(t *testing.T) {
 		json.RawMessage(`null`),
 	} {
 		err = store.Create(FeatureRecord{
-			ID:      "phonelink.clipboard",
+			ID:      "linkmyphone.clipboard",
 			Enabled: true,
 			Config:  config,
 		})

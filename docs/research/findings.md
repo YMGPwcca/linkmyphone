@@ -50,7 +50,7 @@ The public bootstrap probe saves new keys and refresh credentials immediately af
 <details>
 <summary>Persistence order, stored fields, and resume evidence</summary>
 
-The CLI order is visible in [`main.go`](../../cmd/phonelink-linux/main.go#L160-L264); the library order is in [`first_run.go`](../../bootstrap/first_run.go#L47-L165). State carries both key pairs, refresh credentials, the services token, enrollment material, trust relationships, and a stable logical-device ID. Resume refreshes the Microsoft token and calls DCG `SignIn`, not `CreateIdentity`.
+The CLI order is visible in [`main.go`](../../cmd/linkmyphone/main.go#L160-L264); the library order is in [`first_run.go`](../../bootstrap/first_run.go#L47-L165). State carries both key pairs, refresh credentials, the services token, enrollment material, trust relationships, and a stable logical-device ID. Resume refreshes the Microsoft token and calls DCG `SignIn`, not `CreateIdentity`.
 
 [`resume.go`](../../bootstrap/resume.go#L20-L80) and [`auth/state/store.go`](../../auth/state/store.go#L18-L207) implement the contracts. The library's staged persistence and resume behavior are covered by [`first_run_test.go`](../../bootstrap/first_run_test.go#L22-L141), [`resume_test.go`](../../bootstrap/resume_test.go#L16-L108), and [`store_test.go`](../../auth/state/store_test.go#L12-L96). The baseline reports production state persistence before later cloud stages.
 
@@ -207,7 +207,7 @@ The equality check is in [`clipboard/client.go`](../../clipboard/client.go#L407-
 <details>
 <summary>Native watcher sources, helper tests, and validation report</summary>
 
-Native paths and helper tests are in [`native.go`](../../clipboard/native.go#L62-L86), [`native_watch.go`](../../clipboard/native_watch.go#L36-L198), and [`native_watch_test.go`](../../clipboard/native_watch_test.go#L12-L163). Commits [`9b55277`](https://github.com/YMGPwcca/phonelink-linux/commit/9b552776b996f91ab9285305cd10f6feb912b7dd) and [`3c79498`](https://github.com/YMGPwcca/phonelink-linux/commit/3c79498277dc84473091b54fad6a875808f67e7c) record the write and watcher changes. The baseline reports immediate single publications for consecutive copies, one genuine-clear publication, non-echoing phone writes, and clean Ctrl+C without polling fallback.
+Native paths and helper tests are in [`native.go`](../../clipboard/native.go#L62-L86), [`native_watch.go`](../../clipboard/native_watch.go#L36-L198), and [`native_watch_test.go`](../../clipboard/native_watch_test.go#L12-L153). Commits [`9b55277`](https://github.com/YMGPwcca/phonelink-linux/commit/9b552776b996f91ab9285305cd10f6feb912b7dd) and [`3c79498`](https://github.com/YMGPwcca/phonelink-linux/commit/3c79498277dc84473091b54fad6a875808f67e7c) record the write and watcher changes. The baseline reports immediate single publications for consecutive copies, one genuine-clear publication, non-echoing phone writes, and clean Ctrl+C without polling fallback.
 
 </details>
 
@@ -235,7 +235,7 @@ The control socket is versioned and keyed by the absolute feature-store path. Re
 <details>
 <summary>Live transaction sources, hardening commits, and CRUD report</summary>
 
-The transaction is implemented in [`runtime_control.go`](../../cmd/phonelink-linux/runtime_control.go), with supporting contracts in [`runtime/kernel/`](../../runtime/kernel/) and [`runtime/controlplane/`](../../runtime/controlplane/). Commits [`f1ff937`](https://github.com/YMGPwcca/phonelink-linux/commit/f1ff9372ffda2cf74746424bdcf8071cf8a3566c), [`1a41a38`](https://github.com/YMGPwcca/phonelink-linux/commit/1a41a38fe58d76aefe8dc9a3624b19080539e9f1), and [`3d64a87`](https://github.com/YMGPwcca/phonelink-linux/commit/3d64a87280d747968d8c9655144917b5a636034c) record lifecycle and socket hardening.
+The transaction is implemented in [`runtime_control.go`](../../cmd/linkmyphone/runtime_control.go), with supporting contracts in [`runtime/kernel/`](../../runtime/kernel/) and [`runtime/controlplane/`](../../runtime/controlplane/). Commits [`f1ff937`](https://github.com/YMGPwcca/phonelink-linux/commit/f1ff9372ffda2cf74746424bdcf8071cf8a3566c), [`1a41a38`](https://github.com/YMGPwcca/phonelink-linux/commit/1a41a38fe58d76aefe8dc9a3624b19080539e9f1), and [`3d64a87`](https://github.com/YMGPwcca/phonelink-linux/commit/3d64a87280d747968d8c9655144917b5a636034c) record lifecycle and socket hardening.
 
 The baseline reports live list/get, disable, enable, configuration restart, delete, and create against one running process connected to the same S23, using hashed XDG socket. Final Ctrl+C stopped the recreated module cleanly. That sequence does not establish recovery after losing the cloud session.
 
@@ -248,7 +248,7 @@ The user service uses `Type=notify` and follows `graphical-session.target`. Read
 <details>
 <summary>User-service sources and graphical-session validation report</summary>
 
-The implementation is in [`packaging/systemd/`](../../packaging/systemd/), [`service.go`](../../cmd/phonelink-linux/service.go), and [`runtime/systemdnotify/`](../../runtime/systemdnotify/). Commit [`5ba71ec`](https://github.com/YMGPwcca/phonelink-linux/commit/5ba71ec96c7bafb2f7a1827693da7005e757c221) records the work.
+The implementation is in [`packaging/systemd/`](../../packaging/systemd/), [`service.go`](../../cmd/linkmyphone/service.go), and [`runtime/systemdnotify/`](../../runtime/systemdnotify/). Commit [`5ba71ec`](https://github.com/YMGPwcca/phonelink-linux/commit/5ba71ec96c7bafb2f7a1827693da7005e757c221) records the work.
 
 CachyOS/Wayland reports cover installation, empty-selection startup, restart, stop/start, logout/login, watcher ownership inside the service cgroup, and live feature control. Calls during `activating` received the startup retry error; calls after readiness returned live state. Stop removed this client's watcher while leaving unrelated clipboard-manager watchers alone. No original journal is tracked. Other session managers and init systems remain unvalidated.
 

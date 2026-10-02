@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	clipclient "github.com/YMGPwcca/phonelink-linux/clipboard"
-	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
+	clipclient "github.com/YMGPwcca/linkmyphone/clipboard"
+	"github.com/YMGPwcca/linkmyphone/runtime/kernel"
 )
 
 const (

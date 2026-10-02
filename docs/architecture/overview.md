@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md)
 
-Phone Link Linux is a Go 1.23+ Linux client for Microsoft Phone Link and Link to Windows interoperability. Microsoft cloud services provide authentication, device trust, signed peer wake, SignalR Hub Relay, and the PLATFORM transport. The repository currently ships one built-in feature, `phonelink.clipboard`.
+LinkMyPhone is a Go 1.23+ Linux client for Microsoft Phone Link and Link to Windows interoperability. Microsoft cloud services provide authentication, device trust, signed peer wake, SignalR Hub Relay, and the PLATFORM transport. The repository currently ships one built-in feature, `linkmyphone.clipboard`.
 
 Use this page to answer three questions quickly:
 
@@ -18,7 +18,7 @@ The runtime has one shared Phone Link host and a registry of in-process feature 
 <summary>Copyable package tree</summary>
 
 ```text
-phonelink-linux run
+linkmyphone run
         |
         +--> runtime/controlplane   Unix socket for feature CRUD
         +--> runtime/phonehost      auth, trust, wake, SessionValidation,
@@ -59,7 +59,7 @@ See the [source map](../developer/source-map.md) for every tracked package and i
 | `runtime/kernel` | Generic manifests, feature records, required dependency resolution, per-entry lifecycle serialization, instance epochs, and live capability publication or revocation. | Clipboard routes or native clipboard behavior. |
 | `runtime/phonehost` | Microsoft and DCG state resume, trust refresh, linked-peer selection, wake, PLATFORM `/SessionValidation`, one raw relay receive loop, and feature endpoints. | Feature-specific protocol or native behavior. |
 | `runtime/controlplane` | Version 1 JSON-over-Unix-socket requests, responses, limits, permissions, and handler switching. | Microsoft or Hub Relay protocol. |
-| `cmd/phonelink-linux/runtime_control.go` | The transaction that reconciles persistence with the live registry. | Feature-domain behavior. |
+| `cmd/linkmyphone/runtime_control.go` | The transaction that reconciles persistence with the live registry. | Feature-domain behavior. |
 | `features/catalog.go` | Builtin composition: manifest, defaults, validator, and factory. | Feature implementation details. |
 | A feature package | Protocol routing, native integration, worker goroutines, bounded queues, generation arbitration, and diagnostics. | Direct reads from `transport/relay.Client.Received()`, or imports of another feature package. |
 
@@ -73,7 +73,7 @@ The [module contract](modules.md) describes lifecycle and extension rules. The [
 
 ## Startup and rollback
 
-`phonelink-linux run` opens the feature store, reserves the control socket, and installs a temporary handler that returns `runtime is starting; retry the feature command`. This reservation happens before Phone Link bootstrap, so a CLI command cannot mistake a booting runtime for an offline runtime and write the store directly.
+`linkmyphone run` opens the feature store, reserves the control socket, and installs a temporary handler that returns `runtime is starting; retry the feature command`. This reservation happens before Phone Link bootstrap, so a CLI command cannot mistake a booting runtime for an offline runtime and write the store directly.
 
 The control socket replies to CLI requests during both startup and live operation:
 
@@ -90,7 +90,7 @@ The control socket replies to CLI requests during both startup and live operatio
 ```mermaid
 sequenceDiagram
     participant CLI as feature CLI
-    participant Run as phonelink-linux run
+    participant Run as linkmyphone run
     participant Socket as control socket
     participant Host as phonehost.Session
     participant Controller as runtime controller
@@ -138,8 +138,8 @@ The control plane does not reconnect the cloud session. Long-running reconnect, 
 
 ## Data and trust boundaries
 
-Feature desired state defaults to `~/.config/phonelink-linux/features.json`. The feature store uses schema version 1, rejects unknown top-level fields and malformed records, writes through a `0600` temporary file, syncs it, and atomically renames it into place. The containing directory is created with mode `0700`. This file contains desired state and feature configuration, not Microsoft identity state.
+Feature desired state defaults to `~/.config/linkmyphone/features.json`. The feature store uses schema version 1, rejects unknown top-level fields and malformed records, writes through a `0600` temporary file, syncs it, and atomically renames it into place. The containing directory is created with mode `0700`. This file contains desired state and feature configuration, not Microsoft identity state.
 
-The Microsoft and DCG bootstrap state is separate, normally `~/.config/phonelink-linux/state.json`, and contains refresh credentials and private key material. Keep it private. The phone host uses Microsoft cloud services for authentication and relay operation.
+The Microsoft and DCG bootstrap state is separate, normally `~/.config/linkmyphone/state.json`, and contains refresh credentials and private key material. Keep it private. The phone host uses Microsoft cloud services for authentication and relay operation.
 
 Feature permission declarations are metadata in runtime API 1.0. They do not sandbox a builtin or grant access. The runtime is an in-process builtin system: a builtin can reach any process and package APIs available to the executable. Out-of-process loading and sandbox enforcement require a separately versioned bridge and policy layer; neither exists in runtime API 1.0.

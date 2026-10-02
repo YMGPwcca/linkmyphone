@@ -11,13 +11,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
-	"github.com/YMGPwcca/phonelink-linux/auth/msa"
-	authstate "github.com/YMGPwcca/phonelink-linux/auth/state"
-	"github.com/YMGPwcca/phonelink-linux/bootstrap"
-	clipclient "github.com/YMGPwcca/phonelink-linux/clipboard"
-	"github.com/YMGPwcca/phonelink-linux/dcgheaders"
-	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
+	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
+	"github.com/YMGPwcca/linkmyphone/auth/msa"
+	authstate "github.com/YMGPwcca/linkmyphone/auth/state"
+	"github.com/YMGPwcca/linkmyphone/bootstrap"
+	clipclient "github.com/YMGPwcca/linkmyphone/clipboard"
+	"github.com/YMGPwcca/linkmyphone/dcgheaders"
+	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
 )
 
 const (
@@ -78,16 +78,16 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "phonelink-linux")
+	fmt.Fprintln(os.Stderr, "linkmyphone")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Usage:")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux bootstrap-probe [options]")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux peer-probe [options]")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux session-probe [options]")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux feature <subcommand> [options]")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux run [options]")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux service <subcommand> [options]")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux clipboard-sync [options]")
+	fmt.Fprintln(os.Stderr, "  linkmyphone bootstrap-probe [options]")
+	fmt.Fprintln(os.Stderr, "  linkmyphone peer-probe [options]")
+	fmt.Fprintln(os.Stderr, "  linkmyphone session-probe [options]")
+	fmt.Fprintln(os.Stderr, "  linkmyphone feature <subcommand> [options]")
+	fmt.Fprintln(os.Stderr, "  linkmyphone run [options]")
+	fmt.Fprintln(os.Stderr, "  linkmyphone service <subcommand> [options]")
+	fmt.Fprintln(os.Stderr, "  linkmyphone clipboard-sync [options]")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "bootstrap-probe validates Microsoft login, DCG enrollment/state,")
 	fmt.Fprintln(os.Stderr, "linked-peer trust, and the account-level SignalR relay connection.")
@@ -96,9 +96,9 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "session-probe continues through PLATFORM /SessionValidation and reports")
 	fmt.Fprintln(os.Stderr, "the peer capability/version response without dumping raw payloads.")
 	fmt.Fprintln(os.Stderr, "feature manages the persistent modular feature registry (CRUD + enable/disable).")
-	fmt.Fprintln(os.Stderr, "run opens one Phone Link host session and starts all enabled feature modules.")
+	fmt.Fprintln(os.Stderr, "run opens one LinkMyPhone host session and starts all enabled feature modules.")
 	fmt.Fprintln(os.Stderr, "service installs and manages the systemd --user daemon.")
-	fmt.Fprintln(os.Stderr, "clipboard-sync is a compatibility alias for the phonelink.clipboard module.")
+	fmt.Fprintln(os.Stderr, "clipboard-sync is a compatibility alias for the linkmyphone.clipboard module.")
 }
 
 type probeOptions struct {
@@ -117,7 +117,7 @@ func runBootstrapProbe(ctx context.Context, args []string) error {
 	}
 	hostname, _ := os.Hostname()
 	if strings.TrimSpace(hostname) == "" {
-		hostname = "phonelink-linux"
+		hostname = "linkmyphone"
 	}
 
 	fs := flag.NewFlagSet("bootstrap-probe", flag.ContinueOnError)
@@ -139,7 +139,7 @@ func runBootstrapProbe(ctx context.Context, args []string) error {
 		return errors.New("signalr timeout must be positive")
 	}
 
-	fmt.Println("Phone Link Linux bootstrap probe")
+	fmt.Println("LinkMyPhone bootstrap probe")
 	fmt.Printf("State: %s\n", opts.statePath)
 	fmt.Println("Secrets are not printed.")
 	fmt.Println()

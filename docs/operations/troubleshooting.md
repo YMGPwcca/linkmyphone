@@ -44,7 +44,7 @@ flowchart TD
 | `xclip` or `xsel` connection error | X11 environment | Check `DISPLAY`, `XAUTHORITY`, and the X11 provider from the same user session that runs the process. |
 | `native clipboard text exceeds 4194304 bytes` | Local clipboard limit | Use text under 4 MiB. This feature does not handle larger or binary selections. |
 | `native clipboard watch unavailable; using polling fallback` | Watcher | The module continues with `poll_interval_ms`. If polling fails, inspect the following error and provider logs. |
-| Module is not `Ready` | Feature lifecycle | Run `feature get phonelink.clipboard` and inspect the runtime snapshot. A disabled record, invalid config, unavailable provider, or failed host stage prevents readiness. |
+| Module is not `Ready` | Feature lifecycle | Run `feature get linkmyphone.clipboard` and inspect the runtime snapshot. A disabled record, invalid config, unavailable provider, or failed host stage prevents readiness. |
 | `runtime is starting; retry the feature command` | Control plane startup | Wait for systemd readiness or the interactive runtime's ready message, then retry. The command intentionally does not make an offline edit during startup. |
 | Feature command reports offline desired state | Control socket unavailable | Confirm that `run` is active and that the command uses the same `--state` feature-store path. Offline commands edit the registry only; they do not prove the module can start. |
 | `runtime already running` or a socket conflict | Two runtimes | Stop the interactive runtime before starting systemd, or stop the service before running interactively. One feature store has one owning runtime. |
@@ -54,7 +54,7 @@ flowchart TD
 Start the runtime in the foreground so its stage and module events remain visible:
 
 ```bash
-phonelink-linux run
+linkmyphone run
 ```
 
 The runtime prints the selected target, host stages, module state, live capabilities, and the control socket path. It does not print clipboard contents. Stop it with Ctrl+C and read the final shutdown messages.
@@ -62,8 +62,8 @@ The runtime prints the selected target, host stages, module state, live capabili
 Use a separate terminal for live feature state:
 
 ```bash
-phonelink-linux feature list
-phonelink-linux feature get phonelink.clipboard
+linkmyphone feature list
+linkmyphone feature get linkmyphone.clipboard
 ```
 
 If you use a non-default registry, pass the same `--state` to both feature commands and `--features-state` to `run`.
@@ -71,17 +71,17 @@ If you use a non-default registry, pass the same `--state` to both feature comma
 ## Inspect a systemd run
 
 ```bash
-~/.local/bin/phonelink-linux service status
-~/.local/bin/phonelink-linux service logs --lines 250
-~/.local/bin/phonelink-linux service logs --follow
+~/.local/bin/linkmyphone service status
+~/.local/bin/linkmyphone service logs --lines 250
+~/.local/bin/linkmyphone service logs --follow
 ```
 
 Check the first error before trying repeated restarts. The unit is rate-limited to five starts in 60 seconds. The service helpers reset failed/start-limit state before `install`, `start`, and `restart`; when using `systemctl` directly, recover with:
 
 ```bash
-systemctl --user reset-failed phonelink-linux.service
-~/.local/bin/phonelink-linux service import-environment
-~/.local/bin/phonelink-linux service start
+systemctl --user reset-failed linkmyphone.service
+~/.local/bin/linkmyphone service import-environment
+~/.local/bin/linkmyphone service start
 ```
 
 If startup is stuck in `activating`, wait for or inspect the host stages. `Type=notify` is designed to stay activating until the control plane and enabled modules are ready. Feature calls during that window return an explicit retry response.
@@ -90,7 +90,7 @@ If startup is stuck in `activating`, wait for or inspect the host stages. `Type=
 
 Use the smallest reproducer that identifies the stage. Include the command name and flags, operating system and desktop session type, selected provider (`wl-clipboard`, `xclip`, or `xsel`), and the exact non-secret error text. Include relevant source paths and versions when reporting a code-level issue.
 
-For service problems, attach a redacted excerpt from `journalctl --user -u phonelink-linux.service`. Remove:
+For service problems, attach a redacted excerpt from `journalctl --user -u linkmyphone.service`. Remove:
 
 - the complete `state.json` and `features.json` files unless a maintainer explicitly provides a secure transfer method;
 - Microsoft refresh tokens, access tokens, DCG service tokens, private keys, certificates and account certificate data;

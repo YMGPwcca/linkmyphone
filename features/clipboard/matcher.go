@@ -1,12 +1,12 @@
 package clipboard
 
 import (
-	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
-	"github.com/YMGPwcca/phonelink-linux/protocol/msaep"
-	clipproto "github.com/YMGPwcca/phonelink-linux/protocol/clipboard"
-	"github.com/YMGPwcca/phonelink-linux/protocol/platform"
-	"github.com/YMGPwcca/phonelink-linux/runtime/phonehost"
-	"github.com/YMGPwcca/phonelink-linux/transport/relay"
+	"github.com/YMGPwcca/linkmyphone/protocol/dcg"
+	"github.com/YMGPwcca/linkmyphone/protocol/msaep"
+	clipproto "github.com/YMGPwcca/linkmyphone/protocol/clipboard"
+	"github.com/YMGPwcca/linkmyphone/protocol/platform"
+	"github.com/YMGPwcca/linkmyphone/runtime/phonehost"
+	"github.com/YMGPwcca/linkmyphone/transport/relay"
 )
 
 func matcherForTarget(target string) phonehost.Matcher {

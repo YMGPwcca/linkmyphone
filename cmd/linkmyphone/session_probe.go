@@ -10,14 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
-	"github.com/YMGPwcca/phonelink-linux/auth/msa"
-	authstate "github.com/YMGPwcca/phonelink-linux/auth/state"
-	"github.com/YMGPwcca/phonelink-linux/bootstrap"
-	clipproto "github.com/YMGPwcca/phonelink-linux/protocol/clipboard"
-	"github.com/YMGPwcca/phonelink-linux/protocol/platform"
-	sessionproto "github.com/YMGPwcca/phonelink-linux/protocol/sessionvalidation"
-	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
+	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
+	"github.com/YMGPwcca/linkmyphone/auth/msa"
+	authstate "github.com/YMGPwcca/linkmyphone/auth/state"
+	"github.com/YMGPwcca/linkmyphone/bootstrap"
+	clipproto "github.com/YMGPwcca/linkmyphone/protocol/clipboard"
+	"github.com/YMGPwcca/linkmyphone/protocol/platform"
+	sessionproto "github.com/YMGPwcca/linkmyphone/protocol/sessionvalidation"
+	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
 )
 
 type sessionProbeOptions struct {
@@ -69,7 +69,7 @@ func runSessionProbe(ctx context.Context, args []string) error {
 		return errors.New("--context-text requires --context-probe")
 	}
 
-	fmt.Println("Phone Link Linux SessionValidation probe")
+	fmt.Println("LinkMyPhone SessionValidation probe")
 	fmt.Printf("State: %s\n", opts.statePath)
 	fmt.Println("Secrets and raw platform payloads are not printed.")
 	fmt.Println()

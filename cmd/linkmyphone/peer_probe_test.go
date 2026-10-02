@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
+	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
 )
 
 func TestSelectPeerDefaultsToSoleAndroid(t *testing.T) {

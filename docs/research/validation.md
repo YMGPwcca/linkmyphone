@@ -4,6 +4,8 @@
 
 The live results below were reported in the [baseline README at `e51728b`](https://github.com/YMGPwcca/phonelink-linux/blob/e51728b12a148061c8076c67200ee4a8f366e423/README.md), before this documentation restructure. Raw live logs, packet captures, systemd journals, and phone clipboard payloads were not committed. [Development history](history.md) establishes commit order; source and tests establish local contracts. Neither replaces missing production artifacts.
 
+Command examples, feature IDs, paths, and expected log labels below use the current LinkMyPhone names, including in historical sequences. They are updated equivalents, not verbatim transcripts or evidence of a new live validation of the renamed client. Follow the linked baseline for the original names.
+
 ## Read the result before running a probe
 
 | Stage | Historical outcome | Boundary still open |
@@ -44,7 +46,7 @@ The historical live environment was a Linux desktop running CachyOS with Wayland
 **Probe**
 
 ```bash
-go run ./cmd/phonelink-linux bootstrap-probe
+go run ./cmd/linkmyphone bootstrap-probe
 ```
 
 **Historical result**
@@ -118,14 +120,14 @@ Missing refresh token, corrupted key pair, certificate common-name mismatch, aut
 **Probe**
 
 ```bash
-go run ./cmd/phonelink-linux peer-probe
+go run ./cmd/linkmyphone peer-probe
 ```
 
 The target is a flag value, not a positional argument:
 
 ```bash
-go run ./cmd/phonelink-linux peer-probe --target "linked Android device"
-go run ./cmd/phonelink-linux peer-probe --wake-timeout 60s
+go run ./cmd/linkmyphone peer-probe --target "linked Android device"
+go run ./cmd/linkmyphone peer-probe --wake-timeout 60s
 ```
 
 **Historical result**
@@ -145,7 +147,7 @@ Missing target or trust identity, DCG wake HTTP error, Hub Completion rejection,
 **Probe**
 
 ```bash
-go run ./cmd/phonelink-linux session-probe
+go run ./cmd/linkmyphone session-probe
 ```
 
 **Historical result**
@@ -173,13 +175,13 @@ Peer rejection header, empty payload, missing capability, wrong source, wrong tr
 **Probe**
 
 ```bash
-go run ./cmd/phonelink-linux session-probe --context-probe
+go run ./cmd/linkmyphone session-probe --context-probe
 ```
 
 Safe explicit-content probe:
 
 ```bash
-go run ./cmd/phonelink-linux session-probe --context-probe --context-timeout 15s --context-text "phonelink-linux probe"
+go run ./cmd/linkmyphone session-probe --context-probe --context-timeout 15s --context-text "linkmyphone probe"
 ```
 
 **Historical result**
@@ -207,14 +209,14 @@ No Android reaction before context timeout, wrong PubSub direction, wrong tag, m
 **Historical command**
 
 ```bash
-go run ./cmd/phonelink-linux clipboard-sync
+go run ./cmd/linkmyphone clipboard-sync
 ```
 
 The modular path is preferred:
 
 ```bash
-go run ./cmd/phonelink-linux feature create --enabled phonelink.clipboard
-go run ./cmd/phonelink-linux run
+go run ./cmd/linkmyphone feature create --enabled linkmyphone.clipboard
+go run ./cmd/linkmyphone run
 ```
 
 **Historical result**
@@ -237,7 +239,7 @@ The baseline reports bidirectional text synchronization on Wayland with an S23. 
 
 Diagnostics name observer mode and direction, byte counts, and shortened IDs only. Wayland selects `wl-clipboard` and event watching; X11 falls back to polling with default 500 ms interval. An empty Wayland selection is valid empty text.
 
-No native provider, watcher startup failure, compositor lacking required data-control protocol, malformed helper frame, clipboard read/write failure, stale generation, or relay response timeout indicates failure. Native helper boundaries are tested in [`clipboard/native_watch_test.go`](../../clipboard/native_watch_test.go#L12-L163), and backend selection/empty-selection behavior in [`clipboard/native_test.go`](../../clipboard/native_test.go#L9-L138).
+No native provider, watcher startup failure, compositor lacking required data-control protocol, malformed helper frame, clipboard read/write failure, stale generation, or relay response timeout indicates failure. Native helper boundaries are tested in [`clipboard/native_watch_test.go`](../../clipboard/native_watch_test.go#L12-L153), and backend selection/empty-selection behavior in [`clipboard/native_test.go`](../../clipboard/native_test.go#L9-L138).
 
 Wayland/S23 was live validated. X11, other compositors, and other phones were not.
 
@@ -246,27 +248,27 @@ Wayland/S23 was live validated. X11, other compositors, and other phones were no
 **Historical sequence**
 
 ```bash
-go run ./cmd/phonelink-linux feature create --enabled phonelink.clipboard
-go run ./cmd/phonelink-linux run
+go run ./cmd/linkmyphone feature create --enabled linkmyphone.clipboard
+go run ./cmd/linkmyphone run
 ```
 
 While `run` remains active, the baseline says these operations completed without restarting the process:
 
 ```bash
-go run ./cmd/phonelink-linux feature list
-go run ./cmd/phonelink-linux feature get phonelink.clipboard
-go run ./cmd/phonelink-linux feature disable phonelink.clipboard
-go run ./cmd/phonelink-linux feature enable phonelink.clipboard
-go run ./cmd/phonelink-linux feature update --config '{"poll_interval_ms":250,"request_timeout_ms":10000,"publish_initial":false}' phonelink.clipboard
-go run ./cmd/phonelink-linux feature delete phonelink.clipboard
-go run ./cmd/phonelink-linux feature create --enabled phonelink.clipboard
+go run ./cmd/linkmyphone feature list
+go run ./cmd/linkmyphone feature get linkmyphone.clipboard
+go run ./cmd/linkmyphone feature disable linkmyphone.clipboard
+go run ./cmd/linkmyphone feature enable linkmyphone.clipboard
+go run ./cmd/linkmyphone feature update --config '{"poll_interval_ms":250,"request_timeout_ms":10000,"publish_initial":false}' linkmyphone.clipboard
+go run ./cmd/linkmyphone feature delete linkmyphone.clipboard
+go run ./cmd/linkmyphone feature create --enabled linkmyphone.clipboard
 ```
 
-Flags precede the positional feature ID in update and create forms. Historical states were Ready to Stopped on disable, Ready again on enable, stop/restart and epoch increase on configuration update, live revocation on delete, and a fresh Ready module after create. Delete plus create starts a new epoch at 1; restarting the same registry entry increments the existing epoch. The shared Phone Link session remained alive. Historical socket path: `/run/user/<uid>/phonelink-linux/<store-hash>.sock`.
+Flags precede the positional feature ID in update and create forms. Historical states were Ready to Stopped on disable, Ready again on enable, stop/restart and epoch increase on configuration update, live revocation on delete, and a fresh Ready module after create. Delete plus create starts a new epoch at 1; restarting the same registry entry increments the existing epoch. The shared Phone Link session remained alive. Historical socket path: `/run/user/<uid>/linkmyphone/<store-hash>.sock`.
 
 **Expected signals and historical limit**
 
-`list` and `get` report live state while the daemon owns the socket. Commands during `activating` return `runtime is starting; retry the feature command` instead of changing desired state offline. Once ready, commands return live state. Source paths are [`cmd/phonelink-linux/runtime_control.go`](../../cmd/phonelink-linux/runtime_control.go), [`runtime/kernel/`](../../runtime/kernel/), and [`runtime/controlplane/`](../../runtime/controlplane/). `run --request-timeout` controls only the host's PLATFORM `/SessionValidation` wait. Clipboard operations use the separate module `request_timeout_ms` configuration.
+`list` and `get` report live state while the daemon owns the socket. Commands during `activating` return `runtime is starting; retry the feature command` instead of changing desired state offline. Once ready, commands return live state. Source paths are [`cmd/linkmyphone/runtime_control.go`](../../cmd/linkmyphone/runtime_control.go), [`runtime/kernel/`](../../runtime/kernel/), and [`runtime/controlplane/`](../../runtime/controlplane/). `run --request-timeout` controls only the host's PLATFORM `/SessionValidation` wait. Clipboard operations use the separate module `request_timeout_ms` configuration.
 
 The baseline reports an end-to-end S23 run, targeted stress tests, full `go test ./...`, and full `go test -race ./...` after lifecycle, router, generation, socket, and reconcile changes. This is a historical report, not a fresh run, and does not establish recovery after losing the cloud session.
 
@@ -275,7 +277,7 @@ The baseline reports an end-to-end S23 run, targeted stress tests, full `go test
 **Historical command**
 
 ```bash
-go run ./cmd/phonelink-linux service install
+go run ./cmd/linkmyphone service install
 ```
 
 **Historical result**
@@ -284,7 +286,7 @@ On CachyOS/Wayland, installation copied the current binary and unit, `Type=notif
 
 **Expected and failure signals**
 
-`service status` shows `active (running)` after readiness. Logs include `Phone Link Linux runtime ready`, and module shutdown reports `module stopped`. Generated unit and readiness paths are under [`packaging/systemd/`](../../packaging/systemd/) and [`runtime/systemdnotify/`](../../runtime/systemdnotify/).
+`service status` shows `active (running)` after readiness. Logs include `LinkMyPhone runtime ready`, and module shutdown reports `module stopped`. Generated unit and readiness paths are under [`packaging/systemd/`](../../packaging/systemd/) and [`runtime/systemdnotify/`](../../runtime/systemdnotify/).
 
 Missing graphical-session environment, no clipboard provider, unit installation failure, readiness timeout, cgroup child cleanup failure, stale control socket, or a service that remains activating indicates failure. No raw journal is tracked.
 

@@ -41,7 +41,7 @@ func DefaultFeatureStorePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "phonelink-linux", "features.json"), nil
+	return filepath.Join(dir, "linkmyphone", "features.json"), nil
 }
 
 func OpenFeatureStore(path string) (*FeatureStore, error) {

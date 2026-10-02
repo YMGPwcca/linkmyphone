@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/YMGPwcca/phonelink-linux/runtime/controlplane"
-	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
+	"github.com/YMGPwcca/linkmyphone/runtime/controlplane"
+	"github.com/YMGPwcca/linkmyphone/runtime/kernel"
 )
 
 func TestFeatureCommandCRUDForClipboard(t *testing.T) {
@@ -18,7 +18,7 @@ func TestFeatureCommandCRUDForClipboard(t *testing.T) {
 	if err := runFeatureCreate([]string{
 		"--state", statePath,
 		"--enabled",
-		"phonelink.clipboard",
+		"linkmyphone.clipboard",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestFeatureCommandCRUDForClipboard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	record, err := store.Read("phonelink.clipboard")
+	record, err := store.Read("linkmyphone.clipboard")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,13 +38,13 @@ func TestFeatureCommandCRUDForClipboard(t *testing.T) {
 	if err := runFeatureUpdate([]string{
 		"--state", statePath,
 		"--config", `{"poll_interval_ms":250,"request_timeout_ms":5000,"publish_initial":false}`,
-		"phonelink.clipboard",
+		"linkmyphone.clipboard",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := runFeatureToggle([]string{
 		"--state", statePath,
-		"phonelink.clipboard",
+		"linkmyphone.clipboard",
 	}, false); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestFeatureCommandCRUDForClipboard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	record, err = store.Read("phonelink.clipboard")
+	record, err = store.Read("linkmyphone.clipboard")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestFeatureCommandCRUDForClipboard(t *testing.T) {
 
 	if err := runFeatureDelete([]string{
 		"--state", statePath,
-		"phonelink.clipboard",
+		"linkmyphone.clipboard",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestFeatureCommandCanDisableAndDeleteStaleRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := store.Create(kernel.FeatureRecord{
-		ID:      "phonelink.retired",
+		ID:      "linkmyphone.retired",
 		Enabled: true,
 		Config:  json.RawMessage(`{}`),
 	}); err != nil {
@@ -92,19 +92,19 @@ func TestFeatureCommandCanDisableAndDeleteStaleRecord(t *testing.T) {
 
 	if err := runFeatureToggle([]string{
 		"--state", statePath,
-		"phonelink.retired",
+		"linkmyphone.retired",
 	}, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := runFeatureToggle([]string{
 		"--state", statePath,
-		"phonelink.retired",
+		"linkmyphone.retired",
 	}, true); err == nil {
 		t.Fatal("unavailable stale feature must not be enable-able")
 	}
 	if err := runFeatureDelete([]string{
 		"--state", statePath,
-		"phonelink.retired",
+		"linkmyphone.retired",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestFeatureCommandDoesNotFallbackOfflineWhenRuntimeRejectsMutation(t *testi
 		t.Fatal(err)
 	}
 	if err := store.Create(kernel.FeatureRecord{
-		ID:      "phonelink.retired",
+		ID:      "linkmyphone.retired",
 		Enabled: false,
 		Config:  json.RawMessage(`{}`),
 	}); err != nil {
@@ -145,7 +145,7 @@ func TestFeatureCommandDoesNotFallbackOfflineWhenRuntimeRejectsMutation(t *testi
 
 	err = runFeatureDelete([]string{
 		"--state", statePath,
-		"phonelink.retired",
+		"linkmyphone.retired",
 	})
 	if err == nil || !strings.Contains(err.Error(), "runtime is starting") {
 		t.Fatalf("delete err=%v", err)
@@ -155,7 +155,7 @@ func TestFeatureCommandDoesNotFallbackOfflineWhenRuntimeRejectsMutation(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reopened.Read("phonelink.retired"); err != nil {
+	if _, err := reopened.Read("linkmyphone.retired"); err != nil {
 		t.Fatalf("offline fallback mutated store despite live runtime rejection: %v", err)
 	}
 }

@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
+	"github.com/YMGPwcca/linkmyphone/runtime/kernel"
 )
 
 const (
@@ -74,7 +74,7 @@ func SocketPathForStore(storePath string) string {
 
 	root := strings.TrimSpace(os.Getenv("XDG_RUNTIME_DIR"))
 	if root != "" {
-		candidate := filepath.Join(root, "phonelink-linux", socketName)
+		candidate := filepath.Join(root, "linkmyphone", socketName)
 		if len(candidate) < maxUnixSocketPathLength {
 			return candidate
 		}
@@ -85,7 +85,7 @@ func SocketPathForStore(storePath string) string {
 	// inheriting an arbitrarily deep XDG/TMP path.
 	return filepath.Join(
 		"/tmp",
-		"phonelink-linux-"+strconv.Itoa(os.Getuid()),
+		"linkmyphone-"+strconv.Itoa(os.Getuid()),
 		socketName,
 	)
 }

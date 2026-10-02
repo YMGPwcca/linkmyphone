@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
+	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
 )
 
 const CurrentVersion = 1
@@ -54,7 +54,7 @@ func DefaultPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "phonelink-linux", "state.json"), nil
+	return filepath.Join(dir, "linkmyphone", "state.json"), nil
 }
 
 func NewLogicalDeviceID() (string, error) {

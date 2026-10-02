@@ -2,9 +2,9 @@
 
 [Documentation index](../README.md)
 
-The executable is `phonelink-linux`. Go's standard flag parser is used for each command, so put flags before positional IDs, for example `feature get --state PATH ID` and `feature update --enabled true ID`.
+The executable is `linkmyphone`. Go's standard flag parser is used for each command, so put flags before positional IDs, for example `feature get --state PATH ID` and `feature update --enabled true ID`.
 
-Run `phonelink-linux help` for the top-level list. Commands return a non-zero status on invalid arguments or an operational failure. Secrets and clipboard text are intentionally omitted from probe output.
+Run `linkmyphone help` for the top-level list. Commands return a non-zero status on invalid arguments or an operational failure. Secrets and clipboard text are intentionally omitted from probe output.
 
 ## Choose a command
 
@@ -16,7 +16,7 @@ Run `phonelink-linux help` for the top-level list. Commands return a non-zero st
 | Manage desired features | `feature` | Reads and mutates the persistent modular feature registry. Live mutations are sent to a running runtime when its control socket is ready. |
 | Run enabled features | `run` | Opens one Phone Link host session and starts every enabled feature in the registry. |
 | Manage systemd | `service` | Installs and manages the optional per-user systemd unit. |
-| Run clipboard without the registry | `clipboard-sync` | Compatibility alias that starts `phonelink.clipboard` without changing `features.json`. |
+| Run clipboard without the registry | `clipboard-sync` | Compatibility alias that starts `linkmyphone.clipboard` without changing `features.json`. |
 
 ## Authentication and probes
 
@@ -24,11 +24,11 @@ Run `phonelink-linux help` for the top-level list. Commands return a non-zero st
 
 | Flag | Default | Effect |
 | --- | --- | --- |
-| `--state PATH` | Platform user config plus `phonelink-linux/state.json`, normally `~/.config/phonelink-linux/state.json` | Persistent enrollment, token, key, certificate, and trust state path. |
+| `--state PATH` | Platform user config plus `linkmyphone/state.json`, normally `~/.config/linkmyphone/state.json` | Persistent enrollment, token, key, certificate, and trust state path. |
 | `--app-version VERSION` | `1.26072.116.0` | CrossDevice app version sent in DCG metadata. |
 | `--ring NAME` | `Public` | CrossDevice ring metadata. |
 | `--os-version VERSION` | `10.0.26100` | Windows-compatible OS version metadata. |
-| `--display-name NAME` | Local hostname, or `phonelink-linux` if unavailable | Display name used when enrolling the Linux device. |
+| `--display-name NAME` | Local hostname, or `linkmyphone` if unavailable | Display name used when enrolling the Linux device. |
 | `--signalr-timeout DURATION` | `10s` | Time to wait for SignalR `OnConnected`. |
 
 `peer-probe` accepts `--state`, `--app-version`, `--ring`, `--os-version`, and `--signalr-timeout` with the same defaults and effects.
@@ -52,22 +52,22 @@ All duration and TTL values must be positive. Probe flags must precede any comma
 
 ## Feature registry
 
-The default feature registry path is `~/.config/phonelink-linux/features.json` through the platform user config directory. This `--state` is separate from the authentication state path used by `run` and the probes.
+The default feature registry path is `~/.config/linkmyphone/features.json` through the platform user config directory. This `--state` is separate from the authentication state path used by `run` and the probes.
 
 | Flag | Default | Effect |
 | --- | --- | --- |
-| `--state PATH` | Platform user config plus `phonelink-linux/features.json` | Feature registry path. |
+| `--state PATH` | Platform user config plus `linkmyphone/features.json` | Feature registry path. |
 
 Use these forms:
 
 ```text
-phonelink-linux feature list [--state PATH]
-phonelink-linux feature get [--state PATH] ID
-phonelink-linux feature create [--state PATH] [--enabled] [--config JSON] ID
-phonelink-linux feature update [--state PATH] [--enabled true|false] [--config JSON] ID
-phonelink-linux feature delete [--state PATH] ID
-phonelink-linux feature enable [--state PATH] ID
-phonelink-linux feature disable [--state PATH] ID
+linkmyphone feature list [--state PATH]
+linkmyphone feature get [--state PATH] ID
+linkmyphone feature create [--state PATH] [--enabled] [--config JSON] ID
+linkmyphone feature update [--state PATH] [--enabled true|false] [--config JSON] ID
+linkmyphone feature delete [--state PATH] ID
+linkmyphone feature enable [--state PATH] ID
+linkmyphone feature disable [--state PATH] ID
 ```
 
 | Subcommand | Behavior |
@@ -85,8 +85,8 @@ A live command uses the Unix control socket. If the socket is absent, refused, o
 
 | Flag | Default | Effect |
 | --- | --- | --- |
-| `--state PATH` | `~/.config/phonelink-linux/state.json` | Authentication and enrollment state. |
-| `--features-state PATH` | `~/.config/phonelink-linux/features.json` | Desired feature registry. |
+| `--state PATH` | `~/.config/linkmyphone/state.json` | Authentication and enrollment state. |
+| `--features-state PATH` | `~/.config/linkmyphone/features.json` | Desired feature registry. |
 | `--app-version VERSION` | `1.26072.116.0` | CrossDevice app metadata. |
 | `--ring NAME` | `Public` | CrossDevice ring metadata. |
 | `--os-version VERSION` | `10.0.26100` | Windows-compatible OS metadata. |
@@ -114,22 +114,22 @@ Unlike `run`, `clipboard-sync` also copies `--request-timeout` into its in-memor
 ## Systemd user-service commands
 
 ```text
-phonelink-linux service install [--enable=true] [--start=true]
-phonelink-linux service uninstall [--keep-binary]
-phonelink-linux service start|stop|restart
-phonelink-linux service enable|disable|status
-phonelink-linux service logs [--follow] [--lines N]
-phonelink-linux service import-environment
+linkmyphone service install [--enable=true] [--start=true]
+linkmyphone service uninstall [--keep-binary]
+linkmyphone service start|stop|restart
+linkmyphone service enable|disable|status
+linkmyphone service logs [--follow] [--lines N]
+linkmyphone service import-environment
 ```
 
 | Command or option | Behavior |
 | --- | --- |
 | `install` | Defaults to `--enable=true` and `--start=true`. `--enable=false` skips enabling; it does not disable an already enabled unit. `--start=false` skips starting or restarting; it does not stop an existing process. |
-| `uninstall` | Removes the unit and installed binary by default. `--keep-binary` keeps `~/.local/bin/phonelink-linux`. Authentication state and feature registry files are not removed. |
+| `uninstall` | Removes the unit and installed binary by default. `--keep-binary` keeps `~/.local/bin/linkmyphone`. Authentication state and feature registry files are not removed. |
 | `start`, `stop`, `restart`, `enable`, `disable`, `status` | Take no additional arguments. `start` and `restart` import the current graphical environment and clear failed/start-limit state before invoking systemd. |
 | `logs` | `--follow` follows new user-journal entries. `--lines N` defaults to `100` and must be non-negative. |
 | `import-environment` | Imports supported graphical and XDG variables into the systemd user manager without starting the unit. |
 
 The [systemd user service guide](../operations/systemd.md) describes unit readiness, environment import, lifecycle, and recovery.
 
-The command implementations are [`cmd/phonelink-linux/main.go`](../../cmd/phonelink-linux/main.go), [`cmd/phonelink-linux/feature.go`](../../cmd/phonelink-linux/feature.go), [`cmd/phonelink-linux/runtime_run.go`](../../cmd/phonelink-linux/runtime_run.go), and [`cmd/phonelink-linux/service.go`](../../cmd/phonelink-linux/service.go). CLI behavior is exercised by [`cmd/phonelink-linux/feature_test.go`](../../cmd/phonelink-linux/feature_test.go), [`cmd/phonelink-linux/runtime_control_test.go`](../../cmd/phonelink-linux/runtime_control_test.go), and [`cmd/phonelink-linux/service_test.go`](../../cmd/phonelink-linux/service_test.go).
+The command implementations are [`cmd/linkmyphone/main.go`](../../cmd/linkmyphone/main.go), [`cmd/linkmyphone/feature.go`](../../cmd/linkmyphone/feature.go), [`cmd/linkmyphone/runtime_run.go`](../../cmd/linkmyphone/runtime_run.go), and [`cmd/linkmyphone/service.go`](../../cmd/linkmyphone/service.go). CLI behavior is exercised by [`cmd/linkmyphone/feature_test.go`](../../cmd/linkmyphone/feature_test.go), [`cmd/linkmyphone/runtime_control_test.go`](../../cmd/linkmyphone/runtime_control_test.go), and [`cmd/linkmyphone/service_test.go`](../../cmd/linkmyphone/service_test.go).

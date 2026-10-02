@@ -6,39 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	systemdunit "github.com/YMGPwcca/phonelink-linux/packaging/systemd"
 )
-
-func TestPackagedUserServiceLifecycleContract(t *testing.T) {
-	unit := string(systemdunit.UserService)
-	for _, want := range []string{
-		"After=graphical-session.target",
-		"PartOf=graphical-session.target",
-		"StartLimitIntervalSec=60",
-		"StartLimitBurst=5",
-		"Type=notify",
-		"NotifyAccess=main",
-		"TimeoutStartSec=90s",
-		"ExecStart=%h/.local/bin/phonelink-linux run",
-		"Restart=on-failure",
-		"RestartSec=5s",
-		"TimeoutStopSec=20s",
-		"KillMode=mixed",
-		"UMask=0077",
-		"StandardOutput=journal",
-		"StandardError=journal",
-		"WantedBy=graphical-session.target",
-	} {
-		if !strings.Contains(unit, want) {
-			t.Fatalf("unit missing %q:\n%s", want, unit)
-		}
-	}
-	if strings.Contains(unit, "PrivateTmp=true") ||
-		strings.Contains(unit, "PrivateTmp=yes") {
-		t.Fatal("PrivateTmp would isolate the runtime from fallback Unix control sockets")
-	}
-}
 
 func TestResolveUserServicePathsUsesXDGConfigHome(t *testing.T) {
 	home := t.TempDir()

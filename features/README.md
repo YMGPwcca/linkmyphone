@@ -9,7 +9,7 @@ Use this page to find the builtin boundary before editing `features/catalog.go` 
 Each directory under `features/` is a bounded business module. The kernel and phone host expose generic contracts; [`features/catalog.go`](catalog.go) is the build-composition layer that registers builtin implementations. The current catalog contains one module:
 
 ```text
-phonelink.clipboard
+linkmyphone.clipboard
     features/clipboard
     bidirectional text clipboard synchronization
 ```

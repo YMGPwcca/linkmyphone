@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
-	"github.com/YMGPwcca/phonelink-linux/auth/msa"
-	authstate "github.com/YMGPwcca/phonelink-linux/auth/state"
-	"github.com/YMGPwcca/phonelink-linux/dcgheaders"
-	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
-	"github.com/YMGPwcca/phonelink-linux/transport/relay"
+	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
+	"github.com/YMGPwcca/linkmyphone/auth/msa"
+	authstate "github.com/YMGPwcca/linkmyphone/auth/state"
+	"github.com/YMGPwcca/linkmyphone/dcgheaders"
+	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
+	"github.com/YMGPwcca/linkmyphone/transport/relay"
 )
 
 type FirstRunConfig struct {

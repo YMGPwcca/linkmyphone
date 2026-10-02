@@ -4,20 +4,20 @@
 
 Use this page when changing feature CRUD, the runtime socket, or the boundary between persisted desired state and live module state.
 
-`phonelink-linux run` exposes feature CRUD to the CLI through a Unix domain socket. The implementation is in [`runtime/controlplane`](../../runtime/controlplane), and the runtime handler is [`cmd/phonelink-linux/runtime_control.go`](../../cmd/phonelink-linux/runtime_control.go). The socket controls the local feature registry only. It is not the Microsoft or Hub Relay protocol.
+`linkmyphone run` exposes feature CRUD to the CLI through a Unix domain socket. The implementation is in [`runtime/controlplane`](../../runtime/controlplane), and the runtime handler is [`cmd/linkmyphone/runtime_control.go`](../../cmd/linkmyphone/runtime_control.go). The socket controls the local feature registry only. It is not the Microsoft or Hub Relay protocol.
 
 ## Socket identity and permissions
 
 The socket path is derived from the cleaned absolute feature-store path. The runtime takes the first 12 bytes of SHA-256, writes them as a 24-character hexadecimal name, and appends `.sock`:
 
 ```text
-$XDG_RUNTIME_DIR/phonelink-linux/<24-hex-store-hash>.sock
+$XDG_RUNTIME_DIR/linkmyphone/<24-hex-store-hash>.sock
 ```
 
 If `XDG_RUNTIME_DIR` is empty or the candidate path reaches the implementation's 100-byte path budget, it uses:
 
 ```text
-/tmp/phonelink-linux-<uid>/<24-hex-store-hash>.sock
+/tmp/linkmyphone-<uid>/<24-hex-store-hash>.sock
 ```
 
 The server creates the parent directory with mode `0700` and the socket with mode `0600`. It accepts at most 16 concurrent clients and limits each JSON request to 1 MiB. These permissions provide local-user access control. The protocol has no remote listener or authentication layer, so it must not be moved to a shared path without a new security design.
@@ -46,7 +46,7 @@ For example, a create request:
   "version": 1,
   "operation": "create",
   "record": {
-    "id": "phonelink.clipboard",
+    "id": "linkmyphone.clipboard",
     "enabled": true,
     "config": {}
   }
@@ -72,12 +72,12 @@ Empty optional fields are omitted. For example, a successful `get` response for 
   "version": 1,
   "ok": true,
   "record": {
-    "id": "phonelink.clipboard",
+    "id": "linkmyphone.clipboard",
     "enabled": true,
     "config": {}
   },
   "snapshot": {
-    "id": "phonelink.clipboard",
+    "id": "linkmyphone.clipboard",
     "version": "0.1.0",
     "enabled": true,
     "state": "ready",
@@ -150,13 +150,13 @@ For an available module, a running instance is stopped first. The kernel validat
 The CLI commands are:
 
 ```bash
-go run ./cmd/phonelink-linux feature list --state ~/.config/phonelink-linux/features.json
-go run ./cmd/phonelink-linux feature get --state ~/.config/phonelink-linux/features.json phonelink.clipboard
-go run ./cmd/phonelink-linux feature create --state ~/.config/phonelink-linux/features.json --enabled phonelink.clipboard
-go run ./cmd/phonelink-linux feature update --state ~/.config/phonelink-linux/features.json --config '{"poll_interval_ms":250}' phonelink.clipboard
-go run ./cmd/phonelink-linux feature disable --state ~/.config/phonelink-linux/features.json phonelink.clipboard
-go run ./cmd/phonelink-linux feature enable --state ~/.config/phonelink-linux/features.json phonelink.clipboard
-go run ./cmd/phonelink-linux feature delete --state ~/.config/phonelink-linux/features.json phonelink.clipboard
+go run ./cmd/linkmyphone feature list --state ~/.config/linkmyphone/features.json
+go run ./cmd/linkmyphone feature get --state ~/.config/linkmyphone/features.json linkmyphone.clipboard
+go run ./cmd/linkmyphone feature create --state ~/.config/linkmyphone/features.json --enabled linkmyphone.clipboard
+go run ./cmd/linkmyphone feature update --state ~/.config/linkmyphone/features.json --config '{"poll_interval_ms":250}' linkmyphone.clipboard
+go run ./cmd/linkmyphone feature disable --state ~/.config/linkmyphone/features.json linkmyphone.clipboard
+go run ./cmd/linkmyphone feature enable --state ~/.config/linkmyphone/features.json linkmyphone.clipboard
+go run ./cmd/linkmyphone feature delete --state ~/.config/linkmyphone/features.json linkmyphone.clipboard
 ```
 
 Flags precede the positional feature ID because the Go flag parser stops at the first positional argument.
@@ -176,7 +176,7 @@ The CLI still resolves known definitions for list and get. It prints unknown per
 The protocol and reconciliation contract is exercised by:
 
 - `runtime/controlplane/controlplane_test.go`, which checks JSON round trips, version handling, socket modes, stale-path replacement, scoped and short fallback paths, startup and shutdown handler transitions, client unavailability, bounded handler behavior, and panic isolation;
-- `cmd/phonelink-linux/feature_test.go`, which checks offline CRUD, stale-record cleanup, and the rule that a connected runtime rejection never falls back to mutating persistence;
+- `cmd/linkmyphone/feature_test.go`, which checks offline CRUD, stale-record cleanup, and the rule that a connected runtime rejection never falls back to mutating persistence;
 - `runtime/kernel/registry_test.go`, which checks dependency ordering, epochs, stale errors, provider teardown protection, transitive degradation, stale start rollback, and stopped update state;
 - `runtime/kernel/store_test.go`, which checks persistence across reopen, duplicate detection, object configuration checks, and deletion.
 

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/dcgheaders"
+	"github.com/YMGPwcca/linkmyphone/dcgheaders"
 )
 
 const (
