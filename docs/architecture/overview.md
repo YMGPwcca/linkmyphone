@@ -2,7 +2,9 @@
 
 [Documentation index](../README.md)
 
-LinkMyPhone is a Go 1.23+ Linux client for Microsoft Phone Link and Link to Windows interoperability. Microsoft cloud services provide authentication, device trust, signed peer wake, SignalR Hub Relay, and the PLATFORM transport. The repository currently ships one built-in feature, `linkmyphone.clipboard`.
+LinkMyPhone is an independent, unofficial Phone Link client for Linux, written in Go 1.23+. Its goal is broader phone–PC integration through interoperability with Microsoft Phone Link and Link to Windows, not a clipboard-only application.
+
+Microsoft cloud services provide authentication, device trust, signed peer wake, SignalR Hub Relay, and the PLATFORM transport. These shared services support the feature-module architecture; the repository currently ships one built-in feature, `linkmyphone.clipboard`. The architecture allows additional feature implementations, but does not make unimplemented Phone Link features available. See [current support and broader scope](../../README.md#current-support-and-broader-scope).
 
 Use this page to answer three questions quickly:
 

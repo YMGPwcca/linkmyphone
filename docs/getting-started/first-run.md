@@ -2,6 +2,8 @@
 
 [Documentation index](../README.md)
 
+LinkMyPhone aims to bring the Phone Link experience to Linux. This guide exercises its first implemented feature: clipboard synchronization, using the shared account, enrollment, and phone-session setup.
+
 Use this guide to create the Linux identity, select the linked phone, and start clipboard sync. The phone and Windows PC must already be linked in Microsoft Link to Windows / Phone Link under the Microsoft account you will use. The Linux host also needs a working network connection and, for clipboard sync, a graphical clipboard provider.
 
 LinkMyPhone does not discover or pair a new phone. It enrolls a Linux DCG identity, asks Microsoft for devices already linked to the account, and selects one of those peers.

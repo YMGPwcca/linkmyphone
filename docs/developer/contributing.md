@@ -4,9 +4,11 @@
 
 This page is the short path from an observed behavior to an owner, a focused change, and a reviewable pull request.
 
+The project goal is an independent, unofficial Phone Link client for Linux with broader phone–PC integration. Clipboard synchronization is the first implemented feature, not a restriction on contributions. Additional features should use the shared host and module contracts described below. Keep proposed functionality separate from implemented and validated support; see [current support and broader scope](../../README.md#current-support-and-broader-scope).
+
 LinkMyPhone targets Linux with Go 1.23 or newer. Microsoft cloud services are part of the runtime path. Native clipboard synchronization also needs a supported desktop utility, such as `wl-paste` and `wl-copy` on Wayland, or `xclip` or `xsel` on X11.
 
-The Go module is `github.com/YMGPwcca/linkmyphone`; use that path for project imports and `cmd/linkmyphone` for the CLI. Publishing or fetching this module from GitHub requires the remote repository URL cutover; the local rename alone does not perform it.
+The Go module is `github.com/YMGPwcca/linkmyphone`; use that path for project imports and `cmd/linkmyphone` for the CLI.
 
 The repository has no tracked license file or configured release process. Do not assume redistribution terms. The automated workflow runs `go test ./...` only when manually dispatched; use the local checks in [testing](testing.md) before submitting a change.
 

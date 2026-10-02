@@ -4,6 +4,8 @@
 
 Use this page to find the builtin boundary before editing `features/catalog.go` or a feature package. Read the [module architecture](../docs/architecture/modules.md) for lifecycle and dependency rules, the [architecture overview](../docs/architecture/overview.md) for runtime ownership, and the [control-plane contract](../docs/architecture/control-plane.md) for live feature CRUD.
 
+Feature modules serve LinkMyPhone's broader goal of bringing the Phone Link experience to Linux. Clipboard synchronization is the first implemented feature, not the limit of the project. The catalog below describes shipped implementations only; it is not a list of all intended Phone Link capabilities.
+
 ## Current catalog
 
 Each directory under `features/` is a bounded business module. The kernel and phone host expose generic contracts; [`features/catalog.go`](catalog.go) is the build-composition layer that registers builtin implementations. The current catalog contains one module:

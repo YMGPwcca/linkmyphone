@@ -2,10 +2,15 @@
 
 [LinkMyPhone](../README.md) · [CLI reference](reference/cli.md) · [Troubleshooting](operations/troubleshooting.md)
 
+LinkMyPhone is an independent, unofficial Phone Link client for Linux. The project aims for broader phone–PC integration; clipboard synchronization is its first implemented feature, not its full scope.
+
+The usage guides cover what works today: a command-line client with bidirectional text clipboard synchronization. See [current support and broader scope](../README.md#current-support-and-broader-scope) for the distinction between the project goal and available features.
+
 ## Start with your task
 
 | You want to… | Start here | Continue with |
 | --- | --- | --- |
+| Understand the project goal and current support | [Project overview](../README.md) | [Architecture](architecture/overview.md) |
 | Sync your first clipboard | [Installation](getting-started/installation.md) | [First run](getting-started/first-run.md) |
 | Run it every day | [systemd service](operations/systemd.md) | [Clipboard behavior](user-guide/clipboard.md) |
 | Change the client | [Source map](developer/source-map.md) | [Contributing](developer/contributing.md) |

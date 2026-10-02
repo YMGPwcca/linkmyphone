@@ -1,6 +1,8 @@
 # LinkMyPhone
 
-Copy text between your Linux desktop and Android phone.
+An independent, unofficial Phone Link client for Linux.
+
+LinkMyPhone aims to bring the Phone Link experience to Linux through interoperability with Microsoft's Phone Link and Link to Windows ecosystem. Clipboard synchronization is the first implemented feature, not the limit of the project's scope.
 
 [Get started](docs/getting-started/installation.md) · [Documentation](docs/README.md) · [Protocol and research](docs/research/README.md)
 
@@ -8,10 +10,12 @@ Copy text between your Linux desktop and Android phone.
   <source media="(prefers-color-scheme: dark) and (max-width: 640px)" srcset="docs/assets/sync-flow-mobile-dark.svg">
   <source media="(max-width: 640px)" srcset="docs/assets/sync-flow-mobile-light.svg">
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/sync-flow-dark.svg">
-  <img src="docs/assets/sync-flow-light.svg" width="860" alt="Two-way text clipboard synchronization between Linux and Android through Microsoft's DCG and Hub Relay services.">
+  <img src="docs/assets/sync-flow-light.svg" width="860" alt="Current clipboard feature: two-way text synchronization between Linux and Android through Microsoft's DCG and Hub Relay services.">
 </picture>
 
-A reverse-engineered, command-line client. A personal Microsoft account and an internet connection are required.
+*The diagram shows the current clipboard feature, not the full scope of the project.*
+
+The current implementation is a reverse-engineered, command-line client supporting bidirectional text clipboard synchronization. A personal Microsoft account and an internet connection are required.
 
 LinkMyPhone is an independent, unofficial project, not affiliated with, endorsed by, or sponsored by Microsoft. Microsoft, Phone Link, and Link to Windows are trademarks of the Microsoft group of companies.
 
@@ -19,7 +23,7 @@ LinkMyPhone is an independent, unofficial project, not affiliated with, endorsed
 >
 > Experimental. Two-way sync was reported working on a Samsung Galaxy S23 with CachyOS/Wayland. Long-running reconnect, wake recovery, and active-session token refresh remain open. [Validation and limits](docs/research/validation.md).
 
-## Get it running
+## Try the current clipboard feature
 
 You need:
 
@@ -71,7 +75,7 @@ The [first-run guide](docs/getting-started/first-run.md) covers resuming a profi
 
 </details>
 
-## What is supported
+## Current support and broader scope
 
 | Area            | Current behavior                                         |
 | --------------- | -------------------------------------------------------- |
@@ -80,7 +84,7 @@ The [first-run guide](docs/getting-started/first-run.md) covers resuming a profi
 | Feature control | Live enable, disable, configuration update, and removal. |
 | Background use  | A systemd user service tied to the graphical session.    |
 
-Image and HTML codecs exist, but the clipboard feature syncs text only. Notifications, calls, photos, file transfer, and a graphical pairing interface are not implemented.
+Image and HTML codecs exist, but the clipboard feature currently syncs text only. Broader phone–PC integration is the project goal; notifications, calls, photos, file transfer, and a graphical pairing interface are not yet implemented. This is not a claim of feature parity with Microsoft's Phone Link or a commitment to a delivery schedule.
 
 ## Run in the background
 
@@ -92,8 +96,6 @@ Stop the foreground runtime first, then install the user service:
 ```
 
 Custom state paths or phone target? Configure them with the [systemd guide](docs/operations/systemd.md) before starting the service.
-
-Upgrading from Phone Link Linux? There is **no automatic migration**. Stop and disable the old daemon before moving private state or starting LinkMyPhone; follow [state migration](docs/reference/configuration.md#migrate-from-phone-link-linux) and [service migration](docs/operations/systemd.md#migrate-the-old-service).
 
 ## Find your next step
 
