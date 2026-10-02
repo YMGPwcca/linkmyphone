@@ -10,7 +10,7 @@ LinkMyPhone targets Linux with Go 1.23 or newer. Microsoft cloud services are pa
 
 The Go module is `github.com/YMGPwcca/linkmyphone`; use that path for project imports and `cmd/linkmyphone` for the CLI.
 
-The repository has no tracked license file or configured release process. Do not assume redistribution terms. The automated workflow runs `go test ./...` only when manually dispatched; use the local checks in [testing](testing.md) before submitting a change.
+The project is licensed under the [MIT License](../../LICENSE). There is no configured release process. The automated workflow runs `go test ./...` only when manually dispatched; use the local checks in [testing](testing.md) before submitting a change.
 
 ## Find the owner before editing
 
