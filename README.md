@@ -77,14 +77,30 @@ The [first-run guide](docs/getting-started/first-run.md) covers resuming a profi
 
 ## Current support and broader scope
 
-| Area            | Current behavior                                         |
-| --------------- | -------------------------------------------------------- |
-| Clipboard       | Plain text in both directions, including clears.         |
-| Linux desktop   | Wayland watching; polling for X11 and watch failures.    |
-| Feature control | Live enable, disable, configuration update, and removal. |
-| Background use  | A systemd user service tied to the graphical session.    |
+LinkMyPhone aims to provide broader Phone Link integration on Linux. The matrix below details what is working today, what is partially implemented in the codebase, and what remains in the broader project scope:
 
-Image and HTML codecs exist, but the clipboard feature currently syncs text only. Broader phone–PC integration is the project goal; notifications, calls, photos, file transfer, and a graphical pairing interface are not yet implemented. This is not a claim of feature parity with Microsoft's Phone Link or a commitment to a delivery schedule.
+| Feature / Area | Status | Current implementation details |
+| :--- | :---: | :--- |
+| **Plain-text clipboard** | Supported | Bidirectional text synchronization, clipboard clears, and echo suppression. |
+| **Wayland & X11 clipboard** | Supported | `wl-clipboard` event watching on Wayland; polling fallback on X11 and watch failures. |
+| **Microsoft sign-in & DCG** | Supported | Microsoft OAuth device-code login, DCG enrollment, key-pair creation, and identity resume. |
+| **Device discovery & wake** | Supported | Linked Android peer discovery and EC-signed wake push via Microsoft Hub Relay. |
+| **Relay & PLATFORM transport** | Supported | WebSocket SignalR Hub Relay and PLATFORM session validation handshake. |
+| **Feature lifecycle & CLI** | Supported | Live enable, disable, configure, or remove feature modules via CLI and Unix socket control plane. |
+| **Background daemon** | Supported | Per-user `systemd` unit (`linkmyphone.service`) tied to the graphical session. |
+| **Rich text & HTML clipboard** | Partial | Codecs and types exist in protocol packages; clipboard runtime currently syncs plain text only. |
+| **Image clipboard** | Partial | Binary image payload codecs exist; multi-part image sync over relay is not wired into the runtime. |
+| **Session recovery & refresh** | Partial | Long-running relay reconnect, sleep/wake recovery, and active-session token refresh remain open. |
+| **Notifications** | Not implemented | Push notification forwarding, dismissal synchronization, and inline quick-replies. |
+| **Messages (SMS / RCS)** | Not implemented | Reading SMS/RCS conversations, sending text messages, and MMS media attachments. |
+| **Calls & Audio** | Not implemented | Incoming/outgoing call notifications, dialer, and in-call Bluetooth/relay audio routing. |
+| **Photos & Media** | Not implemented | Android camera roll browsing, photo synchronization, and media caching. |
+| **File transfer & Sharing** | Not implemented | Drag-and-drop file sharing between Linux desktop and Android. |
+| **Screen mirroring & Apps** | Not implemented | Android screen streaming and individual app streaming. |
+| **Graphical pairing UI** | Not implemented | Initial setup is CLI-based (`linkmyphone bootstrap-probe`); no native GUI pairing wizard. |
+
+> [!NOTE]
+> Unimplemented features reflect the broader project scope and architecture targets. They do not constitute a commitment to a specific delivery schedule or a claim of feature parity with Microsoft's Windows Phone Link client.
 
 ## Run in the background
 
