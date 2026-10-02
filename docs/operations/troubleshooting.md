@@ -1,0 +1,100 @@
+# Troubleshooting
+
+[Documentation index](../README.md)
+
+Start with the first failing stage. A later clipboard error can be a symptom of an earlier authentication, target, relay, or native-provider failure.
+
+Check in order: **state → target → relay and session → clipboard module**. Stop at the first failed boundary; the symptom table below gives the matching action.
+
+<details>
+<summary>Diagnostic decision tree</summary>
+
+```mermaid
+flowchart TD
+    A[Observe first error] --> B{State loads?}
+    B -- No --> C[Use the same state path; recover or make a deliberate profile]
+    B -- Yes --> D{Linked target selected?}
+    D -- No --> E[Check linked devices or use an unambiguous --target]
+    D -- Yes --> F{Relay and SessionValidation ready?}
+    F -- No --> G[Inspect SignalR, wake, and SessionValidation stage]
+    F -- Yes --> H{Clipboard module ready?}
+    H -- No --> I[Check feature record, provider, and graphical environment]
+    H -- Yes --> J[Reproduce and report only redacted stage evidence]
+```
+
+</details>
+
+## Find the failing stage
+
+| Symptom or message | Likely stage | Action |
+| --- | --- | --- |
+| `no persisted enrollment found; run bootstrap-probe first` | Local authentication state | Run `bootstrap-probe` with the same `--state` path that `run` will use. |
+| `state: unsupported version` or state decode error | State loading | Keep a backup, inspect the path and version, and do not delete it to force a second identity. A malformed state needs recovery from a known-good backup or a deliberate fresh profile. |
+| Device-code URL or code never completes | Microsoft sign-in | Complete sign-in for the Microsoft account that owns the existing Link to Windows relationship. Check network and browser access. Do not paste tokens into a report. |
+| `resume authentication` or `Microsoft login` failure | Token refresh or DCG sign-in | Confirm the account session and network. Long-running token-refresh recovery is an open limitation; a successful first enrollment is not proof that every later refresh will recover. |
+| `no linked peers returned by DeviceInfoList` | Account/device discovery | Confirm the Windows PC and phone are already linked in Link to Windows / Phone Link under this account. Linux has no new-pairing wizard. |
+| `no linked Android device found` | Default target selection | The default needs a linked Android device. An explicit `--target` can select another returned linked peer, but acceptance of that selector does not establish clipboard compatibility. |
+| More than one linked Android device is reported | Default target selection | Supply `--target` with the peer ID, name, model, or an unambiguous partial match. |
+| `target ... is ambiguous` or `matches multiple linked devices` | Target selection | Make the selector more specific. The program does not choose arbitrarily. |
+| `SignalR bootstrap`, `no usable SignalR shard`, or `OnConnected` timeout | Cloud relay | Check network access to Microsoft's DCG and SignalR services. Increase `--signalr-timeout` only when the environment is slow; it does not repair a rejected cloud connection. |
+| `peer presence` or wake timeout | Peer wake | Confirm the target is linked and reachable. Try `peer-probe --target ... --wake-timeout 60s`. Long-running wake/reconnect behavior remains open. |
+| `SessionValidation` timeout or rejection | PLATFORM session | Run `session-probe` after `peer-probe` and inspect the rejection reason. This stage requires the target to be present on Hub Relay. |
+| `clipboard: no supported Linux clipboard backend found` | Native clipboard startup | Install `wl-clipboard`, `xclip`, or `xsel`; ensure the selected graphical session's provider is on `PATH`. |
+| `wl-paste` or `wl-copy` connection error | Wayland environment | Check `WAYLAND_DISPLAY`, the user manager environment, and access to the current compositor. For a service, run `service import-environment` and restart. |
+| `xclip` or `xsel` connection error | X11 environment | Check `DISPLAY`, `XAUTHORITY`, and the X11 provider from the same user session that runs the process. |
+| `native clipboard text exceeds 4194304 bytes` | Local clipboard limit | Use text under 4 MiB. This feature does not handle larger or binary selections. |
+| `native clipboard watch unavailable; using polling fallback` | Watcher | The module continues with `poll_interval_ms`. If polling fails, inspect the following error and provider logs. |
+| Module is not `Ready` | Feature lifecycle | Run `feature get phonelink.clipboard` and inspect the runtime snapshot. A disabled record, invalid config, unavailable provider, or failed host stage prevents readiness. |
+| `runtime is starting; retry the feature command` | Control plane startup | Wait for systemd readiness or the interactive runtime's ready message, then retry. The command intentionally does not make an offline edit during startup. |
+| Feature command reports offline desired state | Control socket unavailable | Confirm that `run` is active and that the command uses the same `--state` feature-store path. Offline commands edit the registry only; they do not prove the module can start. |
+| `runtime already running` or a socket conflict | Two runtimes | Stop the interactive runtime before starting systemd, or stop the service before running interactively. One feature store has one owning runtime. |
+
+## Inspect an interactive run
+
+Start the runtime in the foreground so its stage and module events remain visible:
+
+```bash
+phonelink-linux run
+```
+
+The runtime prints the selected target, host stages, module state, live capabilities, and the control socket path. It does not print clipboard contents. Stop it with Ctrl+C and read the final shutdown messages.
+
+Use a separate terminal for live feature state:
+
+```bash
+phonelink-linux feature list
+phonelink-linux feature get phonelink.clipboard
+```
+
+If you use a non-default registry, pass the same `--state` to both feature commands and `--features-state` to `run`.
+
+## Inspect a systemd run
+
+```bash
+~/.local/bin/phonelink-linux service status
+~/.local/bin/phonelink-linux service logs --lines 250
+~/.local/bin/phonelink-linux service logs --follow
+```
+
+Check the first error before trying repeated restarts. The unit is rate-limited to five starts in 60 seconds. The service helpers reset failed/start-limit state before `install`, `start`, and `restart`; when using `systemctl` directly, recover with:
+
+```bash
+systemctl --user reset-failed phonelink-linux.service
+~/.local/bin/phonelink-linux service import-environment
+~/.local/bin/phonelink-linux service start
+```
+
+If startup is stuck in `activating`, wait for or inspect the host stages. `Type=notify` is designed to stay activating until the control plane and enabled modules are ready. Feature calls during that window return an explicit retry response.
+
+## Report a bug safely
+
+Use the smallest reproducer that identifies the stage. Include the command name and flags, operating system and desktop session type, selected provider (`wl-clipboard`, `xclip`, or `xsel`), and the exact non-secret error text. Include relevant source paths and versions when reporting a code-level issue.
+
+For service problems, attach a redacted excerpt from `journalctl --user -u phonelink-linux.service`. Remove:
+
+- the complete `state.json` and `features.json` files unless a maintainer explicitly provides a secure transfer method;
+- Microsoft refresh tokens, access tokens, DCG service tokens, private keys, certificates and account certificate data;
+- device IDs, peer names, account identifiers, hostnames, usernames, custom paths, and environment values when they identify you;
+- clipboard text. Logs should report byte counts and shortened correlation IDs, but redact any copied text if another tool included it.
+
+Never run a report command that prints the state file. If a maintainer needs state for a specific parser bug, make a copy, remove every credential and identifying value, and confirm the result cannot be used to authenticate.
