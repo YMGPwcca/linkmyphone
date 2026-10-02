@@ -141,3 +141,7 @@ The [testing guide](docs/developer/testing.md) covers prerequisites and which ch
 The repository does not track the original decompiled Windows sources or production capture logs. The [research record](docs/research/README.md) identifies the available evidence and its limits.
 
 </details>
+
+## License
+
+Licensed under the [MIT License](LICENSE).
