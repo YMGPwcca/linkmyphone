@@ -3,6 +3,7 @@ package clipboard
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"image"
 	"image/color"
@@ -17,6 +18,7 @@ import (
 	"github.com/YMGPwcca/linkmyphone/protocol/dcg"
 	"github.com/YMGPwcca/linkmyphone/protocol/platform"
 	"github.com/YMGPwcca/linkmyphone/transport/relay"
+	"golang.org/x/image/bmp"
 )
 
 func testPNG(t *testing.T, w, h int) []byte {
@@ -265,5 +267,59 @@ func TestTypedSnapshotAggregateBudgetRetiresOldest(t *testing.T) {
 	}
 	if _, ok := c.retired["a"]; !ok {
 		t.Fatal("evicted correlation not retired")
+	}
+}
+
+func TestIncomingLargeBMPAndJPEGNormalizeBeforeOutputLimit(t *testing.T) {
+	img, err := png.Decode(bytes.NewReader(testPNG(t, 1000, 900)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, format := range []string{"bmp", "jpeg"} {
+		t.Run(format, func(t *testing.T) {
+			var encoded bytes.Buffer
+			if format == "bmp" {
+				err = bmp.Encode(&encoded, img)
+			} else {
+				err = jpeg.Encode(&encoded, img, &jpeg.Options{Quality: 100})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if encoded.Len() <= MaxClipboardImageBytes {
+				t.Fatal("fixture must exceed old incoming limit")
+			}
+			c, err := contentFromResponse(proto.Response{Status: proto.ResponseOK, Items: []proto.Item{{Type: proto.ItemImage, ImageBytes: encoded.Bytes()}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = c.Validate(); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := png.DecodeConfig(bytes.NewReader(c.Image))
+			if err != nil || cfg.Width >= 1000 || cfg.Height >= 900 {
+				t.Fatal("normalization must reduce oversized PNG", cfg, err)
+			}
+		})
+	}
+}
+
+func TestIncomingImageInputAndBMPDimensionBudgets(t *testing.T) {
+	resp := proto.Response{Status: proto.ResponseOK, Items: []proto.Item{{Type: proto.ItemImage, ImageBytes: make([]byte, MaxImageInputBytes+1)}}}
+	if _, err := contentFromResponse(resp); !errors.Is(err, ErrContentTooLarge) {
+		t.Fatal(err)
+	}
+	var encoded bytes.Buffer
+	if err := bmp.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	data := encoded.Bytes()
+	binary.LittleEndian.PutUint32(data[18:22], MaxImagePixels)
+	binary.LittleEndian.PutUint32(data[22:26], 2)
+	if _, err := PrepareImage(data); !errors.Is(err, ErrContentTooLarge) {
+		t.Fatal("BMP allocation was not bounded", err)
+	}
+	if _, err := PrepareImage([]byte("BMcorrupt")); !errors.Is(err, ErrUnsupportedContent) {
+		t.Fatal(err)
 	}
 }

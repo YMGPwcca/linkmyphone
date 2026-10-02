@@ -8,11 +8,11 @@ The clipboard module synchronizes plain text, HTML fragments and images through 
 
 | Desktop | Provider | Content |
 | --- | --- | --- |
-| Wayland | wl-paste / wl-copy | Text, HTML, PNG/JPEG/GIF input |
-| X11 | xclip | Text, HTML, PNG/JPEG/GIF input |
+| Wayland | wl-paste / wl-copy | Text, HTML, PNG/JPEG/GIF/BMP input |
+| X11 | xclip | Text, HTML, PNG/JPEG/GIF/BMP input |
 | X11 fallback | xsel | Plain text only |
 
-Install the matching clipboard utilities. Optional Python 3, PyGObject and GTK4 allow incoming HTML to offer both its original fragment and derived plain text. Without those dependencies, the command provider offers HTML only; applications requesting only plain text may not paste it. HTML is retained as data, never executed by this program. GIF uses its first frame. File selections and unknown MIME types are skipped.
+Install the matching clipboard utilities. Optional Python 3, PyGObject and GTK4 allow incoming HTML to offer both its original fragment and derived plain text. Without those dependencies, the command provider offers HTML only; applications requesting only plain text may not paste it. HTML is retained as data, never executed by this program. GIF uses its first frame. BMP support follows the decoder's 8/24/32-bit variants. HEIC, AVIF, TIFF and WebP are not supported. File selections and unknown MIME types are skipped.
 
 Rich providers inspect MIME offers at `poll_interval_ms` (default 500 ms), preferring image, then HTML, then text. This catches formatting changes even when visible text is identical. The legacy text watcher remains available. A transient empty selection is debounced for 100 ms and re-read before a clear is published.
 
@@ -29,7 +29,7 @@ Enable an existing record rather than creating it twice. See [first run](../gett
 
 ## Limits and ordering
 
-Text and HTML must be valid UTF-8 and contain fewer than 131072 UTF-16 units; an emoji outside the BMP counts as two units. Images are normalized to PNG and resized when necessary to fit 1048576 bytes. Local encoded image input is capped at 16 MiB and decoded dimensions at 32 million pixels. Resizing changes dimensions and may lose detail. PNGs already within the limit retain their exact bytes.
+Text and HTML must be valid UTF-8 and contain fewer than 131072 UTF-16 units; an emoji outside the BMP counts as two units. Images are normalized to PNG and resized when necessary to fit 1048576 bytes. Incoming phone images and local encoded image input are capped at 16 MiB and decoded dimensions at 32 million pixels. Resizing changes dimensions and may lose detail. PNGs already within the limit retain their exact bytes.
 
 Published snapshots retain the advertised type, bytes and timestamp for two minutes, at most 64 entries and 16 MiB in aggregate. A matching CONTENT request receives that snapshot rather than an unrelated new selection. Newer phone/local generations suppress stale writes; superseded correlations are rejected. Format-aware hashes suppress reflected copies. There is no clipboard history or secret filter. Clipboard contents pass through Microsoft services; stop synchronization before copying secrets.
 

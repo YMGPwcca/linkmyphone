@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	proto "github.com/YMGPwcca/linkmyphone/protocol/clipboard"
+	_ "golang.org/x/image/bmp"
 )
 
 const (
@@ -113,18 +114,18 @@ func validImageDimensions(w, h int) bool {
 // of the Windows implementation; only the interoperable size limit is shared.
 func PrepareImage(data []byte) (Content, error) {
 	if len(data) > MaxImageInputBytes {
-		return Content{}, ErrContentTooLarge
+		return Content{}, fmt.Errorf("%w: encoded image is %d bytes (input limit %d)", ErrContentTooLarge, len(data), MaxImageInputBytes)
 	}
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
-		return Content{}, ErrUnsupportedContent
+		return Content{}, fmt.Errorf("%w: unrecognized or invalid image header (%d bytes)", ErrUnsupportedContent, len(data))
 	}
 	if !validImageDimensions(cfg.Width, cfg.Height) {
-		return Content{}, ErrContentTooLarge
+		return Content{}, fmt.Errorf("%w: image dimensions %dx%d (pixel limit %d)", ErrContentTooLarge, cfg.Width, cfg.Height, MaxImagePixels)
 	}
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return Content{}, ErrUnsupportedContent
+		return Content{}, fmt.Errorf("%w: invalid %s image data (%d bytes)", ErrUnsupportedContent, format, len(data))
 	}
 	if format == "png" && len(data) <= MaxClipboardImageBytes {
 		return Content{Type: proto.ItemImage, Image: bytes.Clone(data)}, nil
@@ -200,9 +201,6 @@ func contentFromResponse(resp proto.Response) (Content, error) {
 			}
 			c := Content{Type: kind}
 			if kind == proto.ItemImage {
-				if len(item.ImageBytes) > MaxClipboardImageBytes {
-					return Content{}, ErrContentTooLarge
-				}
 				var err error
 				c, err = PrepareImage(item.ImageBytes)
 				if err != nil {

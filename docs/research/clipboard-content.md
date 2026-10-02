@@ -9,7 +9,7 @@ Source archive SHA-256 identifiers:
 - Windows: ad55af430fb0d1760e1d8793a349608a92f6797633daa65d2bcc48c64704d2e5
 - Android: 8022cbc1f2c1b60b17b8fc30405d3d5339e61c31fe2597383973179de40676ce
 
-`clipboard/content.go` implements validation, conversion and an independently chosen area-average resizing algorithm using Go's standard image codecs. `clipboard/native_content.go` discovers MIME targets with existing clipboard tools. `html_offer.py` uses GTK's public content-provider API to offer HTML and plain text together. Handwritten protocol codecs and existing DCG fragment/reassembly remain in use. No extra Go dependency is required.
+`clipboard/content.go` implements validation, conversion and an independently chosen area-average resizing algorithm using Go's standard image codecs and the Go project's BSD-licensed BMP decoder. `clipboard/native_content.go` discovers MIME targets with existing clipboard tools. `html_offer.py` uses GTK's public content-provider API to offer HTML and plain text together. Handwritten protocol codecs and existing DCG fragment/reassembly remain in use. The BMP decoder dependency is `golang.org/x/image` v0.30.0, compatible with Go 1.23; TIFF and WebP decoders are not imported. See `THIRD_PARTY_NOTICES.md`.
 
 Regression evidence includes explicit-empty protobuf fixtures, typed correlated immutable snapshots, fragmented PNG exchanges, size and malformed-content rejection, UTF-16 limits, MIME preference, HTML/image echo suppression and an opt-in real X11 integration test. Real authenticated HTML/image exchange with Link to Windows has not yet been validated for this release.
 

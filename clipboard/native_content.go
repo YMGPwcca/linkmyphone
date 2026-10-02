@@ -88,7 +88,7 @@ func (l *NativeLocal) ReadContent(ctx context.Context) (Content, error) {
 }
 
 func preferredNativeTarget(offers []string) string {
-	for _, preferred := range []string{"image/png", "image/jpeg", "image/gif", "text/html", "text/plain;charset=utf-8", "UTF8_STRING", "text/plain", "TEXT", "STRING"} {
+	for _, preferred := range []string{"image/png", "image/jpeg", "image/gif", "image/bmp", "image/x-bmp", "image/x-ms-bmp", "text/html", "text/plain;charset=utf-8", "UTF8_STRING", "text/plain", "TEXT", "STRING"} {
 		for _, offered := range offers {
 			if offered == preferred {
 				return offered

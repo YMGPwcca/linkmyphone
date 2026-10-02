@@ -16,6 +16,11 @@ func TestNativeOfferPreferenceAndOutputBounds(t *testing.T) {
 	if got := preferredNativeTarget([]string{"text/plain", "text/html", "image/png"}); got != "image/png" {
 		t.Fatal(got)
 	}
+	for _, mime := range []string{"image/bmp", "image/x-bmp", "image/x-ms-bmp"} {
+		if got := preferredNativeTarget([]string{"text/plain", mime}); got != mime {
+			t.Fatal("BMP offer lost", got)
+		}
+	}
 	if got := preferredNativeTarget([]string{"text/uri-list"}); got != "" {
 		t.Fatal("file selections are not clipboard text")
 	}
