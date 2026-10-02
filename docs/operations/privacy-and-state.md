@@ -6,11 +6,11 @@ LinkMyPhone uses Microsoft cloud services. Sign-in uses Microsoft's identity ser
 
 ## Before you enable clipboard sync
 
-The clipboard module has no content-based secret filter. The Wayland watcher treats `CLIPBOARD_STATE=sensitive` as a text event and synchronizes it like any other text. Stop or disable the feature before copying secrets. Do not rely on an application's sensitive-selection label to keep them local.
+The clipboard module has no content-based secret filter. Supported MIME selections are synchronized even if the source application labels them sensitive. Stop or disable the feature before copying secrets. Do not rely on an application's sensitive-selection label to keep them local.
 
-The module does not print clipboard text in normal runtime, probe, or service output. Diagnostics report byte counts and shortened correlation IDs. A desktop clipboard provider, journal collector, crash handler, or other process may have separate logging behavior outside this program.
+The module does not print clipboard contents in normal runtime, probe, or service output. Diagnostics report byte counts and shortened correlation IDs. A desktop clipboard provider, journal collector, crash handler, or other process may have separate logging behavior outside this program.
 
-`publish_initial` controls whether the current local text is sent once at module startup; it defaults to false.
+`publish_initial` controls whether the current local content is sent once at module startup; it defaults to false.
 
 ## What the program stores
 
@@ -31,9 +31,9 @@ Authentication and feature files are written atomically. The state directory is 
 
 ## What clipboard sync sends
 
-When a local text change is observed, the clipboard module publishes it through the Microsoft DCG/SignalR clipboard protocol. When the phone publishes a change, the module requests the associated CONTENT payload and writes the returned text to the selected local provider. `publish_initial` controls whether the current local text is sent once at module startup; it defaults to false.
+When a local supported-content change is observed, the clipboard module publishes it through the Microsoft DCG/SignalR clipboard protocol. When the phone publishes a change, the module requests the associated CONTENT payload and writes the returned text, HTML or PNG to the selected local provider. `publish_initial` controls whether the current local content is sent once at module startup; it defaults to false.
 
-There is no content-based secret filter. The Wayland watcher treats `CLIPBOARD_STATE=sensitive` as a text event rather than excluding it from synchronization. Stop or disable the feature before copying secrets; do not rely on an application's sensitive-selection label to keep them local. The handling is visible in [`features/clipboard/sync.go`](../../features/clipboard/sync.go#L401-L415).
+There is no content-based secret filter. Sensitive-selection labels do not exclude content from synchronization. Stop or disable the feature before copying secrets; do not rely on an application's sensitive-selection label to keep them local. The handling is visible in [`features/clipboard/sync.go`](../../features/clipboard/sync.go#L401-L415).
 
 ## Account and device boundary
 

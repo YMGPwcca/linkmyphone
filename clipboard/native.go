@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 )
 
 const MaxNativeClipboardTextBytes = 4 << 20
@@ -19,10 +20,16 @@ type commandSpec struct {
 // NativeLocal implements Local using common Linux clipboard command-line
 // providers. Commands are executed directly without a shell.
 type NativeLocal struct {
-	backend string
-	read    commandSpec
-	write   commandSpec
-	watch   commandSpec
+	backend      string
+	read         commandSpec
+	write        commandSpec
+	watch        commandSpec
+	gtkOnce      sync.Once
+	gtkRuntime   string
+	imageMu      sync.Mutex
+	imageReady   bool
+	imageHash    [32]byte
+	imageContent Content
 }
 
 func DetectNativeLocal() (*NativeLocal, error) {
@@ -44,8 +51,7 @@ func (l *NativeLocal) ReadText(ctx context.Context) (string, error) {
 	if l == nil || l.read.name == "" {
 		return "", errors.New("clipboard: native read backend is unavailable")
 	}
-	cmd := exec.CommandContext(ctx, l.read.name, l.read.args...)
-	out, err := cmd.Output()
+	out, err := boundedCommandOutput(ctx, l.read.name, l.read.args, MaxNativeClipboardTextBytes)
 	if err != nil {
 		if nativeReadIsEmptyClipboard(l.backend, err) {
 			return "", nil

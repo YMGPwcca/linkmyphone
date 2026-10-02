@@ -85,7 +85,11 @@ func marshalItem(it Item) []byte {
 	var out []byte
 	out = appendVarintField(out, 1, uint64(it.Type))
 	if it.Text != nil {
-		out = appendStringField(out, 2, *it.Text)
+		// optional string preserves presence, including an explicitly empty
+		// selection. Omitting this field turns a clear into missing content.
+		out = appendKey(out, 2, 2)
+		out = appendVarint(out, uint64(len(*it.Text)))
+		out = append(out, (*it.Text)...)
 	}
 	out = appendBytesField(out, 3, it.ImageBytes)
 	if it.CreatedTime != nil {
@@ -373,7 +377,6 @@ func NewTextResponse(correlationID, text string, ts *Timestamp) Response {
 func WrapClipboardRequest(req Request) DeviceResourceMessage {
 	return DeviceResourceMessage{ResourceType: DeviceResourceTypeUnknown, RequestType: DeviceResourceRequestGET, Payload: MarshalRequest(req), ResourcePath: ResourcePath}
 }
-
 
 func MarshalDeviceResourceResponse(m DeviceResourceResponse) []byte {
 	var out []byte

@@ -61,7 +61,7 @@ go test ./cmd/linkmyphone -run 'TestFeatureCommand'
 go test ./features/clipboard -run 'TestConfig|TestManifest|TestInstanceStop'
 ```
 
-The CI workflow at [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) is configured with `workflow_dispatch`, uses the Go version declared by `go.mod`, and runs `go test ./...`. It is currently manual-only. The historical README attributed that setting to an exhausted Actions-minute quota; the repository does not establish the current quota. Format changed Go files with `gofmt`. No separate linter, release command, or coverage threshold is configured here.
+The CI workflow at [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs on pushes to `feature/clipboard-content` and through `workflow_dispatch`. It uses the Go version declared by `go.mod`, runs vet and build, then runs the full race suite under Xvfb with real X11 MIME transfers. Format changed Go files with `gofmt`. No separate linter, release command, or coverage threshold is configured here.
 
 ## Invariant map
 
@@ -116,7 +116,7 @@ With a running `run` process, feature CRUD uses the hashed Unix socket and repor
 
 ## Desktop and systemd smokes
 
-These scenarios need a Linux desktop session and native clipboard utilities. They are not part of `go test`:
+These scenarios need a Linux desktop session and native clipboard utilities. The opt-in X11 provider test is included in CI; authenticated phone scenarios remain manual:
 
 ```bash
 go run ./cmd/linkmyphone clipboard-sync
@@ -128,6 +128,6 @@ go run ./cmd/linkmyphone service restart
 go run ./cmd/linkmyphone service uninstall
 ```
 
-Wayland uses `wl-paste --watch` when available and debounces transient `CLIPBOARD_STATE=nil` ownership gaps. X11 and watch failure use bounded polling. A desktop smoke should observe local copy, phone-to-Linux write, reflected-echo suppression, genuine clear, and clean Ctrl+C or service stop. Keep clipboard text non-sensitive. `service install` changes the user executable and systemd unit, so use a disposable user environment when testing installation behavior.
+Rich Wayland and X11 providers poll MIME offers. Empty selections are debounced and re-read before publication. The legacy text watcher remains available for text-only providers. A desktop smoke should observe local copy, phone-to-Linux write, reflected-echo suppression, genuine clear, and clean Ctrl+C or service stop. Keep clipboard text non-sensitive. `service install` changes the user executable and systemd unit, so use a disposable user environment when testing installation behavior.
 
 The archived project findings include dated Wayland, S23, and systemd validation reports, plus race-test repetitions. Those reports are evidence of the environments described at the time, not a promise that an untested machine or a current Microsoft service will behave the same way.

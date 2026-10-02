@@ -55,12 +55,18 @@ func (m *Module) Start(
 	if err != nil {
 		return nil, err
 	}
-	initialText, err := native.ReadText(ctx)
-	if err != nil {
+	initialContent, err := native.ReadContent(ctx)
+	initialAvailable := err == nil
+	if err != nil && !errors.Is(err, clipclient.ErrUnsupportedContent) && !errors.Is(err, clipclient.ErrContentTooLarge) && !errors.Is(err, clipclient.ErrContentUnavailable) {
 		return nil, fmt.Errorf("clipboard module: read initial Linux clipboard: %w", err)
 	}
 
-	local := newTrackedLocalClipboard(native, initialText)
+	local := newTrackedLocalClipboard(native, initialContent.Text)
+	if initialAvailable {
+		local.lastExactHash, local.lastTrackingHash = contentHashes(initialContent)
+	} else {
+		local.initialized = false
+	}
 	endpoint, err := m.session.Subscribe(
 		m.manifest.ID,
 		matcherForTarget(m.session.Target.ID),
@@ -76,6 +82,9 @@ func (m *Module) Start(
 		Target:          m.session.Target.ID,
 		SelfDcgClientID: m.session.SelfDcgClientID,
 		RequestTimeout:  cfg.RequestTimeout(),
+		OnContentSkipped: func(err error) {
+			kernel.Report(reporter, kernel.Event{ModuleID: m.manifest.ID, Level: "warning", Message: "remote clipboard content skipped", Fields: map[string]string{"reason": err.Error()}})
+		},
 		OnRemoteApplied: func(event clipclient.RemoteApplyEvent) {
 			queueLatestRemoteApply(remoteApplied, event)
 		},
@@ -87,6 +96,8 @@ func (m *Module) Start(
 		client:            client,
 		local:             local,
 		watcher:           native,
+		rich:              native.SupportsRichContent(),
+		localUnavailable:  !initialAvailable,
 		endpoint:          endpoint,
 		remoteApplied:     remoteApplied,
 		cancel:            cancel,
@@ -96,6 +107,9 @@ func (m *Module) Start(
 		featureOffTimeout: defaultFeatureOffTimeout,
 	}
 
+	if instance.rich {
+		instance.watcher = nil
+	} // Observe all MIME types, including image-only selections.
 	clientErr := make(chan error, 1)
 	go func() {
 		clientErr <- client.Run(runCtx)
@@ -129,11 +143,11 @@ func (m *Module) Start(
 		})
 	}
 
-	if cfg.PublishInitial {
+	if cfg.PublishInitial && initialAvailable {
 		generation := client.ReserveLocalGeneration()
-		correlationID, err := client.PublishLocalTextGeneration(
+		correlationID, err := client.PublishLocalContentGeneration(
 			ctx,
-			initialText,
+			initialContent,
 			"",
 			generation,
 		)
@@ -145,9 +159,9 @@ func (m *Module) Start(
 		kernel.Report(reporter, kernel.Event{
 			ModuleID: m.manifest.ID,
 			Level:    "sync",
-			Message:  "Linux -> phone published text",
+			Message:  "Linux -> phone published clipboard",
 			Fields: map[string]string{
-				"bytes":          fmt.Sprint(len([]byte(initialText))),
+				"bytes":          fmt.Sprint(initialContent.Size()),
 				"correlation_id": shortID(correlationID),
 			},
 		})
@@ -169,11 +183,13 @@ type instance struct {
 	cfg      Config
 	reporter kernel.Reporter
 
-	client        *clipclient.Client
-	local         *trackedLocalClipboard
-	watcher       localTextWatcher
-	endpoint      *phonehost.Endpoint
-	remoteApplied chan clipclient.RemoteApplyEvent
+	client           *clipclient.Client
+	local            *trackedLocalClipboard
+	watcher          localTextWatcher
+	rich             bool
+	localUnavailable bool
+	endpoint         *phonehost.Endpoint
+	remoteApplied    chan clipclient.RemoteApplyEvent
 
 	publishQueue   chan publishJob
 	publishResults <-chan publishResult
@@ -188,11 +204,19 @@ type instance struct {
 }
 
 func (i *instance) Capabilities() []kernel.LiveCapability {
-	return []kernel.LiveCapability{
+	caps := []kernel.LiveCapability{
 		{ID: "clipboard.text.read", ContractVersion: "1.0.0", ProviderID: i.moduleID},
 		{ID: "clipboard.text.write", ContractVersion: "1.0.0", ProviderID: i.moduleID},
 		{ID: "clipboard.text.bidirectional", ContractVersion: "1.0.0", ProviderID: i.moduleID},
 	}
+	if i.rich {
+		for _, kind := range []string{"html", "image"} {
+			for _, op := range []string{"read", "write", "bidirectional"} {
+				caps = append(caps, kernel.LiveCapability{ID: "clipboard." + kind + "." + op, ContractVersion: "1.0.0", ProviderID: i.moduleID})
+			}
+		}
+	}
+	return caps
 }
 
 func (i *instance) Errors() <-chan error {

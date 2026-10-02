@@ -2,6 +2,8 @@ name: ci
 
 on:
   workflow_dispatch:
+  push:
+    branches: [feature/clipboard-content]
 
 jobs:
   test:
@@ -11,4 +13,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go test ./...
+      - name: Install clipboard integration test providers
+        run: sudo apt-get update && sudo apt-get install -y xvfb xclip python3-gi gir1.2-gtk-4.0
+      - run: go vet ./...
+      - run: go build ./cmd/linkmyphone
+      - name: Full suite, race detector and real X11 MIME transfers
+        env:
+          LINKMYPHONE_NATIVE_INTEGRATION: "1"
+        run: xvfb-run -a go test -race ./...

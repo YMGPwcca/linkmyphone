@@ -127,7 +127,7 @@ The catalog's only built-in feature has ID `linkmyphone.clipboard`, version `0.1
 
 | Property | Type and range | Default | Effect |
 | --- | --- | --- | --- |
-| `poll_interval_ms` | Integer, 50 through 60000 | `500` | Fallback native clipboard polling interval when watching is unavailable or fails. |
+| `poll_interval_ms` | Integer, 50 through 60000 | `500` | MIME observation interval for rich backends; polling fallback for text-only providers. |
 | `request_timeout_ms` | Integer, 100 through 120000 | `10000` | Clipboard protocol request timeout. |
 | `publish_initial` | Boolean | `false` | Publish the current local clipboard once after module startup. |
 

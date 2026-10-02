@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md)
 
-Clipboard content is text in the supported Linux backend. Probe output and diagnostics report byte counts, not clipboard text.
+The Linux runtime transfers plain text, HTML fragments and PNG images. Probe output and diagnostics report byte counts and MIME types, not content.
 
 Related evidence: [research findings](../research/findings.md), [historical validation](../research/validation.md), and [development history](../research/history.md).
 
@@ -10,7 +10,7 @@ Related evidence: [research findings](../research/findings.md), [historical vali
 
 | Direction | Exchange |
 | --- | --- |
-| Linux to phone | Announce a change → receive the phone's CONTENT request → return the correlated text. |
+| Linux to phone | Announce a change → receive the phone's CONTENT request → return the correlated content. |
 | Phone to Linux | Receive an announcement → request CONTENT → apply the correlated response locally. |
 
 These are logical peers; all messages pass through Microsoft's cloud relay.
@@ -73,7 +73,7 @@ For phone-to-Linux publication, the phone puts the serialized change response in
 | Clipboard type | The Linux feature accepts successful `TEXT_PLAIN` responses. Codecs represent `IMAGE` and `TEXT_HTML`, but the native feature does not advertise or apply them. |
 | Resource request | Clipboard uses `UNKNOWN=4`, `GET=1`, and resource path `/clipboard`. |
 | Correlation | PLATFORM `_requestId` matches `_originalRequestId`; inner clipboard correlation must also match. |
-| Snapshots | Exact published text is retained for two minutes, up to 64 entries. Retired IDs are bounded to 256 entries and have no time expiry. |
+| Snapshots | Exact published content is retained for two minutes, up to 64 entries and 16 MiB total. Retired IDs are bounded to 256 entries and have no time expiry. |
 | Stale content | Known retired or superseded IDs return `INVALID_CONTENT` with `ErrorType=REJECT`. The bounded retirement history and unknown-ID fallback are explained below. |
 | Ordering | One generation domain covers local and remote changes. New remote generations cancel older pulls and supersede older versioned local snapshots. |
 | Echo | The origin barrier lasts 3 seconds. CRLF/LF and one terminal newline are normalized for comparison while protocol bytes remain unchanged. |
@@ -149,7 +149,7 @@ Constructors are `NewContentRequest`, `NewFeatureOnRequest`, `NewFeatureOffReque
 | image bytes         |      3 | length-delimited bytes   | `ImageBytes`  |
 | created time        |      4 | length-delimited message | `CreatedTime` |
 
-Item enum values are `UNSPECIFIED=0`, `IMAGE=1`, `TEXT_PLAIN=2`, and `TEXT_HTML=3`. The minimal timestamp has seconds field 1 and nanos field 2. The Linux client accepts a successful response only when it contains a non-nil `TEXT_PLAIN` item. Image and HTML fields are codec-compatible, but the native Linux feature does not advertise or apply them. Round trips, unknown fields, malformed lengths, and image items are covered in [`protocol/clipboard/codec_test.go`](../../protocol/clipboard/codec_test.go#L25-L121).
+Item enum values are `UNSPECIFIED=0`, `IMAGE=1`, `TEXT_PLAIN=2`, and `TEXT_HTML=3`. The minimal timestamp has seconds field 1 and nanos field 2. The runtime selects IMAGE, then TEXT_HTML, then TEXT_PLAIN. Text requires field 2 presence, including explicit empty strings. Images are validated and normalized to PNG. Rich native providers advertise HTML/image capabilities. Round trips, unknown fields, malformed lengths, and image items are covered in [`protocol/clipboard/codec_test.go`](../../protocol/clipboard/codec_test.go#L25-L121).
 
 </details>
 
@@ -235,7 +235,7 @@ The normal client answers inbound resource requests in a worker. It filters by c
 
 `clipboard.Client.request` matches the pending response by `_originalRequestId`, then checks that the inner response correlation equals the request correlation. A mismatch is an error, preventing one phone response from completing another local request. See [`clipboard/client.go`](../../clipboard/client.go#L463-L515).
 
-A PC publication records exact text under its correlation ID before sending `CLIPBOARD_CHANGE`. If the desktop clipboard changes before the phone asks for CONTENT, that live correlation still receives the advertised text. Snapshots expire after two minutes and are bounded to 64 entries. Expired or evicted snapshots are retired. Duplicate CONTENT requests do not retire a live snapshot and return the same snapshot, covering peer retry without replacing it with newer local text. A retained retired correlation returns `INVALID_CONTENT` with `ErrorType=REJECT`. The retired-ID map is bounded to 256 entries and has no time expiry, so rejection is not an unlimited historical guarantee once older tombstones are evicted. See [`clipboard/client.go`](../../clipboard/client.go#L205-L343), [`clipboard/client.go`](../../clipboard/client.go#L361-L405), and [`clipboard/client_test.go`](../../clipboard/client_test.go#L611-L682).
+A PC publication records exact content under its correlation ID before sending `CLIPBOARD_CHANGE`. If the desktop clipboard changes before the phone asks for CONTENT, that live correlation still receives the advertised text. Snapshots expire after two minutes and are bounded to 64 entries and 16 MiB total. Expired or evicted snapshots are retired. Duplicate CONTENT requests do not retire a live snapshot and return the same snapshot, covering peer retry without replacing it with newer local text. A retained retired correlation returns `INVALID_CONTENT` with `ErrorType=REJECT`. The retired-ID map is bounded to 256 entries and has no time expiry, so rejection is not an unlimited historical guarantee once older tombstones are evicted. See [`clipboard/client.go`](../../clipboard/client.go#L205-L343), [`clipboard/client.go`](../../clipboard/client.go#L361-L405), and [`clipboard/client_test.go`](../../clipboard/client_test.go#L611-L682).
 
 ## Generation ordering and tombstones
 
@@ -256,19 +256,19 @@ The inbound resource-request queue is bounded at 16. The phone publication queue
 
 Phone-to-Linux writes avoid immediate phone-to-Linux-to-phone echo:
 
-- `pullToLocal` reads current local text and skips a write when it already equals incoming text;
-- the feature's origin barrier suppresses previous and incoming normalized text hashes for a three-second remote-write settle window;
+- `pullToLocal` reads current typed content and skips a write when its type and bytes already match;
+- the feature's origin barrier suppresses previous and incoming content hashes (plain text retains newline normalization) for a three-second remote-write settle window;
 - echo comparison normalizes CRLF/LF and one terminal newline while preserving original bytes for protocol payloads;
 - phone publication work runs separately from the relay receive loop, so waiting for a DCG ACK does not block receive-side handling.
 
-Native backend selection prefers Wayland `wl-paste`/`wl-copy`; X11 falls back to `xclip`, then `xsel`. Commands execute directly without a shell. The native implementation is in [`clipboard/native.go`](../../clipboard/native.go#L19-L211). Wayland observation uses `wl-paste --watch` and a hidden helper in the same executable. The helper sends length-delimited frames over pipes, includes `data` or `nil` state, and keeps events separated. See [`clipboard/native_watch.go`](../../clipboard/native_watch.go#L36-L329) and [`clipboard/native_watch_test.go`](../../clipboard/native_watch_test.go#L12-L153).
+Native backend selection prefers Wayland `wl-paste`/`wl-copy`; X11 falls back to `xclip`, then `xsel`. Commands execute directly without a shell. The native implementation is in [`clipboard/native.go`](../../clipboard/native.go#L19-L211). Rich providers use MIME polling. The legacy text observer supports `wl-paste --watch` and a hidden helper in the same executable. The helper sends length-delimited frames over pipes, includes `data` or `nil` state, and keeps events separated. See [`clipboard/native_watch.go`](../../clipboard/native_watch.go#L36-L329) and [`clipboard/native_watch_test.go`](../../clipboard/native_watch_test.go#L12-L153).
 
-`wl-copy` forks by default so it can keep owning the selection. Capturing stdout or stderr pipes while waiting can leave the parent blocked until selection changes, so the native write path runs the command without captured output pipes. Wayland compositor handoff can emit transient nil selection before the next data offer; the watcher debounces nil for 100 ms. A following data event cancels the clear; a genuine clear publishes one empty value after debounce. These are implementation and historical live-validation details, not protocol fields. X11 uses polling; the polling fallback interval defaults to 500 ms.
+`wl-copy` forks by default so it can keep owning the selection. Capturing stdout or stderr pipes while waiting can leave the parent blocked until selection changes, so the native write path runs the command without captured output pipes. Wayland compositor handoff can emit transient nil selection before the next data offer; the watcher debounces nil for 100 ms. A following data event cancels the clear; a genuine clear publishes one empty value after debounce. These are implementation and historical live-validation details, not protocol fields. Rich Wayland and X11 providers use MIME polling at 500 ms by default; empty selections are re-read after debounce.
 
 No clipboard text is printed by the CLI. Documented probes limit explicit probe content to 4096 bytes and report only byte counts. Do not use sensitive text in command-line arguments because shell history can retain it.
 
 ## Supported wire versus implemented feature
 
-Codecs can represent image and HTML item types, but the Linux feature supports native text synchronization. Protocol enum values, platform version, message tag, and resource enum values are compatibility constants. They do not imply image transfer, HTML transfer, arbitrary resource operations, or support for a specific phone model.
+The native runtime supports text, HTML and images through wl-clipboard and xclip; xsel remains text-only. Protocol enum values, platform version, message tag, and resource enum values are compatibility constants. They do not establish full Phone Link parity, arbitrary resource operations, or support for a specific phone model.
 
 The feature depends on Microsoft cloud services and a linked peer. Long-running relay reconnect, wake recovery, and token-refresh resilience remain open. A successful finite CONTENT exchange does not establish indefinite synchronization after sleep, network loss, or token expiry.

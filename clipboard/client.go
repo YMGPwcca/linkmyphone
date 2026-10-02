@@ -19,17 +19,18 @@ import (
 )
 
 const (
-	DefaultRequestTimeout       = 10 * time.Second
-	publishedSnapshotTTL        = 2 * time.Minute
-	maxPublishedSnapshotCount   = 64
-	maxRetiredSnapshotCount     = 256
-	incomingRequestQueueSize    = 16
+	DefaultRequestTimeout     = 10 * time.Second
+	publishedSnapshotTTL      = 2 * time.Minute
+	maxPublishedSnapshotCount = 64
+	maxRetiredSnapshotCount   = 256
+	incomingRequestQueueSize  = 16
 )
 
 var ErrPublicationSuperseded = errors.New("clipboard: local publication superseded")
 
 type publishedSnapshot struct {
 	text       string
+	content    *Content
 	createdAt  time.Time
 	generation uint64
 	versioned  bool
@@ -49,14 +50,16 @@ type Local interface {
 type RemoteApplyEvent struct {
 	Generation uint64
 	Bytes      int
+	MIME       string
 }
 
 type Config struct {
-	Target          string
-	SessionID       string
-	SelfDcgClientID string
-	RequestTimeout  time.Duration
-	OnRemoteApplied func(RemoteApplyEvent)
+	Target           string
+	SessionID        string
+	SelfDcgClientID  string
+	RequestTimeout   time.Duration
+	OnRemoteApplied  func(RemoteApplyEvent)
+	OnContentSkipped func(error)
 }
 
 type pendingResponse struct {
@@ -99,9 +102,9 @@ func New(r Relay, local Local, cfg Config) *Client {
 		cfg.RequestTimeout = DefaultRequestTimeout
 	}
 	return &Client{
-		relay: r,
-		local: local,
-		cfg: cfg,
+		relay:            r,
+		local:            local,
+		cfg:              cfg,
 		pending:          make(map[string]chan pendingResponse),
 		published:        make(map[string]publishedSnapshot),
 		retired:          make(map[string]time.Time),
@@ -290,25 +293,58 @@ func (c *Client) advancePublicationFloor(generation uint64) {
 	}
 }
 
-func (c *Client) publishLocalText(
+func (c *Client) publishLocalText(ctx context.Context, text, correlationID string, generation uint64, versioned bool) (string, error) {
+	return c.publishLocalContent(ctx, TextContent(text), correlationID, generation, versioned)
+}
+
+func (c *Client) PublishLocalContent(ctx context.Context, content Content, correlationID string) (string, error) {
+	return c.publishLocalContent(ctx, content, correlationID, 0, false)
+}
+
+func (c *Client) PublishLocalContentGeneration(ctx context.Context, content Content, correlationID string, generation uint64) (string, error) {
+	if generation == 0 {
+		return "", errors.New("clipboard: publication generation must be positive")
+	}
+	c.observeGeneration(generation)
+	return c.publishLocalContent(ctx, content, correlationID, generation, true)
+}
+
+func (c *Client) GetContent(ctx context.Context, correlationID string) (Content, error) {
+	if correlationID == "" {
+		correlationID = newID()
+	}
+	resp, err := c.request(ctx, proto.NewContentRequest(correlationID))
+	if err != nil {
+		return Content{}, err
+	}
+	return contentFromResponse(resp)
+}
+
+func (c *Client) publishLocalContent(
 	ctx context.Context,
-	text,
+	content Content,
 	correlationID string,
 	generation uint64,
 	versioned bool,
 ) (string, error) {
+	if err := content.Validate(); err != nil {
+		return "", err
+	}
+	content = content.Clone()
 	if correlationID == "" {
 		correlationID = newID()
 	}
 	now := time.Now()
 	c.mu.Lock()
 	c.prunePublishedLocked(now)
+	c.pruneSnapshotBytesLocked(content.Size())
 	if versioned && generation < c.publicationFloor {
 		c.mu.Unlock()
 		return "", ErrPublicationSuperseded
 	}
 	c.published[correlationID] = publishedSnapshot{
-		text:       text,
+		text:       content.Text,
+		content:    &content,
 		createdAt:  now,
 		generation: generation,
 		versioned:  versioned,
@@ -365,7 +401,7 @@ func (c *Client) prunePublishedLocked(now time.Time) {
 			c.retireCorrelationLocked(correlationID, now)
 		}
 	}
-	for len(c.published) >= maxPublishedSnapshotCount {
+	for len(c.published) > maxPublishedSnapshotCount {
 		var oldestID string
 		var oldestTime time.Time
 		for correlationID, snapshot := range c.published {
@@ -405,7 +441,7 @@ func (c *Client) retireCorrelationLocked(correlationID string, now time.Time) {
 }
 
 func (c *Client) pullToLocal(ctx context.Context, correlationID string, generation uint64) error {
-	text, err := c.GetText(ctx, correlationID)
+	content, err := c.GetContent(ctx, correlationID)
 	if err != nil {
 		return err
 	}
@@ -428,17 +464,26 @@ func (c *Client) pullToLocal(ctx context.Context, correlationID string, generati
 	// clipboard update. Avoid rewriting an already-identical local clipboard:
 	// it is both unnecessary and can otherwise look like a phone-originated
 	// change to the local watcher.
-	current, readErr := c.local.ReadText(ctx)
-	if readErr == nil && current == text {
+	current, readErr := readLocalContent(ctx, c.local)
+	if readErr == nil && current.Equal(content) {
 		return nil
 	}
-	if err := c.local.WriteText(ctx, text); err != nil {
-		return err
+	var writeErr error
+	if rich, ok := c.local.(ContentLocal); ok {
+		writeErr = rich.WriteContent(ctx, content)
+	} else if content.Type == proto.ItemTextPlain {
+		writeErr = c.local.WriteText(ctx, content.Text)
+	} else {
+		writeErr = ErrUnsupportedContent
+	}
+	if writeErr != nil {
+		return writeErr
 	}
 	if c.cfg.OnRemoteApplied != nil {
 		c.cfg.OnRemoteApplied(RemoteApplyEvent{
 			Generation: generation,
-			Bytes:      len([]byte(text)),
+			Bytes:      content.Size(),
+			MIME:       content.MIME(),
 		})
 	}
 	return nil
@@ -461,6 +506,8 @@ func (c *Client) PushFeatureState(ctx context.Context, state proto.RequestType) 
 }
 
 func (c *Client) request(ctx context.Context, req proto.Request) (proto.Response, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.RequestTimeout)
+	defer cancel()
 	if c.cfg.Target == "" {
 		return proto.Response{}, errors.New("clipboard: target is required")
 	}
@@ -646,6 +693,12 @@ func (c *Client) runPhonePublicationWorker(ctx context.Context) {
 			if err == nil {
 				continue
 			}
+			if isRecoverableContentError(err) || errors.Is(err, context.DeadlineExceeded) {
+				if c.cfg.OnContentSkipped != nil {
+					c.cfg.OnContentSkipped(err)
+				}
+				continue
+			}
 			if errors.Is(err, context.Canceled) && ctx.Err() == nil {
 				continue
 			}
@@ -675,6 +728,12 @@ func (c *Client) runIncomingRequestWorker(ctx context.Context) {
 			return
 		case request := <-c.incomingRequests:
 			if err := c.handleIncomingRequest(ctx, request.msg, request.pm); err != nil {
+				if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+					if c.cfg.OnContentSkipped != nil {
+						c.cfg.OnContentSkipped(err)
+					}
+					continue
+				}
 				select {
 				case c.asyncErr <- err:
 				case <-ctx.Done():
@@ -728,15 +787,23 @@ func (c *Client) handleIncomingRequest(ctx context.Context, msg relay.Received, 
 				ErrorDetail:   "clipboard publication was superseded by a newer remote change",
 			}
 		} else if published {
-			response = proto.NewTextResponse(req.CorrelationID, snapshot.text, nil)
+			if snapshot.content != nil {
+				response = contentResponseAt(req.CorrelationID, *snapshot.content, snapshot.createdAt)
+			} else {
+				response = proto.NewTextResponse(req.CorrelationID, snapshot.text, nil)
+			}
 		} else if c.local == nil {
 			response = proto.Response{Status: proto.ResponseInvalidContent, CorrelationID: req.CorrelationID, ErrorType: proto.ErrorFail, ErrorDetail: "local clipboard unavailable"}
 		} else {
-			text, err := c.local.ReadText(ctx)
+			content, err := readLocalContent(ctx, c.local)
 			if err != nil {
 				response = proto.Response{Status: proto.ResponseInvalidContent, CorrelationID: req.CorrelationID, ErrorType: proto.ErrorFail, ErrorDetail: "local clipboard read failed"}
 			} else {
-				response = proto.NewTextResponse(req.CorrelationID, text, nil)
+				if err := content.Validate(); err != nil {
+					response = proto.Response{Status: proto.ResponseInvalidContent, CorrelationID: req.CorrelationID, ErrorType: proto.ErrorReject, ErrorDetail: "unsupported clipboard content or size"}
+				} else {
+					response = contentResponse(req.CorrelationID, content)
+				}
 			}
 		}
 	default:
@@ -749,6 +816,8 @@ func (c *Client) handleIncomingRequest(ctx context.Context, msg relay.Received, 
 }
 
 func (c *Client) sendResponse(ctx context.Context, target, requestID string, response proto.DeviceResourceResponse) error {
+	ctx, cancel := context.WithTimeout(ctx, c.cfg.RequestTimeout)
+	defer cancel()
 	pm := platform.NewInternalResponse(proto.MarshalDeviceResourceResponse(response), requestID)
 	wire, err := platform.Marshal(pm)
 	if err != nil {
@@ -766,4 +835,28 @@ func newID() string {
 	b[8] = (b[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+func (c *Client) pruneSnapshotBytesLocked(incoming int) {
+	for {
+		total := incoming
+		oldestID := ""
+		var oldest time.Time
+		for id, s := range c.published {
+			if s.content != nil {
+				total += s.content.Size()
+			} else {
+				total += len(s.text)
+			}
+			if oldestID == "" || s.createdAt.Before(oldest) {
+				oldestID = id
+				oldest = s.createdAt
+			}
+		}
+		if (total <= 16<<20 && len(c.published) < maxPublishedSnapshotCount) || oldestID == "" {
+			return
+		}
+		delete(c.published, oldestID)
+		c.retireCorrelationLocked(oldestID, time.Now())
+	}
 }

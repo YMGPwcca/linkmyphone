@@ -41,7 +41,7 @@ The parser accepts only builtin modules in runtime API 1.0. There is no process 
 
 An empty configuration is normalized to `{}` and receives module defaults. The feature store requires a non-null JSON object and rejects trailing JSON; it does not know feature-specific fields or ranges. The clipboard module's Go validator rejects unknown fields and out-of-range values. Its JSON schema documents the same shape, but is not evaluated by a generic runtime schema engine.
 
-Potential capabilities are declarations only. A successful start registers the instance's live capabilities and marks its registry entry `ready`. Stop, failure, dependency degradation, and rollback revoke them. The clipboard instance returns `clipboard.text.read`, `clipboard.text.write`, and `clipboard.text.bidirectional`, each with contract `1.0.0`.
+Potential capabilities are declarations only. A successful start registers the instance's live capabilities and marks its registry entry `ready`. Stop, failure, dependency degradation, and rollback revoke them. The instance returns text capabilities with contract `1.0.0`; MIME-capable backends also return HTML and image read/write/bidirectional capabilities.
 
 Capability registration happens before the state becomes `ready`, and the capability and module registries use separate locks. Their snapshots are not atomic together. [INFERENCE] A direct concurrent capability reader can observe registration before the Ready transition, or before a stale-start check removes the provider. Do not infer an atomically Ready module state from a capability-only lookup. See [`start ordering`](../../runtime/kernel/registry.go#L375-L408) and [`capability synchronization`](../../runtime/kernel/capability.go#L25-L83).
 
@@ -116,7 +116,7 @@ A delete removes the registry entry and capabilities after stopping it. Reusing 
 
 The capability map and module registry are separately synchronized. A reader that needs a coherent lifecycle answer should read the kernel snapshot, not infer `ready` from a capability lookup. This is an intentional race boundary in runtime API 1.0, not an atomic combined snapshot.
 
-Clipboard publication snapshots have their own bounded lifetime. Snapshots last two minutes and are capped at 64 entries. Evicted or expired correlations are retained as retired IDs, capped at 256 entries with no time expiry. A duplicate CONTENT request does not retire an active snapshot. An unknown correlation may fall back to current local text only when it is not retired or superseded. These rules prevent a late request from receiving unrelated current text, while keeping memory bounded.
+Clipboard publication snapshots have their own bounded lifetime. Snapshots last two minutes and are capped at 64 entries and 16 MiB total. Evicted or expired correlations are retained as retired IDs, capped at 256 entries with no time expiry. A duplicate CONTENT request does not retire an active snapshot. An unknown correlation may fall back to current local content only when it is not retired or superseded. These rules prevent a late request from receiving unrelated current text, while keeping memory bounded.
 
 ## Clipboard module ownership
 
@@ -132,7 +132,7 @@ The module owns:
 - suppression of reflected phone-to-Linux-to-phone echoes;
 - diagnostics and the `FEATURE_OFF` shutdown attempt.
 
-The matcher accepts only PLATFORM messages from the selected target and only the clipboard resource, `/internal/response`, or tag-9 `/Context/Publish` forms. The protocol client owns pending request IDs, published text snapshots, incoming clipboard request dispatch, and a bounded queue of 16 incoming requests. Outbound publication has a one-slot latest-value queue and a bounded result channel. Remote-apply and native-event queues are also latest-value queues rather than unbounded buffers.
+The matcher accepts only PLATFORM messages from the selected target and only the clipboard resource, `/internal/response`, or tag-9 `/Context/Publish` forms. The protocol client owns pending request IDs, published content snapshots, incoming clipboard request dispatch, and a bounded queue of 16 incoming requests. Outbound publication has a one-slot latest-value queue and a bounded result channel. Remote-apply and native-event queues are also latest-value queues rather than unbounded buffers.
 
 Mutable ownership is split deliberately: `transport/relay.Client` serializes DCG sends per peer; `runtime/phonehost.Router` owns the raw receive stream; each feature owns its endpoint queue; `clipboard.Client` owns clipboard request dispatch and the cross-device generation sequence; and `features/clipboard` owns native observation, echo suppression, and watcher fallback. This prevents two layers from concurrently deciding the same ordering or cleanup action.
 
@@ -140,7 +140,7 @@ Local and phone changes share one monotonically increasing generation domain. A 
 
 The origin barrier suppresses both the previous and incoming normalized text hashes for a three-second remote-write settle window. This is echo tracking, not a filter for secret clipboard content.
 
-On Wayland, `wl-paste --watch` supplies local events through the hidden helper in the same executable. A transient `CLIPBOARD_STATE=nil` handoff is debounced before an empty value is observed. A real clear still publishes one empty value. If watching is unsupported or fails, the module uses bounded polling at `poll_interval_ms`; X11 uses polling. Native commands are executed directly without a shell. The module's stop path attempts `FEATURE_OFF` with a short advisory budget, then cancels workers and closes its endpoint even if the phone is unresponsive.
+Rich backends poll MIME offers at `poll_interval_ms`. The legacy text watcher supplies events through the hidden helper in the same executable. A transient `CLIPBOARD_STATE=nil` handoff is debounced before an empty value is observed. A real clear still publishes one empty value. If watching is unsupported or fails, the module uses bounded polling at `poll_interval_ms`; X11 uses polling. Native commands are executed directly without a shell. The module's stop path attempts `FEATURE_OFF` with a short advisory budget, then cancels workers and closes its endpoint even if the phone is unresponsive.
 
 ## Adding a builtin
 

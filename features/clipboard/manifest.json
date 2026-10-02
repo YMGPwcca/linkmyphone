@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "id": "linkmyphone.clipboard",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "kind": "builtin",
   "runtime": {
     "api_version": "1.0"
@@ -18,6 +18,30 @@
       },
       {
         "id": "clipboard.text.bidirectional",
+        "contract_version": "1.0.0"
+      },
+      {
+        "id": "clipboard.html.read",
+        "contract_version": "1.0.0"
+      },
+      {
+        "id": "clipboard.html.write",
+        "contract_version": "1.0.0"
+      },
+      {
+        "id": "clipboard.html.bidirectional",
+        "contract_version": "1.0.0"
+      },
+      {
+        "id": "clipboard.image.read",
+        "contract_version": "1.0.0"
+      },
+      {
+        "id": "clipboard.image.write",
+        "contract_version": "1.0.0"
+      },
+      {
+        "id": "clipboard.image.bidirectional",
         "contract_version": "1.0.0"
       }
     ]
@@ -36,7 +60,7 @@
   "configuration_schema": "config.schema.json",
   "metadata": {
     "display_name": "Clipboard Sync",
-    "description": "Bidirectional text clipboard synchronization with a linked Android peer.",
+    "description": "Bidirectional text, HTML and image clipboard synchronization with a linked Android peer.",
     "diagnostic_label": "linkmyphone.clipboard"
   }
 }

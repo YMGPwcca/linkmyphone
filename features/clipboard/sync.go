@@ -10,6 +10,7 @@ import (
 	"time"
 
 	clipclient "github.com/YMGPwcca/linkmyphone/clipboard"
+	proto "github.com/YMGPwcca/linkmyphone/protocol/clipboard"
 	"github.com/YMGPwcca/linkmyphone/runtime/kernel"
 )
 
@@ -134,6 +135,8 @@ func (l *trackedLocalClipboard) WriteText(ctx context.Context, text string) erro
 		l.lastExactHash = nextExactHash
 		l.lastTrackingHash = nextTrackingHash
 		l.initialized = true
+	} else {
+		delete(l.suppress, nextTrackingHash)
 	}
 	l.mu.Unlock()
 	if err != nil {
@@ -188,6 +191,7 @@ func (l *trackedLocalClipboard) pruneSuppressedLocked(now time.Time) {
 type publishJob struct {
 	generation uint64
 	text       string
+	content    *clipclient.Content
 }
 
 type publishResult struct {
@@ -211,15 +215,14 @@ func startClipboardPublisher(
 			case <-ctx.Done():
 				return
 			case job := <-queue:
-				correlationID, err := client.PublishLocalTextGeneration(
-					ctx,
-					job.text,
-					"",
-					job.generation,
-				)
+				content := clipclient.TextContent(job.text)
+				if job.content != nil {
+					content = *job.content
+				}
+				correlationID, err := client.PublishLocalContentGeneration(ctx, content, "", job.generation)
 				result := publishResult{
 					generation:    job.generation,
-					size:          len([]byte(job.text)),
+					size:          content.Size(),
 					correlationID: correlationID,
 					err:           err,
 				}
@@ -412,7 +415,17 @@ func (i *instance) run(ctx context.Context, clientErr <-chan error) {
 
 		case <-clearDebouncer.C():
 			if clearDebouncer.Fire() {
-				i.observeLocalText("")
+				if i.rich {
+					content, err := i.local.ReadContent(ctx)
+					if err == nil {
+						i.observeLocalContent(content)
+					} else if !errors.Is(err, clipclient.ErrUnsupportedContent) && !errors.Is(err, clipclient.ErrContentTooLarge) && !errors.Is(err, clipclient.ErrContentUnavailable) {
+						i.fail(err)
+						return
+					}
+				} else {
+					i.observeLocalText("")
+				}
 			}
 
 		case result, ok := <-i.publishResults:
@@ -422,6 +435,10 @@ func (i *instance) run(ctx context.Context, clientErr <-chan error) {
 			if errors.Is(result.err, clipclient.ErrPublicationSuperseded) {
 				continue
 			}
+			if result.err != nil && (errors.Is(result.err, clipclient.ErrContentTooLarge) || errors.Is(result.err, clipclient.ErrUnsupportedContent)) {
+				i.reportSkip(result.err)
+				continue
+			}
 			if result.err != nil {
 				i.fail(fmt.Errorf("clipboard module: publish Linux clipboard: %w", result.err))
 				return
@@ -429,7 +446,7 @@ func (i *instance) run(ctx context.Context, clientErr <-chan error) {
 			kernel.Report(i.reporter, kernel.Event{
 				ModuleID: i.moduleID,
 				Level:    "sync",
-				Message:  "Linux -> phone published text",
+				Message:  "Linux -> phone published clipboard",
 				Fields: map[string]string{
 					"bytes":          fmt.Sprint(result.size),
 					"correlation_id": shortID(result.correlationID),
@@ -446,20 +463,44 @@ func (i *instance) run(ctx context.Context, clientErr <-chan error) {
 			kernel.Report(i.reporter, kernel.Event{
 				ModuleID: i.moduleID,
 				Level:    "sync",
-				Message:  "phone -> Linux applied text",
+				Message:  "phone -> Linux applied clipboard",
 				Fields: map[string]string{
 					"bytes":      fmt.Sprint(event.Bytes),
+					"mime_type":  event.MIME,
 					"generation": fmt.Sprint(event.Generation),
 				},
 			})
 
 		case <-pollC:
-			text, err := i.local.ReadText(ctx)
+			content, err := i.local.ReadContent(ctx)
 			if err != nil {
+				if errors.Is(err, clipclient.ErrUnsupportedContent) || errors.Is(err, clipclient.ErrContentTooLarge) || errors.Is(err, clipclient.ErrContentUnavailable) {
+					clearDebouncer.Cancel()
+					if !i.localUnavailable {
+						i.localUnavailable = true
+						generation := i.client.ReserveLocalGeneration()
+						discardQueuedPublishesBefore(i.publishQueue, generation)
+						i.reportSkip(err)
+					}
+					continue
+				}
 				i.fail(fmt.Errorf("clipboard module: poll Linux clipboard: %w", err))
 				return
 			}
-			i.observeLocalText(text)
+			if i.localUnavailable {
+				i.localUnavailable = false
+				i.local.mu.Lock()
+				i.local.initialized = false
+				i.local.mu.Unlock()
+			}
+			if content.Type == proto.ItemTextPlain && content.Text == "" && i.rich {
+				if !clearDebouncer.pending {
+					clearDebouncer.Schedule()
+				}
+				continue
+			}
+			clearDebouncer.Cancel()
+			i.observeLocalContent(content)
 		}
 	}
 }
@@ -488,4 +529,8 @@ func shortID(value string) string {
 		return value
 	}
 	return value[:8] + "..." + value[len(value)-4:]
+}
+
+func (i *instance) reportSkip(err error) {
+	kernel.Report(i.reporter, kernel.Event{ModuleID: i.moduleID, Level: "warning", Message: "clipboard content skipped", Fields: map[string]string{"reason": err.Error()}})
 }
