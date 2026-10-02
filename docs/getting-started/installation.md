@@ -2,7 +2,9 @@
 
 [Documentation index](../README.md)
 
-LinkMyPhone is a Go program for Linux that connects to Microsoft Phone Link / Link to Windows through Microsoft's cloud services. Its current built-in feature is bidirectional text clipboard synchronization.
+LinkMyPhone is an independent, unofficial Phone Link client for Linux, written in Go. It aims to bring the Phone Link experience to Linux through interoperability with Microsoft's Phone Link and Link to Windows ecosystem, rather than remain a clipboard-only tool.
+
+The current implementation is command-line based and uses Microsoft's cloud services. Its first and currently only built-in feature is bidirectional text clipboard synchronization. This guide installs the client and the desktop tools needed for that feature; it does not imply full Phone Link feature parity. See [current support and broader scope](../../README.md#current-support-and-broader-scope).
 
 LinkMyPhone is independent and unofficial, with no Microsoft affiliation, endorsement, or sponsorship. Microsoft, Phone Link, and Link to Windows are trademarks of the Microsoft group of companies.
 
@@ -66,8 +68,6 @@ The systemd installer can also copy the currently running executable to `~/.loca
 By default, authentication state is stored at `~/.config/linkmyphone/state.json`. The feature registry is stored separately at `~/.config/linkmyphone/features.json`. The program creates their parent directory with mode `0700` and writes each file with mode `0600`.
 
 Authentication state contains a Microsoft refresh token, DCG and trust private keys and certificates, service tokens, account certificate data, and linked-device trust relationships. Treat it as a credential. Do not commit it, upload it, or attach it to a bug report. See [privacy and state](../operations/privacy-and-state.md).
-
-An existing Phone Link Linux installation is not migrated automatically. Before starting LinkMyPhone, [move the private state and update feature IDs](../reference/configuration.md#migrate-from-phone-link-linux), then [replace the old service and binary](../operations/systemd.md#migrate-the-old-service).
 
 ## Continue with first run
 

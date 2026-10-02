@@ -4,32 +4,6 @@
 
 The optional systemd integration runs the same modular `run` command as an interactive session. It is a per-user service tied to the graphical login, not a machine-wide daemon.
 
-## Migrate the old service
-
-LinkMyPhone does not migrate or remove a Phone Link Linux installation automatically. The old and new service names are distinct; installing the new unit does not stop the old daemon.
-
-1. Before deleting anything, inspect `systemctl --user cat phonelink-linux.service` and privately save any drop-ins, explicit authentication/feature paths, and phone target that you need to carry forward. If the old unit is installed, stop and disable it:
-
-   ```bash
-   systemctl --user disable --now phonelink-linux.service
-   systemctl --user is-active phonelink-linux.service
-   ```
-
-   The second command should report `inactive` (with a non-zero exit status). If stopping fails or the process remains active, resolve that before proceeding. Also stop foreground old runtimes and probes, and remove any other autostart entry for the old binary.
-2. [Migrate state and feature IDs](../reference/configuration.md#migrate-from-phone-link-linux) while all writers are stopped. Preserve secret permissions and the existing device identity; there is no automatic conversion. Custom paths and `$XDG_CONFIG_HOME` must be handled explicitly.
-3. If the old installed executable is available, use it to remove its unit and binary:
-
-   ```bash
-   "$HOME/.local/bin/phonelink-linux" service uninstall
-   ```
-
-   Otherwise, after confirming the old daemon is stopped and disabled, manually remove the old user unit from `${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/phonelink-linux.service` and the old binary from `~/.local/bin/phonelink-linux`, then run `systemctl --user daemon-reload`. Review and remove the old `phonelink-linux.service.d/` drop-ins after saving any required settings. Remove other old binary copies or script references yourself. Do not delete the migrated authentication or feature files.
-4. Build `linkmyphone` and install it with `./linkmyphone service install --enable=false --start=false`. Recreate any needed overrides under `linkmyphone.service`, updating `ExecStart` to `%h/.local/bin/linkmyphone run` and explicitly selecting the migrated custom paths and target where needed. Old unit drop-ins are not inherited.
-5. Inspect `systemctl --user cat linkmyphone.service`, then reload, enable, and start using the commands below. Confirm that only the new service runs and that it uses the intended identity and feature store.
-
-For an installation without systemd, perform the same stopped-runtime state migration, replace the binary on your `PATH`, and update every script or autostart command before restarting.
-
-
 ## Install and start
 
 Build the executable and run the installer from the same executable you want systemd to use:

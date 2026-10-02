@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 420" role="img" aria-labelledby="title desc">
-  <title id="title">A text clipboard between Linux and Android</title>
-  <desc id="desc">Clipboard text travels in both directions between the Linux client and Link to Windows on Android through Microsoft's DCG and Hub Relay services.</desc>
+  <title id="title">LinkMyPhone's current clipboard feature</title>
+  <desc id="desc">The first implemented LinkMyPhone feature: clipboard text travels in both directions between Linux and Link to Windows on Android through Microsoft's DCG and Hub Relay services. This diagram does not represent the full scope of the project.</desc>
   <style>
     svg { --surface: #f6f8fa; --ink: #1f2328; --secondary: #57606a; --border: #d1d9e0; --flow: #0969da; }
     text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: var(--ink); }

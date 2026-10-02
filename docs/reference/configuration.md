@@ -21,29 +21,6 @@ linkmyphone run \
 
 Keep each profile in its own directory. Saving authentication state changes its parent directory to `0700`, including an existing directory. Avoid placing a custom state file in a shared directory.
 
-## Migrate from Phone Link Linux
-
-There is **no automatic migration** and no legacy command or feature-ID alias. The old defaults were `~/.config/phonelink-linux/` and `phonelink.clipboard`; the new defaults are `~/.config/linkmyphone/` and `linkmyphone.clipboard`. Do not bootstrap a new profile merely because the new default path is empty: that would enroll another Linux identity instead of resuming the existing one.
-
-1. Stop and disable `phonelink-linux.service` if installed, and stop any foreground old runtime or probe. Confirm that the old process has exited before modifying state. Follow [service migration](../operations/systemd.md#migrate-the-old-service); the new socket name does not prevent an old daemon from running alongside the new one.
-2. Locate the actual authentication and feature files. `$XDG_CONFIG_HOME` changes the configuration root; explicit `--state`, `--features-state`, service drop-ins, and separate test profiles need explicit handling. Inspect the old service's effective command before removing it. Do not assume those files are in the default directory.
-3. Make a private backup preserving file modes (for example, `cp -a` into a directory accessible only to your user). With all writers stopped, move the old default directory without overwriting an existing destination:
-
-   ```bash
-   config_root="${XDG_CONFIG_HOME:-$HOME/.config}"
-   old="$config_root/phonelink-linux"
-   new="$config_root/linkmyphone"
-   test -d "$old" && test ! -e "$new" && mv -T -- "$old" "$new"
-   ```
-
-   If the destination already exists, stop and resolve the profiles manually; do not merge or overwrite authentication snapshots. A move preserves the file contents and existing modes. Keep the directory at `0700` and `state.json`, `features.json`, and any backups at `0600` for files. Restrict an overly permissive directory before moving it, and correct file modes privately if necessary.
-4. Leave `state.json` unchanged. Preserve its logical device ID, DCG identity, keys, certificates, tokens, and trust records; moving the intact snapshot allows the existing device identity to resume. Never replace identity fields with the new project name.
-5. In `features.json`, use a local editor that preserves private permissions to change only feature record `id` values from `phonelink.*` to `linkmyphone.*` (the shipped record is `phonelink.clipboard` → `linkmyphone.clipboard`). Preserve `schema_version`, enabled flags, and configuration objects. Resolve duplicate old/new IDs before saving. Do not globally replace text in authentication state or protocol values. Old feature IDs are unavailable to the new catalog.
-6. Update scripts, explicit profile paths, and service overrides to the new binary and chosen store paths. Custom files may remain at their existing private paths if you pass them explicitly, but their feature IDs still need the update. Finish [service migration](../operations/systemd.md#migrate-the-old-service) before starting anything.
-
-Check the migrated registry offline with `linkmyphone feature list` (or `--state PATH` for a custom registry) before starting `run`. Keep backups private; never attach them to a bug report.
-
-
 ## Authentication state
 
 `state.json` has schema version `1` and is written atomically. The implementation is [`auth/state/store.go`](../../auth/state/store.go).
