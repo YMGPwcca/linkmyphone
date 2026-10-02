@@ -4,7 +4,7 @@
 
 Use this guide to create the Linux identity, select the linked phone, and start clipboard sync. The phone and Windows PC must already be linked in Microsoft Link to Windows / Phone Link under the Microsoft account you will use. The Linux host also needs a working network connection and, for clipboard sync, a graphical clipboard provider.
 
-Phone Link Linux does not discover or pair a new phone. It enrolls a Linux DCG identity, asks Microsoft for devices already linked to the account, and selects one of those peers.
+LinkMyPhone does not discover or pair a new phone. It enrolls a Linux DCG identity, asks Microsoft for devices already linked to the account, and selects one of those peers.
 
 | Command | Where it stops |
 | --- | --- |
@@ -37,7 +37,7 @@ flowchart TD
 Run the probe from the repository, or replace it with the installed binary:
 
 ```bash
-phonelink-linux bootstrap-probe
+linkmyphone bootstrap-probe
 ```
 
 On a new state path, the command prints a Microsoft device-code verification URL and a one-time code. Open the URL in a browser, sign in with the account that owns the existing Link to Windows relationship, and wait for the command to continue. It then:
@@ -51,10 +51,10 @@ The command does not print secrets. It writes state before later cloud stages, s
 
 This ordering describes the CLI probe. The library first-run path saves after trust is established, so callers using the library should keep its staged-persistence behavior rather than assuming the CLI order.
 
-The default state path is `~/.config/phonelink-linux/state.json`. Use another path when you intentionally maintain a separate account or test state:
+The default state path is `~/.config/linkmyphone/state.json`. Use another path when you intentionally maintain a separate account or test state:
 
 ```bash
-phonelink-linux bootstrap-probe --state "$HOME/.config/phonelink-linux-test/state.json"
+linkmyphone bootstrap-probe --state "$HOME/.config/linkmyphone-test/state.json"
 ```
 
 The other bootstrap flags are documented in the [CLI reference](../reference/cli.md). They change compatibility metadata sent to Microsoft's service. Keep their defaults unless a deployment-specific requirement gives you a reason to change them.
@@ -72,7 +72,7 @@ If exactly one linked Android device is returned, the default target is that dev
 Select a target by its DCG ID, exact name, exact model name, or an unambiguous case-insensitive partial match:
 
 ```bash
-phonelink-linux run --target "My phone"
+linkmyphone run --target "My phone"
 ```
 
 The selector applies only to devices returned by Microsoft's `DeviceInfoList`; it cannot pair a new device. An ambiguous selector is rejected instead of choosing arbitrarily. The host checks Hub Relay presence and sends a signed wake request when the target is not already present, then performs PLATFORM `/SessionValidation` before starting feature modules.
@@ -84,19 +84,19 @@ An explicit selector can match any linked peer returned by the service, includin
 The modular runtime reads desired feature records from `features.json`. Create the built-in clipboard feature and request that it start:
 
 ```bash
-phonelink-linux feature create --enabled phonelink.clipboard
-phonelink-linux run
+linkmyphone feature create --enabled linkmyphone.clipboard
+linkmyphone run
 ```
 
 The option appears before the positional feature ID because the CLI uses Go's standard flag parser. `feature create` defaults to disabled when `--enabled` is omitted. `run` starts every enabled, available feature in the registry and keeps one shared Phone Link host session open.
 
-If the record already exists, inspect it with `feature get phonelink.clipboard` and enable it with `feature enable phonelink.clipboard` instead of creating it again.
+If the record already exists, inspect it with `feature get linkmyphone.clipboard` and enable it with `feature enable linkmyphone.clipboard` instead of creating it again.
 
 Check desired and live state from another terminal while the runtime is ready:
 
 ```bash
-phonelink-linux feature list
-phonelink-linux feature get phonelink.clipboard
+linkmyphone feature list
+linkmyphone feature get linkmyphone.clipboard
 ```
 
 The first host startup can take time while authentication, trust refresh, peer wake, SignalR, and SessionValidation complete. If you run a feature command while the runtime is still starting, it returns `runtime is starting; retry the feature command`. Retry it after the runtime announces readiness. See [clipboard behavior](../user-guide/clipboard.md) for backend selection and first-publication semantics.
@@ -117,13 +117,13 @@ The clipboard value present before startup is not sent by default. Test with a n
 These are diagnostic commands, not a second pairing flow:
 
 ```bash
-phonelink-linux peer-probe
-phonelink-linux session-probe
+linkmyphone peer-probe
+linkmyphone session-probe
 ```
 
 `peer-probe` resumes state, refreshes trust, selects or wakes the target, and stops after the target is present on Hub Relay. `session-probe` continues through PLATFORM `/SessionValidation`; `--context-probe` additionally sends the source-confirmed clipboard publication shape. By default that context probe declines a CONTENT request rather than sending clipboard text. Supplying `--context-text` opts into an explicit text response.
 
-Implementation references: [`cmd/phonelink-linux/main.go`](../../cmd/phonelink-linux/main.go) contains the probe stages and flags; [`bootstrap/first_run.go`](../../bootstrap/first_run.go) defines the enrollment pipeline; [`bootstrap/first_run_test.go`](../../bootstrap/first_run_test.go) exercises its staged persistence behavior; resume uses [`bootstrap/resume.go`](../../bootstrap/resume.go).
+Implementation references: [`cmd/linkmyphone/main.go`](../../cmd/linkmyphone/main.go) contains the probe stages and flags; [`bootstrap/first_run.go`](../../bootstrap/first_run.go) defines the enrollment pipeline; [`bootstrap/first_run_test.go`](../../bootstrap/first_run_test.go) exercises its staged persistence behavior; resume uses [`bootstrap/resume.go`](../../bootstrap/resume.go).
 
 </details>
 

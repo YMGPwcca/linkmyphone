@@ -11,14 +11,14 @@ import (
 	"strings"
 	"time"
 
-	authstate "github.com/YMGPwcca/phonelink-linux/auth/state"
-	"github.com/YMGPwcca/phonelink-linux/bootstrap"
-	"github.com/YMGPwcca/phonelink-linux/features"
-	clipboardfeature "github.com/YMGPwcca/phonelink-linux/features/clipboard"
-	"github.com/YMGPwcca/phonelink-linux/runtime/controlplane"
-	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
-	"github.com/YMGPwcca/phonelink-linux/runtime/phonehost"
-	"github.com/YMGPwcca/phonelink-linux/runtime/systemdnotify"
+	authstate "github.com/YMGPwcca/linkmyphone/auth/state"
+	"github.com/YMGPwcca/linkmyphone/bootstrap"
+	"github.com/YMGPwcca/linkmyphone/features"
+	clipboardfeature "github.com/YMGPwcca/linkmyphone/features/clipboard"
+	"github.com/YMGPwcca/linkmyphone/runtime/controlplane"
+	"github.com/YMGPwcca/linkmyphone/runtime/kernel"
+	"github.com/YMGPwcca/linkmyphone/runtime/phonehost"
+	"github.com/YMGPwcca/linkmyphone/runtime/systemdnotify"
 )
 
 type runtimeHostOptions struct {
@@ -110,7 +110,7 @@ func runRuntime(ctx context.Context, args []string) error {
 		}
 	}
 
-	fmt.Println("Phone Link Linux modular runtime")
+	fmt.Println("LinkMyPhone modular runtime")
 	fmt.Printf("State: %s\n", hostOpts.statePath)
 	fmt.Printf("Features: %s\n", featurePath)
 	fmt.Printf("Enabled modules: %d\n", enabled)
@@ -154,14 +154,14 @@ func runClipboardSync(ctx context.Context, args []string) error {
 		return err
 	}
 	record := kernel.FeatureRecord{
-		ID:      "phonelink.clipboard",
+		ID:      "linkmyphone.clipboard",
 		Enabled: true,
 		Config:  raw,
 	}
 
-	fmt.Println("Phone Link Linux clipboard sync")
+	fmt.Println("LinkMyPhone clipboard sync")
 	fmt.Printf("State: %s\n", hostOpts.statePath)
-	fmt.Println("Compatibility alias for modular feature phonelink.clipboard.")
+	fmt.Println("Compatibility alias for modular feature linkmyphone.clipboard.")
 	fmt.Println("Clipboard contents are not printed.")
 	fmt.Println()
 
@@ -203,7 +203,7 @@ func runManagedFeatureRuntime(
 	// Register teardown before loading desired state so a partial startup
 	// failure still revokes any modules that already reached Ready.
 	defer func() {
-		if err := systemdnotify.Stopping("Phone Link Linux runtime stopping"); err != nil {
+		if err := systemdnotify.Stopping("LinkMyPhone runtime stopping"); err != nil {
 			kernel.Report(reporter, kernel.Event{
 				ModuleID: "runtime.systemd",
 				Level:    "warning",
@@ -233,7 +233,7 @@ func runManagedFeatureRuntime(
 		return err
 	}
 	switchHandler.Set(controller)
-	if err := systemdnotify.Ready("Phone Link Linux runtime ready"); err != nil {
+	if err := systemdnotify.Ready("LinkMyPhone runtime ready"); err != nil {
 		return fmt.Errorf("notify systemd readiness: %w", err)
 	}
 
@@ -250,7 +250,7 @@ func runManagedFeatureRuntime(
 			if err == nil || errors.Is(err, context.Canceled) {
 				return nil
 			}
-			return fmt.Errorf("Phone Link host: %w", err)
+			return fmt.Errorf("LinkMyPhone host: %w", err)
 		case err := <-controlErr:
 			if err == nil || errors.Is(err, context.Canceled) {
 				if ctx.Err() != nil {
@@ -398,7 +398,7 @@ func runFeatureRuntime(
 			if err == nil || errors.Is(err, context.Canceled) {
 				return nil
 			}
-			return fmt.Errorf("Phone Link host: %w", err)
+			return fmt.Errorf("LinkMyPhone host: %w", err)
 		case runtimeErr := <-registry.Errors():
 			kernel.Report(reporter, kernel.Event{
 				ModuleID: runtimeErr.ModuleID,

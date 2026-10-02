@@ -4,7 +4,9 @@
 
 This page is the short path from an observed behavior to an owner, a focused change, and a reviewable pull request.
 
-Phone Link Linux targets Linux with Go 1.23 or newer. Microsoft cloud services are part of the runtime path. Native clipboard synchronization also needs a supported desktop utility, such as `wl-paste` and `wl-copy` on Wayland, or `xclip` or `xsel` on X11.
+LinkMyPhone targets Linux with Go 1.23 or newer. Microsoft cloud services are part of the runtime path. Native clipboard synchronization also needs a supported desktop utility, such as `wl-paste` and `wl-copy` on Wayland, or `xclip` or `xsel` on X11.
+
+The Go module is `github.com/YMGPwcca/linkmyphone`; use that path for project imports and `cmd/linkmyphone` for the CLI. Publishing or fetching this module from GitHub requires the remote repository URL cutover; the local rename alone does not perform it.
 
 The repository has no tracked license file or configured release process. Do not assume redistribution terms. The automated workflow runs `go test ./...` only when manually dispatched; use the local checks in [testing](testing.md) before submitting a change.
 
@@ -22,7 +24,7 @@ The repository has no tracked license file or configured release process. Do not
 | Generic manifests, desired-state records, lifecycle, dependency resolution, epochs, capabilities, or reports | `runtime/kernel` | Clipboard or Phone Link feature branches |
 | Microsoft and DCG resume, trust, wake, SessionValidation, the raw relay receive loop, or feature endpoints | `runtime/phonehost` | Feature-specific protocol or native behavior |
 | Local JSON-over-Unix-socket requests and responses | `runtime/controlplane` | Microsoft or Hub Relay protocol |
-| Persistence plus live registry transactions | `cmd/phonelink-linux/runtime_control.go` | Feature-domain behavior |
+| Persistence plus live registry transactions | `cmd/linkmyphone/runtime_control.go` | Feature-domain behavior |
 | Builtin composition | `features/catalog.go` | Feature implementation details |
 | A feature's protocol, native resources, workers, matchers, queues, configuration, or diagnostics | The feature package, currently `features/clipboard` | Direct reads from `transport/relay.Client.Received()` |
 | Wire codecs | `protocol/` | Lifecycle or feature ownership |
@@ -96,14 +98,14 @@ Disable the feature, stop dependents before required providers, confirm that the
 The following commands are the repository's documented entry points:
 
 ```bash
-go run ./cmd/phonelink-linux help
-go run ./cmd/phonelink-linux feature list
-go run ./cmd/phonelink-linux run
-go run ./cmd/phonelink-linux bootstrap-probe
-go run ./cmd/phonelink-linux peer-probe
-go run ./cmd/phonelink-linux session-probe
-go run ./cmd/phonelink-linux clipboard-sync
-go run ./cmd/phonelink-linux service install
+go run ./cmd/linkmyphone help
+go run ./cmd/linkmyphone feature list
+go run ./cmd/linkmyphone run
+go run ./cmd/linkmyphone bootstrap-probe
+go run ./cmd/linkmyphone peer-probe
+go run ./cmd/linkmyphone session-probe
+go run ./cmd/linkmyphone clipboard-sync
+go run ./cmd/linkmyphone service install
 ```
 
 Probe commands use Microsoft services and can update local identity state. The regular deterministic test suite does not require Microsoft authentication. See [testing](testing.md) for exact package commands and the separation between local tests and opt-in smoke scenarios.

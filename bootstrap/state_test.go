@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
-	"github.com/YMGPwcca/phonelink-linux/auth/msa"
-	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
+	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
+	"github.com/YMGPwcca/linkmyphone/auth/msa"
+	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
 )
 
 func TestBuildStateSnapshot(t *testing.T) {

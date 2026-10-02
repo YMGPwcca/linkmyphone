@@ -2,13 +2,13 @@
 
 [Documentation index](../README.md)
 
-Start here when you know the behavior but not the package. The repository is organized by ownership. Begin at `cmd/phonelink-linux/main.go` for command dispatch, then follow the contract owner in the index below. The [architecture overview](../architecture/overview.md) shows runtime flow, and the [module architecture](../architecture/modules.md) describes builtin lifecycle ownership.
+Start here when you know the behavior but not the package. The repository is organized by ownership. Begin at `cmd/linkmyphone/main.go` for command dispatch, then follow the contract owner in the index below. The [architecture overview](../architecture/overview.md) shows runtime flow, and the [module architecture](../architecture/modules.md) describes builtin lifecycle ownership.
 
 ## Find a path by behavior
 
 | Behavior to change | First path | Contract |
 | --- | --- | --- |
-| CLI dispatch, feature CRUD, runtime startup, or service commands | [`cmd/phonelink-linux`](../../cmd/phonelink-linux) | [Control-plane contract](../architecture/control-plane.md) |
+| CLI dispatch, feature CRUD, runtime startup, or service commands | [`cmd/linkmyphone`](../../cmd/linkmyphone) | [Control-plane contract](../architecture/control-plane.md) |
 | Builtin registration or defaults | [`features/catalog.go`](../../features/catalog.go) | [Module architecture](../architecture/modules.md) |
 | Generic lifecycle, dependencies, epochs, capabilities, or desired state | [`runtime/kernel`](../../runtime/kernel) | [Module architecture](../architecture/modules.md) |
 | Shared cloud session, peer selection, wake, SessionValidation, or feature subscriptions | [`runtime/phonehost`](../../runtime/phonehost) | [Architecture overview](../architecture/overview.md) |
@@ -21,7 +21,7 @@ Start here when you know the behavior but not the package. The repository is org
 
 | Path | Role and entry points |
 | --- | --- |
-| [`cmd/phonelink-linux`](../../cmd/phonelink-linux) | User-facing command dispatch and orchestration. `main.go` selects probes, `feature`, `run`, `service`, and `clipboard-sync`, and also hosts the hidden native watch helper. `runtime_run.go` opens the host and managed registry. `runtime_control.go` applies live CRUD transactions and rollback. `feature.go` implements offline or socket-routed feature commands. `service.go` installs and manages the systemd user unit. `session_probe.go`, `peer_probe.go`, and `main.go` contain opt-in Microsoft probes. |
+| [`cmd/linkmyphone`](../../cmd/linkmyphone) | User-facing command dispatch and orchestration. `main.go` selects probes, `feature`, `run`, `service`, and `clipboard-sync`, and also hosts the hidden native watch helper. `runtime_run.go` opens the host and managed registry. `runtime_control.go` applies live CRUD transactions and rollback. `feature.go` implements offline or socket-routed feature commands. `service.go` installs and manages the systemd user unit. `session_probe.go`, `peer_probe.go`, and `main.go` contain opt-in Microsoft probes. |
 | [`features/catalog.go`](../../features/catalog.go) | Builtin composition. It returns each manifest, default configuration, validator, and module factory. `Find` resolves IDs compiled into the executable. |
 | [`features`](../../features) | Feature packages. The only current package is [`features/clipboard`](../../features/clipboard), which owns clipboard business behavior. |
 | [`contracts/manifests`](../../contracts/manifests) | Versioned JSON Schema for feature manifests. It is a contract artifact, not a loader or runtime sandbox. |
@@ -127,7 +127,7 @@ sequenceDiagram
 | [`runtime/phonehost`](../../runtime/phonehost) | Shared Phone Link session. `session.go` resumes state, refreshes trust, selects a peer, connects Hub Relay, wakes the peer, validates PLATFORM, and starts routing. `router.go` is the sole raw relay receiver and creates matcher-scoped bounded endpoints. |
 | [`runtime/controlplane`](../../runtime/controlplane) | Version 1 JSON-over-Unix-socket protocol. `protocol.go` defines requests, responses, operations, and store-scoped socket paths. `server.go` enforces limits and permissions. `client.go` performs timed calls. `switch_handler.go` changes startup, live, and stopping handlers without replacing the socket. |
 | [`runtime/systemdnotify`](../../runtime/systemdnotify) | Optional systemd readiness and stopping notifications used by the managed runtime. |
-| [`packaging/systemd`](../../packaging/systemd) | Embedded user service unit and its `systemd --user` packaging data. The unit runs `phonelink-linux run` after `graphical-session.target` with bounded failure restart and `KillMode=mixed`. |
+| [`packaging/systemd`](../../packaging/systemd) | Embedded user service unit and its `systemd --user` packaging data. The unit runs `linkmyphone run` after `graphical-session.target` with bounded failure restart and `KillMode=mixed`. |
 
 The phone host owns exactly one raw `transport/relay` receive loop. A feature receives an endpoint from `Session.Subscribe`; it never reads the raw relay channel. Endpoint queues are bounded, payload bytes are cloned for fan-out, and overflow revokes only the affected subscriber.
 
@@ -147,7 +147,7 @@ Tests sit beside the implementation. The most useful invariant owners are:
 - [`runtime/phonehost/*_test.go`](../../runtime/phonehost) for routing, bounded endpoint overflow, cancellation, and session registration;
 - [`runtime/controlplane/controlplane_test.go`](../../runtime/controlplane/controlplane_test.go) for socket security, wire versioning, startup and shutdown switching, path hashing, handler isolation, and client behavior;
 - [`features/*_test.go`](../../features) and [`features/clipboard/*_test.go`](../../features/clipboard) for catalog, config, matcher, module stop, worker, and native observation contracts;
-- [`cmd/phonelink-linux/*_test.go`](../../cmd/phonelink-linux) for CLI CRUD and runtime orchestration;
+- [`cmd/linkmyphone/*_test.go`](../../cmd/linkmyphone) for CLI CRUD and runtime orchestration;
 - [`clipboard/*_test.go`](../../clipboard) for native backend, watch framing, protocol client, generation ordering, echo suppression, and correlation snapshots;
 - [`protocol/**/*_test.go`](../../protocol) for wire codecs and framing;
 - [`transport/**/*_test.go`](../../transport) for WebSocket, SignalR, and relay behavior;

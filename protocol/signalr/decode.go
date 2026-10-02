@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
+	"github.com/YMGPwcca/linkmyphone/protocol/dcg"
 )
 
 var ErrMessagePack = errors.New("signalr: malformed MessagePack")

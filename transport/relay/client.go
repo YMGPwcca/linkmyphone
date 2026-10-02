@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
-	psignalr "github.com/YMGPwcca/phonelink-linux/protocol/signalr"
+	"github.com/YMGPwcca/linkmyphone/protocol/dcg"
+	psignalr "github.com/YMGPwcca/linkmyphone/protocol/signalr"
 )
 
 const (

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://phonelink-linux.local/schema/manifests/feature-1.0.json",
-  "title": "Phone Link Linux built-in feature manifest",
+  "$id": "https://linkmyphone.local/schema/manifests/feature-1.0.json",
+  "title": "LinkMyPhone built-in feature manifest",
   "type": "object",
   "additionalProperties": false,
   "required": [

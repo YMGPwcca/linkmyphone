@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
+	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
 )
 
 func TestSaveLoadRoundTrip(t *testing.T) {

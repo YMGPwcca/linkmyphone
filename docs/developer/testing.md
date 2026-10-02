@@ -48,7 +48,7 @@ go test ./runtime/phonehost
 go test ./runtime/controlplane
 go test ./features/...
 go test ./clipboard ./protocol/... ./transport/...
-go test ./cmd/phonelink-linux
+go test ./cmd/linkmyphone
 ```
 
 Use a package's existing test names for a focused run, for example:
@@ -57,7 +57,7 @@ Use a package's existing test names for a focused run, for example:
 go test ./runtime/kernel -run 'TestRegistry|TestFeatureStore'
 go test ./runtime/phonehost -run 'TestRouter|TestSession'
 go test ./runtime/controlplane -run 'TestServer|TestListen|TestCall|TestSocket'
-go test ./cmd/phonelink-linux -run 'TestFeatureCommand'
+go test ./cmd/linkmyphone -run 'TestFeatureCommand'
 go test ./features/clipboard -run 'TestConfig|TestManifest|TestInstanceStop'
 ```
 
@@ -77,9 +77,9 @@ Run the test package that owns the invariant after changing its implementation. 
 | The raw relay stream has one receiver; matching messages fan out with copied payloads; a slow bounded endpoint is revoked without harming another endpoint | `runtime/phonehost/router_test.go`, `runtime/phonehost/session_test.go` |
 | Endpoint close revokes sending and closes receiving; router cancellation and no-subscriber draining work | `runtime/phonehost/router_test.go` |
 | Control requests use version 1, unknown fields fail, socket paths are store-scoped and short, permissions are `0700` for the directory and `0600` for the socket, and stale sockets are replaced safely | `runtime/controlplane/controlplane_test.go` |
-| Startup and shutdown handler transitions are visible without replacing the socket; handler panic is isolated; active handlers drain on close | `runtime/controlplane/controlplane_test.go`, `cmd/phonelink-linux/runtime_run.go` |
-| Connected CLI mutations do not fall back to offline persistence when the runtime rejects them; stale records can be disabled and deleted | `cmd/phonelink-linux/feature_test.go` |
-| Offline feature create, update, toggle, delete, manifest lookup, and default configuration follow the catalog contract | `cmd/phonelink-linux/feature_test.go`, `features/catalog_test.go` |
+| Startup and shutdown handler transitions are visible without replacing the socket; handler panic is isolated; active handlers drain on close | `runtime/controlplane/controlplane_test.go`, `cmd/linkmyphone/runtime_run.go` |
+| Connected CLI mutations do not fall back to offline persistence when the runtime rejects them; stale records can be disabled and deleted | `cmd/linkmyphone/feature_test.go` |
+| Offline feature create, update, toggle, delete, manifest lookup, and default configuration follow the catalog contract | `cmd/linkmyphone/feature_test.go`, `features/catalog_test.go` |
 | Clipboard config rejects unknown and out-of-range values and the manifest exposes all three text capabilities | `features/clipboard/config_test.go` |
 | Clipboard stop does not spend the full request timeout on advisory `FEATURE_OFF` and is idempotent after cancellation | `features/clipboard/module_test.go` |
 | Clipboard protocol codecs, platform routes, MSAEP envelopes, DCG fragments, SignalR framing, and relay transport preserve their wire contracts | `protocol/**`, `transport/**`, `clipboard/*_test.go` |
@@ -94,13 +94,13 @@ Tests are not substitutes for the ownership rules. When changing a queue, endpoi
 
 ## Microsoft cloud probes
 
-These commands are opt-in production scenarios. They require a Microsoft account, linked devices, network access, and a safe local state path. Do not run them in automated tests or with credentials in command arguments. They may create or update `~/.config/phonelink-linux/state.json`, which contains refresh credentials and private key material.
+These commands are opt-in production scenarios. They require a Microsoft account, linked devices, network access, and a safe local state path. Do not run them in automated tests or with credentials in command arguments. They may create or update `~/.config/linkmyphone/state.json`, which contains refresh credentials and private key material.
 
 ```bash
-go run ./cmd/phonelink-linux bootstrap-probe
-go run ./cmd/phonelink-linux peer-probe
-go run ./cmd/phonelink-linux session-probe
-go run ./cmd/phonelink-linux session-probe --context-probe
+go run ./cmd/linkmyphone bootstrap-probe
+go run ./cmd/linkmyphone peer-probe
+go run ./cmd/linkmyphone session-probe
+go run ./cmd/linkmyphone session-probe --context-probe
 ```
 
 The first probe performs device-code login, DCG identity enrollment, trust refresh, and SignalR connection. Later probes reuse persisted identity state. `peer-probe` selects or wakes a linked Android peer. `session-probe` validates PLATFORM `/SessionValidation`; `--context-probe` observes the tag-9 clipboard publication path without returning clipboard content unless an explicit probe text is supplied. These probes exercise Microsoft cloud behavior and should be treated as manual evidence, not deterministic regression tests.
@@ -108,8 +108,8 @@ The first probe performs device-code login, DCG identity enrollment, trust refre
 The runtime path uses the same cloud stages:
 
 ```bash
-go run ./cmd/phonelink-linux feature create --enabled phonelink.clipboard
-go run ./cmd/phonelink-linux run
+go run ./cmd/linkmyphone feature create --enabled linkmyphone.clipboard
+go run ./cmd/linkmyphone run
 ```
 
 With a running `run` process, feature CRUD uses the hashed Unix socket and reports live state and epochs. Long-running reconnect, peer wake after later disconnects, and token refresh during a long session remain open limitations even where dated production validation succeeded for startup and live CRUD. See the [validation research](../research/validation.md) for historical reports and their environment.
@@ -119,13 +119,13 @@ With a running `run` process, feature CRUD uses the hashed Unix socket and repor
 These scenarios need a Linux desktop session and native clipboard utilities. They are not part of `go test`:
 
 ```bash
-go run ./cmd/phonelink-linux clipboard-sync
-go run ./cmd/phonelink-linux clipboard-sync --poll-interval 250ms
-go run ./cmd/phonelink-linux service install
-go run ./cmd/phonelink-linux service status
-go run ./cmd/phonelink-linux service logs --follow
-go run ./cmd/phonelink-linux service restart
-go run ./cmd/phonelink-linux service uninstall
+go run ./cmd/linkmyphone clipboard-sync
+go run ./cmd/linkmyphone clipboard-sync --poll-interval 250ms
+go run ./cmd/linkmyphone service install
+go run ./cmd/linkmyphone service status
+go run ./cmd/linkmyphone service logs --follow
+go run ./cmd/linkmyphone service restart
+go run ./cmd/linkmyphone service uninstall
 ```
 
 Wayland uses `wl-paste --watch` when available and debounces transient `CLIPBOARD_STATE=nil` ownership gaps. X11 and watch failure use bounded polling. A desktop smoke should observe local copy, phone-to-Linux write, reflected-echo suppression, genuine clear, and clean Ctrl+C or service stop. Keep clipboard text non-sensitive. `service install` changes the user executable and systemd unit, so use a disposable user environment when testing installation behavior.

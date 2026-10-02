@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md)
 
-Phone Link Linux uses Microsoft cloud services. Sign-in uses Microsoft's identity service; enrollment, linked-device discovery, trust synchronization, peer wake, SessionValidation, and feature traffic use Microsoft's DCG and SignalR services. The program is not an offline phone connection.
+LinkMyPhone uses Microsoft cloud services. Sign-in uses Microsoft's identity service; enrollment, linked-device discovery, trust synchronization, peer wake, SessionValidation, and feature traffic use Microsoft's DCG and SignalR services. The program is not an offline phone connection.
 
 ## Before you enable clipboard sync
 
@@ -14,7 +14,7 @@ The module does not print clipboard text in normal runtime, probe, or service ou
 
 ## What the program stores
 
-The default authentication state is `~/.config/phonelink-linux/state.json`. It stores:
+The default authentication state is `~/.config/linkmyphone/state.json`. It stores:
 
 - a Microsoft refresh token;
 - the Linux logical device ID and DCG identity ID;
@@ -23,9 +23,9 @@ The default authentication state is `~/.config/phonelink-linux/state.json`. It s
 - enrollment account certificate and root certificate chain;
 - account metadata and linked-device trust relationships.
 
-The default feature registry is `~/.config/phonelink-linux/features.json`. It stores desired feature IDs, enabled flags, and feature configuration. The built-in clipboard configuration contains timing values and `publish_initial`; it is not a clipboard history and does not contain clipboard text.
+The default feature registry is `~/.config/linkmyphone/features.json`. It stores desired feature IDs, enabled flags, and feature configuration. The built-in clipboard configuration contains timing values and `publish_initial`; it is not a clipboard history and does not contain clipboard text.
 
-The runtime control socket is a user-local Unix socket derived from the absolute feature-store path. It is created under `$XDG_RUNTIME_DIR/phonelink-linux/` when the path fits the Unix socket limit, with a short `/tmp/phonelink-linux-<uid>/` fallback otherwise. The directory is mode `0700` and socket mode is `0600`.
+The runtime control socket is a user-local Unix socket derived from the absolute feature-store path. It is created under `$XDG_RUNTIME_DIR/linkmyphone/` when the path fits the Unix socket limit, with a short `/tmp/linkmyphone-<uid>/` fallback otherwise. The directory is mode `0700` and socket mode is `0600`.
 
 Authentication and feature files are written atomically. The state directory is mode `0700` and state and feature files are mode `0600`. These are access permissions, not encryption. The implementation does not claim encrypted-at-rest state, hardware-backed key storage, or protection from a compromised user account, root, or a process running as the same user.
 
@@ -46,8 +46,8 @@ Removing local state is a destructive local operation: subsequent runs cannot re
 Prefer command output that names the failing stage without credentials:
 
 ```bash
-phonelink-linux feature get phonelink.clipboard
-~/.local/bin/phonelink-linux service logs --lines 100
+linkmyphone feature get linkmyphone.clipboard
+~/.local/bin/linkmyphone service logs --lines 100
 ```
 
 Before sharing logs, redact refresh and access tokens, DCG service tokens, private keys, certificates, account certificate material, device IDs, peer names, account identifiers, hostnames, usernames, custom paths, and environment values that identify the machine. Remove every clipboard value. Do not attach `state.json` or paste its contents.

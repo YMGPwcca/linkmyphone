@@ -99,12 +99,12 @@ func testManifest(t *testing.T, id, capability string, required ...Dependency) M
 }
 
 func TestRegistryStartsDependenciesBeforeDependent(t *testing.T) {
-	provider := &fakeModule{manifest: testManifest(t, "phonelink.provider", "test.provider")}
+	provider := &fakeModule{manifest: testManifest(t, "linkmyphone.provider", "test.provider")}
 	consumer := &fakeModule{manifest: testManifest(
 		t,
-		"phonelink.consumer",
+		"linkmyphone.consumer",
 		"test.consumer",
-		Dependency{ID: "phonelink.provider", MinimumVersion: "1.0.0"},
+		Dependency{ID: "linkmyphone.provider", MinimumVersion: "1.0.0"},
 	)}
 
 	registry := NewRegistry(nil)
@@ -139,9 +139,9 @@ func TestRegistryStartsDependenciesBeforeDependent(t *testing.T) {
 func TestRegistryBlocksMissingRequiredDependency(t *testing.T) {
 	module := &fakeModule{manifest: testManifest(
 		t,
-		"phonelink.consumer",
+		"linkmyphone.consumer",
 		"test.consumer",
-		Dependency{ID: "phonelink.missing", MinimumVersion: "1.0.0"},
+		Dependency{ID: "linkmyphone.missing", MinimumVersion: "1.0.0"},
 	)}
 	registry := NewRegistry(nil)
 	if err := registry.Create(module, FeatureRecord{ID: module.manifest.ID, Enabled: true, Config: json.RawMessage(`{}`)}); err != nil {
@@ -160,7 +160,7 @@ func TestRegistryBlocksMissingRequiredDependency(t *testing.T) {
 }
 
 func TestRegistryIgnoresStaleInstanceErrorAfterStop(t *testing.T) {
-	module := &fakeModule{manifest: testManifest(t, "phonelink.test", "test.echo")}
+	module := &fakeModule{manifest: testManifest(t, "linkmyphone.test", "test.echo")}
 	registry := NewRegistry(nil)
 	if err := registry.Create(module, FeatureRecord{ID: module.manifest.ID, Enabled: true, Config: json.RawMessage(`{}`)}); err != nil {
 		t.Fatal(err)
@@ -198,7 +198,7 @@ func TestRegistryIgnoresStaleInstanceErrorAfterStop(t *testing.T) {
 }
 
 func TestRegistrySurfacesCurrentInstanceFailure(t *testing.T) {
-	module := &fakeModule{manifest: testManifest(t, "phonelink.test", "test.echo")}
+	module := &fakeModule{manifest: testManifest(t, "linkmyphone.test", "test.echo")}
 	registry := NewRegistry(nil)
 	if err := registry.Create(module, FeatureRecord{ID: module.manifest.ID, Enabled: true, Config: json.RawMessage(`{}`)}); err != nil {
 		t.Fatal(err)
@@ -226,12 +226,12 @@ func TestRegistrySurfacesCurrentInstanceFailure(t *testing.T) {
 }
 
 func TestRegistryRejectsStoppingRequiredProviderWhileDependentReady(t *testing.T) {
-	provider := &fakeModule{manifest: testManifest(t, "phonelink.provider", "test.provider")}
+	provider := &fakeModule{manifest: testManifest(t, "linkmyphone.provider", "test.provider")}
 	consumer := &fakeModule{manifest: testManifest(
 		t,
-		"phonelink.consumer",
+		"linkmyphone.consumer",
 		"test.consumer",
-		Dependency{ID: "phonelink.provider", MinimumVersion: "1.0.0"},
+		Dependency{ID: "linkmyphone.provider", MinimumVersion: "1.0.0"},
 	)}
 
 	registry := NewRegistry(nil)
@@ -260,7 +260,7 @@ func TestRegistryRejectsStoppingRequiredProviderWhileDependentReady(t *testing.T
 }
 
 func TestRegistryRejectsStartUsingDeletedEntry(t *testing.T) {
-	module := &fakeModule{manifest: testManifest(t, "phonelink.deleted", "test.deleted")}
+	module := &fakeModule{manifest: testManifest(t, "linkmyphone.deleted", "test.deleted")}
 	registry := NewRegistry(nil)
 	if err := registry.Create(module, FeatureRecord{
 		ID:      module.manifest.ID,
@@ -284,13 +284,13 @@ func TestRegistryRejectsStartUsingDeletedEntry(t *testing.T) {
 }
 
 func TestRegistryBlocksProviderStopWhileDependentStarting(t *testing.T) {
-	provider := &fakeModule{manifest: testManifest(t, "phonelink.provider", "test.provider")}
+	provider := &fakeModule{manifest: testManifest(t, "linkmyphone.provider", "test.provider")}
 	consumer := &fakeModule{
 		manifest: testManifest(
 			t,
-			"phonelink.consumer",
+			"linkmyphone.consumer",
 			"test.consumer",
-			Dependency{ID: "phonelink.provider", MinimumVersion: "1.0.0"},
+			Dependency{ID: "linkmyphone.provider", MinimumVersion: "1.0.0"},
 		),
 		startEntered: make(chan struct{}),
 		startRelease: make(chan struct{}),
@@ -344,18 +344,18 @@ func TestRegistryBlocksProviderStopWhileDependentStarting(t *testing.T) {
 }
 
 func TestRegistryDegradesRequiredDependentsTransitivelyOnFailure(t *testing.T) {
-	provider := &fakeModule{manifest: testManifest(t, "phonelink.provider", "test.provider")}
+	provider := &fakeModule{manifest: testManifest(t, "linkmyphone.provider", "test.provider")}
 	middle := &fakeModule{manifest: testManifest(
 		t,
-		"phonelink.middle",
+		"linkmyphone.middle",
 		"test.middle",
-		Dependency{ID: "phonelink.provider", MinimumVersion: "1.0.0"},
+		Dependency{ID: "linkmyphone.provider", MinimumVersion: "1.0.0"},
 	)}
 	leaf := &fakeModule{manifest: testManifest(
 		t,
-		"phonelink.leaf",
+		"linkmyphone.leaf",
 		"test.leaf",
-		Dependency{ID: "phonelink.middle", MinimumVersion: "1.0.0"},
+		Dependency{ID: "linkmyphone.middle", MinimumVersion: "1.0.0"},
 	)}
 
 	registry := NewRegistry(nil)
@@ -407,13 +407,13 @@ func TestRegistryDegradesRequiredDependentsTransitivelyOnFailure(t *testing.T) {
 }
 
 func TestRegistryProviderFailureInvalidatesDependentStartCompletion(t *testing.T) {
-	provider := &fakeModule{manifest: testManifest(t, "phonelink.provider", "test.provider")}
+	provider := &fakeModule{manifest: testManifest(t, "linkmyphone.provider", "test.provider")}
 	consumer := &fakeModule{
 		manifest: testManifest(
 			t,
-			"phonelink.consumer",
+			"linkmyphone.consumer",
 			"test.consumer",
-			Dependency{ID: "phonelink.provider", MinimumVersion: "1.0.0"},
+			Dependency{ID: "linkmyphone.provider", MinimumVersion: "1.0.0"},
 		),
 		startEntered: make(chan struct{}),
 		startRelease: make(chan struct{}),
@@ -493,7 +493,7 @@ func TestRegistryProviderFailureInvalidatesDependentStartCompletion(t *testing.T
 }
 
 func TestRegistryUpdatePreservesStoppedLifecycleState(t *testing.T) {
-	module := &fakeModule{manifest: testManifest(t, "phonelink.stopped", "test.stopped")}
+	module := &fakeModule{manifest: testManifest(t, "linkmyphone.stopped", "test.stopped")}
 	registry := NewRegistry(nil)
 	if err := registry.Create(module, FeatureRecord{
 		ID:      module.manifest.ID,

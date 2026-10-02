@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
-	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
+	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
+	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
 )
 
 type TrustSyncResult struct {

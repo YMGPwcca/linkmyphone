@@ -6,20 +6,43 @@ Use the two stores for different jobs:
 
 | Path                                      | Purpose                       |
 | ----------------------------------------- | ----------------------------- |
-| `~/.config/phonelink-linux/state.json`    | Authentication and enrollment |
-| `~/.config/phonelink-linux/features.json` | Desired feature records       |
+| `~/.config/linkmyphone/state.json`    | Authentication and enrollment |
+| `~/.config/linkmyphone/features.json` | Desired feature records       |
 
 Both defaults use the platform user configuration directory, so `XDG_CONFIG_HOME` can change the base directory. The stores are independent. `--state` on `bootstrap-probe`, `peer-probe`, `session-probe`, and `run` selects authentication state; `--state` on `feature` commands selects the feature registry.
 
 For a separate account or test profile, choose an explicit path for each store:
 
 ```bash
-phonelink-linux run \
-  --state "$HOME/.config/phonelink-linux/state.json" \
-  --features-state "$HOME/.config/phonelink-linux/features.json"
+linkmyphone run \
+  --state "$HOME/.config/linkmyphone/state.json" \
+  --features-state "$HOME/.config/linkmyphone/features.json"
 ```
 
 Keep each profile in its own directory. Saving authentication state changes its parent directory to `0700`, including an existing directory. Avoid placing a custom state file in a shared directory.
+
+## Migrate from Phone Link Linux
+
+There is **no automatic migration** and no legacy command or feature-ID alias. The old defaults were `~/.config/phonelink-linux/` and `phonelink.clipboard`; the new defaults are `~/.config/linkmyphone/` and `linkmyphone.clipboard`. Do not bootstrap a new profile merely because the new default path is empty: that would enroll another Linux identity instead of resuming the existing one.
+
+1. Stop and disable `phonelink-linux.service` if installed, and stop any foreground old runtime or probe. Confirm that the old process has exited before modifying state. Follow [service migration](../operations/systemd.md#migrate-the-old-service); the new socket name does not prevent an old daemon from running alongside the new one.
+2. Locate the actual authentication and feature files. `$XDG_CONFIG_HOME` changes the configuration root; explicit `--state`, `--features-state`, service drop-ins, and separate test profiles need explicit handling. Inspect the old service's effective command before removing it. Do not assume those files are in the default directory.
+3. Make a private backup preserving file modes (for example, `cp -a` into a directory accessible only to your user). With all writers stopped, move the old default directory without overwriting an existing destination:
+
+   ```bash
+   config_root="${XDG_CONFIG_HOME:-$HOME/.config}"
+   old="$config_root/phonelink-linux"
+   new="$config_root/linkmyphone"
+   test -d "$old" && test ! -e "$new" && mv -T -- "$old" "$new"
+   ```
+
+   If the destination already exists, stop and resolve the profiles manually; do not merge or overwrite authentication snapshots. A move preserves the file contents and existing modes. Keep the directory at `0700` and `state.json`, `features.json`, and any backups at `0600` for files. Restrict an overly permissive directory before moving it, and correct file modes privately if necessary.
+4. Leave `state.json` unchanged. Preserve its logical device ID, DCG identity, keys, certificates, tokens, and trust records; moving the intact snapshot allows the existing device identity to resume. Never replace identity fields with the new project name.
+5. In `features.json`, use a local editor that preserves private permissions to change only feature record `id` values from `phonelink.*` to `linkmyphone.*` (the shipped record is `phonelink.clipboard` → `linkmyphone.clipboard`). Preserve `schema_version`, enabled flags, and configuration objects. Resolve duplicate old/new IDs before saving. Do not globally replace text in authentication state or protocol values. Old feature IDs are unavailable to the new catalog.
+6. Update scripts, explicit profile paths, and service overrides to the new binary and chosen store paths. Custom files may remain at their existing private paths if you pass them explicitly, but their feature IDs still need the update. Finish [service migration](../operations/systemd.md#migrate-the-old-service) before starting anything.
+
+Check the migrated registry offline with `linkmyphone feature list` (or `--state PATH` for a custom registry) before starting `run`. Keep backups private; never attach them to a bug report.
+
 
 ## Authentication state
 
@@ -97,7 +120,7 @@ A normal restart refreshes the Microsoft token and signs the existing DCG identi
   "schema_version": 1,
   "features": [
     {
-      "id": "phonelink.clipboard",
+      "id": "linkmyphone.clipboard",
       "enabled": true,
       "config": {
         "poll_interval_ms": 500,
@@ -113,7 +136,7 @@ Each feature record has exactly these fields:
 
 | Field | Meaning |
 | --- | --- |
-| `id` | Feature identifier. The current catalog contains `phonelink.clipboard`. |
+| `id` | Feature identifier. The current catalog contains `linkmyphone.clipboard`. |
 | `enabled` | Desired startup state. `run` starts available records with `true`. |
 | `config` | Feature-specific JSON object. The built-in clipboard validator rejects unknown properties. |
 
@@ -123,7 +146,7 @@ The store writes mode `0600` files under a mode `0700` directory and replaces th
 
 ## Clipboard configuration
 
-The catalog's only built-in feature has ID `phonelink.clipboard`, version `0.1.0`, and this default configuration:
+The catalog's only built-in feature has ID `linkmyphone.clipboard`, version `0.1.0`, and this default configuration:
 
 | Property | Type and range | Default | Effect |
 | --- | --- | --- | --- |
@@ -136,9 +159,9 @@ The feature schema is [`features/clipboard/config.schema.json`](../../features/c
 For example, preserve the default request timeout while enabling initial publication by sending both values explicitly:
 
 ```bash
-phonelink-linux feature update \
+linkmyphone feature update \
   --config '{"poll_interval_ms":500,"request_timeout_ms":10000,"publish_initial":true}' \
-  phonelink.clipboard
+  linkmyphone.clipboard
 ```
 
 The compatibility command's `--poll-interval` and `--publish-initial` flags construct an in-memory record for the same module. They do not write this configuration to `features.json`.
@@ -151,6 +174,6 @@ When the socket is absent, refused, or invalid, commands read or write the selec
 
 During runtime startup the socket exists before the live controller is installed. Commands receive `runtime is starting; retry the feature command` rather than silently changing offline state. During shutdown, the control plane rejects requests and the socket is closed as the runtime tears down modules.
 
-The socket is a user-local Unix socket under `$XDG_RUNTIME_DIR/phonelink-linux/` with a filename derived from a hash of the absolute feature-store path. If `XDG_RUNTIME_DIR` is unset or the candidate path reaches the 100-byte budget, the runtime uses `/tmp/phonelink-linux-<uid>/`. The socket directory is mode `0700` and the socket is mode `0600`.
+The socket is a user-local Unix socket under `$XDG_RUNTIME_DIR/linkmyphone/` with a filename derived from a hash of the absolute feature-store path. If `XDG_RUNTIME_DIR` is unset or the candidate path reaches the 100-byte budget, the runtime uses `/tmp/linkmyphone-<uid>/`. The socket directory is mode `0700` and the socket is mode `0600`.
 
 Implementation and test references: [`runtime/kernel/store.go`](../../runtime/kernel/store.go) defines registry persistence and replacement behavior; [`runtime/kernel/store_test.go`](../../runtime/kernel/store_test.go) covers it; [`auth/state/store.go`](../../auth/state/store.go) and [`auth/state/store_test.go`](../../auth/state/store_test.go) cover authentication state; the live socket contract is in [`runtime/controlplane/protocol.go`](../../runtime/controlplane/protocol.go) and [`runtime/controlplane/controlplane_test.go`](../../runtime/controlplane/controlplane_test.go).

@@ -4,9 +4,9 @@ import (
 	"reflect"
 	"testing"
 
-	clipproto "github.com/YMGPwcca/phonelink-linux/protocol/clipboard"
-	"github.com/YMGPwcca/phonelink-linux/protocol/platform"
-	sessionproto "github.com/YMGPwcca/phonelink-linux/protocol/sessionvalidation"
+	clipproto "github.com/YMGPwcca/linkmyphone/protocol/clipboard"
+	"github.com/YMGPwcca/linkmyphone/protocol/platform"
+	sessionproto "github.com/YMGPwcca/linkmyphone/protocol/sessionvalidation"
 )
 
 func TestSessionCapabilityNames(t *testing.T) {

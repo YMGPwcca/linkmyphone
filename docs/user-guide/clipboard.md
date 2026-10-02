@@ -2,26 +2,26 @@
 
 [Documentation index](../README.md)
 
-`phonelink.clipboard` synchronizes bidirectional text clipboard changes with one selected linked peer. Default target selection requires exactly one linked Android device; an explicit selector can match another linked device, but recorded clipboard validation covers an S23 only. The feature uses Microsoft's DCG and SignalR cloud services. It does not synchronize arbitrary files or provide clipboard history.
+`linkmyphone.clipboard` synchronizes bidirectional text clipboard changes with one selected linked peer. Default target selection requires exactly one linked Android device; an explicit selector can match another linked device, but recorded clipboard validation covers an S23 only. The feature uses Microsoft's DCG and SignalR cloud services. It does not synchronize arbitrary files or provide clipboard history.
 
 ## Start syncing
 
 Create the persistent feature record and run the modular host:
 
 ```bash
-phonelink-linux feature create --enabled phonelink.clipboard
-phonelink-linux run
+linkmyphone feature create --enabled linkmyphone.clipboard
+linkmyphone run
 ```
 
-The feature record is persistent. `run` reads enabled records from `~/.config/phonelink-linux/features.json` and starts them after the shared Phone Link host reaches SessionValidation. To start it later, use `feature enable` and leave the host running, or start `run` again.
+The feature record is persistent. `run` reads enabled records from `~/.config/linkmyphone/features.json` and starts them after the shared Phone Link host reaches SessionValidation. To start it later, use `feature enable` and leave the host running, or start `run` again.
 
 The compatibility command remains available:
 
 ```bash
-phonelink-linux clipboard-sync
+linkmyphone clipboard-sync
 ```
 
-It starts the same `phonelink.clipboard` module through the modular lifecycle, with an in-memory enabled record. It does not create or modify `features.json`.
+It starts the same `linkmyphone.clipboard` module through the modular lifecycle, with an in-memory enabled record. It does not create or modify `features.json`.
 
 Feature permission entries such as `clipboard.local.read`, `clipboard.local.write`, and `network.dcg` are manifest metadata. They describe what the module requests; they are not an operating-system sandbox.
 
@@ -49,13 +49,13 @@ The default configuration has `publish_initial: false`. Startup reads the curren
 To publish the current local text once at startup, set `publish_initial` in the feature configuration:
 
 ```bash
-phonelink-linux feature update --config '{"publish_initial":true}' phonelink.clipboard
+linkmyphone feature update --config '{"publish_initial":true}' linkmyphone.clipboard
 ```
 
 The update replaces the entire configuration object. Include every non-default value you want to retain. The same setting can be supplied to the compatibility command:
 
 ```bash
-phonelink-linux clipboard-sync --publish-initial
+linkmyphone clipboard-sync --publish-initial
 ```
 
 An empty clipboard is valid. Wayland's `wl-paste` result `Nothing is copied` is normalized to empty text during initial read. A transient null offer during Wayland ownership handoff is debounced for 100 milliseconds; a following data event cancels the transient clear, while a genuine clear becomes one empty publication after the debounce.

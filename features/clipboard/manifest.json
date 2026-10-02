@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "id": "phonelink.clipboard",
+  "id": "linkmyphone.clipboard",
   "version": "0.1.0",
   "kind": "builtin",
   "runtime": {
@@ -37,6 +37,6 @@
   "metadata": {
     "display_name": "Clipboard Sync",
     "description": "Bidirectional text clipboard synchronization with a linked Android peer.",
-    "diagnostic_label": "phonelink.clipboard"
+    "diagnostic_label": "linkmyphone.clipboard"
   }
 }

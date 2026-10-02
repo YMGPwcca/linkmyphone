@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
-	"github.com/YMGPwcca/phonelink-linux/auth/msa"
-	authstate "github.com/YMGPwcca/phonelink-linux/auth/state"
+	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
+	"github.com/YMGPwcca/linkmyphone/auth/msa"
+	authstate "github.com/YMGPwcca/linkmyphone/auth/state"
 )
 
 type ResumeAuthResult struct {

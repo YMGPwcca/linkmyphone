@@ -7,7 +7,7 @@ import (
 
 const validManifestJSON = `{
   "schema_version": "1.0",
-  "id": "phonelink.test",
+  "id": "linkmyphone.test",
   "version": "1.2.3",
   "kind": "builtin",
   "runtime": {"api_version": "1.0"},
@@ -22,7 +22,7 @@ const validManifestJSON = `{
   "metadata": {
     "display_name": "Test",
     "description": "Test module",
-    "diagnostic_label": "phonelink.test"
+    "diagnostic_label": "linkmyphone.test"
   }
 }`
 
@@ -31,7 +31,7 @@ func TestParseManifestJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifest.ID != "phonelink.test" || !manifest.DeclaresCapability("test.echo", "1.0.0") {
+	if manifest.ID != "linkmyphone.test" || !manifest.DeclaresCapability("test.echo", "1.0.0") {
 		t.Fatalf("manifest=%#v", manifest)
 	}
 }

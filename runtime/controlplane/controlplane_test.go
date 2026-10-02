@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
+	"github.com/YMGPwcca/linkmyphone/runtime/kernel"
 )
 
 func TestServerRoundTripAndSocketPermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "runtime.sock")
 	handler := HandlerFunc(func(request Request) Response {
-		if request.Operation != OperationGet || request.ID != "phonelink.test" {
+		if request.Operation != OperationGet || request.ID != "linkmyphone.test" {
 			return Failure(errors.New("unexpected request"))
 		}
 		record := kernel.FeatureRecord{ID: request.ID, Enabled: true}
@@ -55,7 +55,7 @@ func TestServerRoundTripAndSocketPermissions(t *testing.T) {
 	response, err := Call(context.Background(), path, Request{
 		Version:   ProtocolVersion,
 		Operation: OperationGet,
-		ID:        "phonelink.test",
+		ID:        "linkmyphone.test",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -153,7 +153,7 @@ func TestSwitchHandlerTransitionsWithoutReplacingSocket(t *testing.T) {
 	switcher.Set(HandlerFunc(func(Request) Response {
 		response := Success()
 		response.Snapshots = []kernel.Snapshot{{
-			ID:      "phonelink.test",
+			ID:      "linkmyphone.test",
 			State:   kernel.StateReady,
 			Enabled: true,
 		}}
@@ -223,7 +223,7 @@ func TestHandlerPanicReturnsFailureAndServerSurvives(t *testing.T) {
 	panicResponse, err := Call(context.Background(), path, Request{
 		Version:   ProtocolVersion,
 		Operation: OperationDelete,
-		ID:        "phonelink.test",
+		ID:        "linkmyphone.test",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -256,7 +256,7 @@ func TestSocketPathIsScopedToFeatureStore(t *testing.T) {
 	if first == second {
 		t.Fatalf("socket collision: %q", first)
 	}
-	if filepath.Dir(first) != filepath.Join(runtimeDir, "phonelink-linux") {
+	if filepath.Dir(first) != filepath.Join(runtimeDir, "linkmyphone") {
 		t.Fatalf("runtime dir=%q", filepath.Dir(first))
 	}
 	if len(filepath.Base(first)) != 24+len(".sock") {
@@ -281,7 +281,7 @@ func TestSocketPathRemainsShortForDeepFeatureStore(t *testing.T) {
 	if len(socketPath) >= maxUnixSocketPathLength {
 		t.Fatalf("socket path too long (%d): %q", len(socketPath), socketPath)
 	}
-	if !strings.HasPrefix(socketPath, "/tmp/phonelink-linux-") {
+	if !strings.HasPrefix(socketPath, "/tmp/linkmyphone-") {
 		t.Fatalf("long XDG runtime path did not use short fallback: %q", socketPath)
 	}
 

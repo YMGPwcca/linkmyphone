@@ -9,13 +9,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
-	"github.com/YMGPwcca/phonelink-linux/auth/msa"
-	authstate "github.com/YMGPwcca/phonelink-linux/auth/state"
-	"github.com/YMGPwcca/phonelink-linux/bootstrap"
-	"github.com/YMGPwcca/phonelink-linux/dcgheaders"
-	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
-	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
+	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
+	"github.com/YMGPwcca/linkmyphone/auth/msa"
+	authstate "github.com/YMGPwcca/linkmyphone/auth/state"
+	"github.com/YMGPwcca/linkmyphone/bootstrap"
+	"github.com/YMGPwcca/linkmyphone/dcgheaders"
+	"github.com/YMGPwcca/linkmyphone/runtime/kernel"
+	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
 )
 
 const (

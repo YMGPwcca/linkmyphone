@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	clipclient "github.com/YMGPwcca/phonelink-linux/clipboard"
-	clipproto "github.com/YMGPwcca/phonelink-linux/protocol/clipboard"
-	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
-	"github.com/YMGPwcca/phonelink-linux/runtime/phonehost"
+	clipclient "github.com/YMGPwcca/linkmyphone/clipboard"
+	clipproto "github.com/YMGPwcca/linkmyphone/protocol/clipboard"
+	"github.com/YMGPwcca/linkmyphone/runtime/kernel"
+	"github.com/YMGPwcca/linkmyphone/runtime/phonehost"
 )
 
 const defaultFeatureOffTimeout = time.Second

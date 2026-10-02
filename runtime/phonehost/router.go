@@ -5,8 +5,8 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
-	"github.com/YMGPwcca/phonelink-linux/transport/relay"
+	"github.com/YMGPwcca/linkmyphone/protocol/dcg"
+	"github.com/YMGPwcca/linkmyphone/transport/relay"
 )
 
 const DefaultSubscriptionQueue = 64
@@ -128,7 +128,7 @@ func (r *Router) dispatch(message relay.Received) {
 	// A feature queue overflow is a feature failure, not a shared transport
 	// failure. Revoke only that subscription; the feature's receive channel
 	// closes and its client/lifecycle reports failure without taking down the
-	// Phone Link host or unrelated modules.
+	// LinkMyPhone host or unrelated modules.
 	for _, id := range overflowed {
 		r.unsubscribe(id)
 	}

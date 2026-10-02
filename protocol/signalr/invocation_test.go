@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
+	"github.com/YMGPwcca/linkmyphone/protocol/dcg"
 )
 
 func TestMessagePackPrimitives(t *testing.T) {

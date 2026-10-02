@@ -6,7 +6,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
+	"github.com/YMGPwcca/linkmyphone/protocol/dcg"
 )
 
 const (

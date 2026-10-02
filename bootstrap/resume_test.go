@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
-	"github.com/YMGPwcca/phonelink-linux/auth/msa"
-	authstate "github.com/YMGPwcca/phonelink-linux/auth/state"
+	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
+	"github.com/YMGPwcca/linkmyphone/auth/msa"
+	authstate "github.com/YMGPwcca/linkmyphone/auth/state"
 )
 
 func TestResumeAuthReusesPersistedDCGIdentity(t *testing.T) {

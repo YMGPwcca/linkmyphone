@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	clipclient "github.com/YMGPwcca/phonelink-linux/clipboard"
-	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
-	"github.com/YMGPwcca/phonelink-linux/transport/relay"
+	clipclient "github.com/YMGPwcca/linkmyphone/clipboard"
+	"github.com/YMGPwcca/linkmyphone/protocol/dcg"
+	"github.com/YMGPwcca/linkmyphone/transport/relay"
 )
 
 type silentRelay struct {
@@ -47,7 +47,7 @@ func TestInstanceStopDoesNotSpendWholeRequestTimeoutOnFeatureOff(t *testing.T) {
 	})
 
 	instance := &instance{
-		moduleID:          "phonelink.clipboard",
+		moduleID:          "linkmyphone.clipboard",
 		client:            client,
 		requestTimeout:    time.Second,
 		featureOffTimeout: 20 * time.Millisecond,
@@ -83,7 +83,7 @@ func TestInstanceStopIsIdempotentAfterCancellation(t *testing.T) {
 	})
 
 	instance := &instance{
-		moduleID:          "phonelink.clipboard",
+		moduleID:          "linkmyphone.clipboard",
 		client:            client,
 		requestTimeout:    time.Second,
 		featureOffTimeout: 10 * time.Millisecond,

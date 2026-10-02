@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/features"
-	"github.com/YMGPwcca/phonelink-linux/runtime/controlplane"
-	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
-	"github.com/YMGPwcca/phonelink-linux/runtime/phonehost"
+	"github.com/YMGPwcca/linkmyphone/features"
+	"github.com/YMGPwcca/linkmyphone/runtime/controlplane"
+	"github.com/YMGPwcca/linkmyphone/runtime/kernel"
+	"github.com/YMGPwcca/linkmyphone/runtime/phonehost"
 )
 
 const liveMutationTimeout = 15 * time.Second

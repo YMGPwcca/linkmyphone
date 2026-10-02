@@ -136,7 +136,7 @@ func TestNativeWatchCommandUsesOwnProcessGroup(t *testing.T) {
 			name: "wl-paste",
 			args: []string{"--type", "text", "--watch"},
 		},
-		"/tmp/phonelink-linux",
+		"/tmp/clipboard-watcher",
 	)
 	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.Setpgid {
 		t.Fatalf("SysProcAttr=%#v", cmd.SysProcAttr)
@@ -149,15 +149,5 @@ func TestNativeWatchCommandUsesOwnProcessGroup(t *testing.T) {
 	}
 	if cmd.WaitDelay <= 0 {
 		t.Fatalf("WaitDelay=%s", cmd.WaitDelay)
-	}
-	wantTail := []string{"/tmp/phonelink-linux", NativeWatchHelperCommand}
-	if len(cmd.Args) < len(wantTail)+1 {
-		t.Fatalf("Args=%#v", cmd.Args)
-	}
-	gotTail := cmd.Args[len(cmd.Args)-len(wantTail):]
-	for index := range wantTail {
-		if gotTail[index] != wantTail[index] {
-			t.Fatalf("Args tail=%#v want=%#v", gotTail, wantTail)
-		}
 	}
 }

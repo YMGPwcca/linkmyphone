@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	proto "github.com/YMGPwcca/phonelink-linux/protocol/clipboard"
-	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
-	"github.com/YMGPwcca/phonelink-linux/protocol/msaep"
-	"github.com/YMGPwcca/phonelink-linux/protocol/platform"
-	"github.com/YMGPwcca/phonelink-linux/transport/relay"
+	proto "github.com/YMGPwcca/linkmyphone/protocol/clipboard"
+	"github.com/YMGPwcca/linkmyphone/protocol/dcg"
+	"github.com/YMGPwcca/linkmyphone/protocol/msaep"
+	"github.com/YMGPwcca/linkmyphone/protocol/platform"
+	"github.com/YMGPwcca/linkmyphone/transport/relay"
 )
 
 type generationLocal struct {

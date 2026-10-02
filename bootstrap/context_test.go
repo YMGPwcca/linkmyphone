@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
-	clipproto "github.com/YMGPwcca/phonelink-linux/protocol/clipboard"
-	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
-	"github.com/YMGPwcca/phonelink-linux/protocol/msaep"
-	"github.com/YMGPwcca/phonelink-linux/protocol/platform"
-	"github.com/YMGPwcca/phonelink-linux/transport/relay"
+	clipproto "github.com/YMGPwcca/linkmyphone/protocol/clipboard"
+	"github.com/YMGPwcca/linkmyphone/protocol/dcg"
+	"github.com/YMGPwcca/linkmyphone/protocol/msaep"
+	"github.com/YMGPwcca/linkmyphone/protocol/platform"
+	"github.com/YMGPwcca/linkmyphone/transport/relay"
 )
 
 func TestProbeClipboardContextPublishContinuesFromStatusToContent(t *testing.T) {
@@ -375,7 +375,7 @@ func TestProbeClipboardContextPublishTimeoutIsObservation(t *testing.T) {
 
 func TestProbeClipboardContextPublishSendsExplicitTextContent(t *testing.T) {
 	fr := newSessionFakeRelay()
-	textValue := "phonelink-linux probe text"
+	textValue := "linkmyphone probe text"
 	type result struct {
 		value ContextProbeResult
 		err   error

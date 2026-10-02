@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
-	psignalr "github.com/YMGPwcca/phonelink-linux/protocol/signalr"
-	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
+	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
+	psignalr "github.com/YMGPwcca/linkmyphone/protocol/signalr"
+	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
 )
 
 const (

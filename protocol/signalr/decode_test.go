@@ -3,7 +3,7 @@ package signalr
 import (
 	"testing"
 
-	"github.com/YMGPwcca/phonelink-linux/protocol/dcg"
+	"github.com/YMGPwcca/linkmyphone/protocol/dcg"
 )
 
 func TestDecodeOwnSendInvocation(t *testing.T) {

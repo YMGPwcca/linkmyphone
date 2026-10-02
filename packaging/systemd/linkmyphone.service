@@ -1,6 +1,6 @@
 [Unit]
-Description=Phone Link Linux user runtime
-Documentation=https://github.com/YMGPwcca/phonelink-linux
+Description=LinkMyPhone user runtime
+Documentation=https://github.com/YMGPwcca/linkmyphone
 After=graphical-session.target
 PartOf=graphical-session.target
 StartLimitIntervalSec=60
@@ -10,7 +10,7 @@ StartLimitBurst=5
 Type=notify
 NotifyAccess=main
 TimeoutStartSec=90s
-ExecStart=%h/.local/bin/phonelink-linux run
+ExecStart=%h/.local/bin/linkmyphone run
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=20s
@@ -18,7 +18,7 @@ KillMode=mixed
 UMask=0077
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=phonelink-linux
+SyslogIdentifier=linkmyphone
 
 [Install]
 WantedBy=graphical-session.target

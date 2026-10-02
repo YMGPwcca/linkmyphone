@@ -2,7 +2,9 @@
 
 [Documentation index](../README.md)
 
-Phone Link Linux is a Go program for Linux that connects to Microsoft Phone Link / Link to Windows through Microsoft's cloud services. Its current built-in feature is bidirectional text clipboard synchronization.
+LinkMyPhone is a Go program for Linux that connects to Microsoft Phone Link / Link to Windows through Microsoft's cloud services. Its current built-in feature is bidirectional text clipboard synchronization.
+
+LinkMyPhone is independent and unofficial, with no Microsoft affiliation, endorsement, or sponsorship. Microsoft, Phone Link, and Link to Windows are trademarks of the Microsoft group of companies.
 
 There is no package repository or release binary. Build the program from a checkout.
 
@@ -24,7 +26,7 @@ You need:
 - A graphical user session. Wayland requires `wl-clipboard`; X11 requires `xclip` or `xsel`.
 - Network access to Microsoft identity, DCG, and SignalR services. The program uses Microsoft cloud services for sign-in, enrollment, trust discovery, wake, and relay traffic.
 
-Phone Link Linux does not contain a new-device pairing wizard. After sign-in, it can enroll the Linux process as a DCG device and use the linked devices returned by Microsoft's service. It does not promise support for every Android device.
+LinkMyPhone does not contain a new-device pairing wizard. After sign-in, it can enroll the Linux process as a DCG device and use the linked devices returned by Microsoft's service. It does not promise support for every Android device.
 
 ### Choose a clipboard provider
 
@@ -41,29 +43,31 @@ The detector does not install these utilities. A missing provider produces `no s
 
 ## Build from source
 
-If GitHub returns 404 or asks for credentials, use an account with access to the repository and configure Git authentication. Repository access and Microsoft sign-in are separate.
+The module path is `github.com/YMGPwcca/linkmyphone`. If the repository URL asks for credentials, use an account with repository access and configure Git authentication. Repository access and Microsoft sign-in are separate.
 
 ```bash
-git clone https://github.com/YMGPwcca/phonelink-linux.git
-cd phonelink-linux
-go build -o phonelink-linux ./cmd/phonelink-linux
+git clone https://github.com/YMGPwcca/linkmyphone.git
+cd linkmyphone
+go build -o linkmyphone ./cmd/linkmyphone
 ```
 
 Put the resulting binary somewhere on your `PATH`, for example:
 
 ```bash
-install -Dm755 phonelink-linux "$HOME/.local/bin/phonelink-linux"
+install -Dm755 linkmyphone "$HOME/.local/bin/linkmyphone"
 export PATH="$HOME/.local/bin:$PATH"
-phonelink-linux help
+linkmyphone help
 ```
 
-The systemd installer can also copy the currently running executable to `~/.local/bin/phonelink-linux`; see [the systemd user service guide](../operations/systemd.md). It is optional. Running `phonelink-linux run` directly is supported.
+The systemd installer can also copy the currently running executable to `~/.local/bin/linkmyphone`; see [the systemd user service guide](../operations/systemd.md). It is optional. Running `linkmyphone run` directly is supported.
 
 ## Files and permissions
 
-By default, authentication state is stored at `~/.config/phonelink-linux/state.json`. The feature registry is stored separately at `~/.config/phonelink-linux/features.json`. The program creates their parent directory with mode `0700` and writes each file with mode `0600`.
+By default, authentication state is stored at `~/.config/linkmyphone/state.json`. The feature registry is stored separately at `~/.config/linkmyphone/features.json`. The program creates their parent directory with mode `0700` and writes each file with mode `0600`.
 
 Authentication state contains a Microsoft refresh token, DCG and trust private keys and certificates, service tokens, account certificate data, and linked-device trust relationships. Treat it as a credential. Do not commit it, upload it, or attach it to a bug report. See [privacy and state](../operations/privacy-and-state.md).
+
+An existing Phone Link Linux installation is not migrated automatically. Before starting LinkMyPhone, [move the private state and update feature IDs](../reference/configuration.md#migrate-from-phone-link-linux), then [replace the old service and binary](../operations/systemd.md#migrate-the-old-service).
 
 ## Continue with first run
 

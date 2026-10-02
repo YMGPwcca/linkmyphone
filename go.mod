@@ -1,3 +1,3 @@
-module github.com/YMGPwcca/phonelink-linux
+module github.com/YMGPwcca/linkmyphone
 
 go 1.23

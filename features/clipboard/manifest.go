@@ -4,7 +4,7 @@ import (
 	_ "embed"
 	"sync"
 
-	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
+	"github.com/YMGPwcca/linkmyphone/runtime/kernel"
 )
 
 //go:embed manifest.json

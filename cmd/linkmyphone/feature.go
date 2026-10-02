@@ -10,9 +10,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/YMGPwcca/phonelink-linux/features"
-	"github.com/YMGPwcca/phonelink-linux/runtime/controlplane"
-	"github.com/YMGPwcca/phonelink-linux/runtime/kernel"
+	"github.com/YMGPwcca/linkmyphone/features"
+	"github.com/YMGPwcca/linkmyphone/runtime/controlplane"
+	"github.com/YMGPwcca/linkmyphone/runtime/kernel"
 )
 
 func runFeatureCommand(args []string) error {
@@ -45,13 +45,13 @@ func runFeatureCommand(args []string) error {
 
 func featureUsage() {
 	fmt.Fprintln(os.Stderr, "Feature management:")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux feature list [--state PATH]")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux feature get [--state PATH] ID")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux feature create [--state PATH] [--enabled] [--config JSON] ID")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux feature update [--state PATH] [--enabled true|false] [--config JSON] ID")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux feature delete [--state PATH] ID")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux feature enable [--state PATH] ID")
-	fmt.Fprintln(os.Stderr, "  phonelink-linux feature disable [--state PATH] ID")
+	fmt.Fprintln(os.Stderr, "  linkmyphone feature list [--state PATH]")
+	fmt.Fprintln(os.Stderr, "  linkmyphone feature get [--state PATH] ID")
+	fmt.Fprintln(os.Stderr, "  linkmyphone feature create [--state PATH] [--enabled] [--config JSON] ID")
+	fmt.Fprintln(os.Stderr, "  linkmyphone feature update [--state PATH] [--enabled true|false] [--config JSON] ID")
+	fmt.Fprintln(os.Stderr, "  linkmyphone feature delete [--state PATH] ID")
+	fmt.Fprintln(os.Stderr, "  linkmyphone feature enable [--state PATH] ID")
+	fmt.Fprintln(os.Stderr, "  linkmyphone feature disable [--state PATH] ID")
 }
 
 func featureStoreFlag(fs *flag.FlagSet) (*string, error) {

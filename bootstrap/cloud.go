@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/dcgheaders"
-	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
-	"github.com/YMGPwcca/phonelink-linux/transport/relay"
-	signalrtransport "github.com/YMGPwcca/phonelink-linux/transport/signalr"
+	"github.com/YMGPwcca/linkmyphone/dcgheaders"
+	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
+	"github.com/YMGPwcca/linkmyphone/transport/relay"
+	signalrtransport "github.com/YMGPwcca/linkmyphone/transport/signalr"
 )
 
 const (

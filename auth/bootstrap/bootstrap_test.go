@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
-	"github.com/YMGPwcca/phonelink-linux/auth/msa"
+	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
+	"github.com/YMGPwcca/linkmyphone/auth/msa"
 )
 
 func TestDCGIdentityFromMSA(t *testing.T) {

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/transport/wsclient"
+	"github.com/YMGPwcca/linkmyphone/transport/wsclient"
 )
 
 type Config struct {

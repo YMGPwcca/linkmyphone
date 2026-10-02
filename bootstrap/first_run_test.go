@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/YMGPwcca/phonelink-linux/auth/dcgauth"
-	"github.com/YMGPwcca/phonelink-linux/auth/msa"
-	authstate "github.com/YMGPwcca/phonelink-linux/auth/state"
-	"github.com/YMGPwcca/phonelink-linux/dcgheaders"
-	"github.com/YMGPwcca/phonelink-linux/transport/relay"
-	signalrtransport "github.com/YMGPwcca/phonelink-linux/transport/signalr"
-	servicedcg "github.com/YMGPwcca/phonelink-linux/services/dcg"
+	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
+	"github.com/YMGPwcca/linkmyphone/auth/msa"
+	authstate "github.com/YMGPwcca/linkmyphone/auth/state"
+	"github.com/YMGPwcca/linkmyphone/dcgheaders"
+	"github.com/YMGPwcca/linkmyphone/transport/relay"
+	signalrtransport "github.com/YMGPwcca/linkmyphone/transport/signalr"
+	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
 )
 
 func TestBootstrapFirstRunStagesOneThroughFour(t *testing.T) {

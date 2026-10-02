@@ -4,22 +4,22 @@
 
 Use this page when you are adding, changing, or removing a builtin. It covers the manifest and configuration contract, lifecycle states, dependency rules, capability publication, and the ownership expected from a feature package.
 
-The feature runtime is an in-process registry around a small, business-agnostic kernel. The only shipped definition is `phonelink.clipboard`, registered by [`features/catalog.go`](../../features/catalog.go). A feature package owns its domain behavior. The kernel must not gain feature-specific routes, and feature packages must not import one another directly.
+The feature runtime is an in-process registry around a small, business-agnostic kernel. The only shipped definition is `linkmyphone.clipboard`, registered by [`features/catalog.go`](../../features/catalog.go). A feature package owns its domain behavior. The kernel must not gain feature-specific routes, and feature packages must not import one another directly.
 
 ## Contract at a glance
 
 | Concern | Owner | Entry point |
 | --- | --- | --- |
-| Manifest shape and strict parsing | Kernel plus the versioned schema | [`contracts/manifests/phonelink-feature.schema.json`](../../contracts/manifests/phonelink-feature.schema.json), `runtime/kernel/manifest.go` |
+| Manifest shape and strict parsing | Kernel plus the versioned schema | [`contracts/manifests/linkmyphone-feature.schema.json`](../../contracts/manifests/linkmyphone-feature.schema.json), `runtime/kernel/manifest.go` |
 | Feature-specific configuration | Feature package | Clipboard [`config.schema.json`](../../features/clipboard/config.schema.json) and `DecodeConfig` |
-| Desired state | `runtime/kernel.FeatureStore` | `~/.config/phonelink-linux/features.json` |
+| Desired state | `runtime/kernel.FeatureStore` | `~/.config/linkmyphone/features.json` |
 | Lifecycle and dependencies | `runtime/kernel` | Registry entry operation mutex and epoch |
 | Live capabilities | Kernel capability registry | Registered only during successful startup |
 | Domain protocol and native resources | Feature package | `features/clipboard` is the concrete pattern |
 
 ## Manifest and configuration contracts
 
-The canonical manifest schema is [`contracts/manifests/phonelink-feature.schema.json`](../../contracts/manifests/phonelink-feature.schema.json). Runtime parsing is stricter than a permissive JSON decode: `runtime/kernel/manifest.go` rejects unknown fields, trailing JSON, an empty or oversized document, unsafe configuration-schema paths, duplicate declarations, invalid identifiers and semver values, incomplete metadata, and an incompatible runtime API.
+The canonical manifest schema is [`contracts/manifests/linkmyphone-feature.schema.json`](../../contracts/manifests/linkmyphone-feature.schema.json). Runtime parsing is stricter than a permissive JSON decode: `runtime/kernel/manifest.go` rejects unknown fields, trailing JSON, an empty or oversized document, unsafe configuration-schema paths, duplicate declarations, invalid identifiers and semver values, incomplete metadata, and an incompatible runtime API.
 
 Manifest schema version and runtime API version are both `1.0`. A valid manifest has:
 
@@ -54,7 +54,7 @@ Capability registration happens before the state becomes `ready`, and the capabi
   "schema_version": 1,
   "features": [
     {
-      "id": "phonelink.clipboard",
+      "id": "linkmyphone.clipboard",
       "enabled": true,
       "config": {}
     }
@@ -62,7 +62,7 @@ Capability registration happens before the state becomes `ready`, and the capabi
 }
 ```
 
-The default path is `~/.config/phonelink-linux/features.json`. The store rejects unknown top-level fields, duplicate IDs, invalid IDs, non-object or trailing configuration JSON, and unsupported schema versions. Saves create a `0600` temporary file in a `0700` directory, flush the file, and rename it into place. Store mutations restore the in-memory record if the file save fails.
+The default path is `~/.config/linkmyphone/features.json`. The store rejects unknown top-level fields, duplicate IDs, invalid IDs, non-object or trailing configuration JSON, and unsupported schema versions. Saves create a `0600` temporary file in a `0700` directory, flush the file, and rename it into place. Store mutations restore the in-memory record if the file save fails.
 
 A registry entry carries the desired enabled state, validated configuration, manifest version, current state, last error, live instance, and an epoch. The lifecycle states are:
 

@@ -17,6 +17,8 @@ The original reports remain available in the [pre-restructure README](https://gi
 
 [PR #1](https://github.com/YMGPwcca/phonelink-linux/pull/1) contains earlier implementation notes. Parts of its description still list bootstrap validation, session setup, and the Linux clipboard backend as unfinished, although later commits and the recorded README describe them working. Follow the commit-linked history when the records disagree.
 
+Historical commit, blob, and PR links intentionally retain the original `phonelink-linux` repository URL and original artifacts. Current command examples use LinkMyPhone names; the rename does not change the observations or Microsoft wire values recorded in those artifacts.
+
 The repository does not preserve the decompiled Windows source corpus, original `.proto` files, raw production captures, or a complete investigation transcript. The reported compatibility profile was CrossDevice app `1.26072.116.0`, ring `Public`, and advertised OS version `10.0.26100`. No package hash or source-extraction transcript is recorded here. A statement described historically as "source-confirmed" must retain its written/source-comment citation; it cannot be independently checked against the original binary from this checkout alone.
 
 ## Choose the smallest probe
@@ -30,7 +32,7 @@ Run probes only with an account and devices you control. They contact production
 | Does the peer answer session validation? | `session-probe` | Sends `/SessionValidation`; does not intentionally copy clipboard text. |
 | Does a publication cause STATUS or CONTENT? | `session-probe --context-probe` | Announces a clipboard change and answers STATUS; without explicit text, CONTENT is rejected. |
 | Can explicit text reach the phone? | `session-probe --context-probe --context-text "probe text"` | Intentionally supplies phone clipboard text; the argument can remain in shell history. |
-| Do native clipboard changes flow both ways? | Enabled `phonelink.clipboard` plus `run` | Subsequent plain-text changes are synchronized until the module stops. |
+| Do native clipboard changes flow both ways? | Enabled `linkmyphone.clipboard` plus `run` | Subsequent plain-text changes are synchronized until the module stops. |
 | Do desired-state changes reconcile live? | `feature` commands while `run` owns the same store | Enable, disable, update, and delete affect the running module. |
 
 See [CLI options](../reference/cli.md), [first-run setup](../getting-started/first-run.md), and the [stage-by-stage validation procedure](validation.md) for complete commands and prerequisites. Do not run a second foreground runtime beside the user service against the same feature store.
