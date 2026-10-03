@@ -44,7 +44,7 @@ Use non-sensitive samples in both directions:
 5. Copy a new local selection while a phone CONTENT response is delayed; the delayed value must not overwrite the newer generation.
 6. Stop/restart the module and verify initial publication follows configuration.
 
-Deterministic tests cover these content contracts and simulated fragmented relay transfers. They do not establish authenticated cloud compatibility. The runtime now recovers sessions automatically and recreates the clipboard module; live recovery/soak validation is pending. See [session recovery](../operations/session-recovery.md) for what happens to interrupted copies. See [testing](../developer/testing.md) and [privacy](../operations/privacy-and-state.md).
+Deterministic tests cover these content contracts and simulated fragmented relay transfers. They do not establish authenticated cloud compatibility. The owner reports live bidirectional clipboard use after automatic recovery from Linux/phone network loss and suspend/resume. Scheduled token-expiry renewal and multi-hour reliability still need separate live evidence. See [session recovery](../operations/session-recovery.md) for what happens to interrupted copies. See [testing](../developer/testing.md) and [privacy](../operations/privacy-and-state.md).
 
 ## Image behavior compared with Windows
 
