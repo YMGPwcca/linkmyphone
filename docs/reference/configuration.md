@@ -145,11 +145,11 @@ The compatibility command's `--poll-interval` and `--publish-initial` flags cons
 
 ## Live and offline edits
 
-Feature commands first try the control socket derived from the selected feature-store path. A ready runtime handles list, get, create, update, and delete against its in-memory registry and persists successful desired-state changes. Enabling, disabling, or changing config reconciles the module without restarting the process. A config or enabled-state transition can stop and restart the module; the registry epoch increases when the same entry is restarted. Deleting and recreating an entry starts its epoch sequence again.
+Feature commands connect to the selected store's control socket. A ready runtime handles them through its registry and saves successful changes. Enabling, disabling or changing configuration can restart a module while the process keeps running. The entry's epoch increases on restart; deleting and recreating the entry starts its epoch sequence again.
 
-When the socket is absent, refused, or invalid, commands read or write the selected registry file without starting a runtime. This fallback is useful for preparing state before the first run. It does not authenticate, contact the phone, or confirm that a feature can start.
+If the socket is absent, refused or invalid, commands read or edit the registry file directly. Use this to configure features before starting the runtime.
 
-During runtime startup the socket exists before the live controller is installed. Commands receive `runtime is starting; retry the feature command` rather than silently changing offline state. During recovery the same socket returns `runtime is recovering; retry the feature command`; old mutation contexts are cancelled and handlers drained before module replacement. During final shutdown the control plane rejects requests and the socket closes. See [session recovery](../operations/session-recovery.md).
+During startup or recovery, the socket stays reserved and feature commands ask you to retry: `runtime is starting; retry the feature command` or `runtime is recovering; retry the feature command`. Retry after readiness. Final shutdown rejects new requests and closes the socket. See [session recovery](../operations/session-recovery.md).
 
 The socket is a user-local Unix socket under `$XDG_RUNTIME_DIR/linkmyphone/` with a filename derived from a hash of the absolute feature-store path. If `XDG_RUNTIME_DIR` is unset or the candidate path reaches the 100-byte budget, the runtime uses `/tmp/linkmyphone-<uid>/`. The socket directory is mode `0700` and the socket is mode `0600`.
 

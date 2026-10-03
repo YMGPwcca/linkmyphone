@@ -100,7 +100,7 @@ A live command uses the Unix control socket. If the socket is absent, refused, o
 | `--session-open-timeout DURATION` | `2m` | Deadline for one complete auth/trust/relay/wake/SessionValidation attempt. |
 | `--refresh-margin DURATION` | `2m` | Renew before earliest token expiry; capped at 20% of token lifetime. |
 
-The runtime rejects non-positive timeout, TTL and recovery values; the maximum backoff must be at least the minimum. Both long-running commands use [automatic session recovery](../operations/session-recovery.md). It creates a control socket derived from the feature store path, starts the shared host, loads and validates desired features, and then reports readiness. Only one runtime should own a feature store at a time.
+Timeout, TTL and recovery values must be positive, and the maximum backoff must be at least the minimum. At startup, `run` reserves the feature store's control socket, opens the host and starts enabled modules before reporting readiness. Both `run` and `clipboard-sync` use [automatic recovery](../operations/session-recovery.md). Use one runtime per feature store.
 
 ## Compatibility clipboard command
 
