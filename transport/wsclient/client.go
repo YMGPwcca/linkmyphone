@@ -30,10 +30,17 @@ const (
 	OpcodePong         = byte(0xa)
 
 	defaultMaxMessage = 16 << 20
-	websocketGUID      = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+	websocketGUID     = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 )
 
 var ErrProtocol = errors.New("websocket protocol error")
+
+type HTTPError struct {
+	StatusCode int
+	RetryAfter string
+}
+
+func (e *HTTPError) Error() string { return fmt.Sprintf("websocket: upgrade HTTP %d", e.StatusCode) }
 
 type Conn struct {
 	conn       net.Conn
@@ -69,6 +76,9 @@ func Dial(ctx context.Context, rawURL string, headers http.Header) (*Conn, error
 		return nil, err
 	}
 	ok := false
+	rawConn := netConn
+	stopCancel := context.AfterFunc(ctx, func() { _ = rawConn.Close() })
+	defer stopCancel()
 	defer func() {
 		if !ok {
 			_ = netConn.Close()
@@ -122,7 +132,7 @@ func Dial(ctx context.Context, rawURL string, headers http.Header) (*Conn, error
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusSwitchingProtocols {
-		return nil, fmt.Errorf("websocket: upgrade failed: %s", resp.Status)
+		return nil, &HTTPError{StatusCode: resp.StatusCode, RetryAfter: resp.Header.Get("Retry-After")}
 	}
 	if !headerHasToken(resp.Header, "Connection", "upgrade") ||
 		!strings.EqualFold(resp.Header.Get("Upgrade"), "websocket") {
@@ -134,14 +144,16 @@ func Dial(ctx context.Context, rawURL string, headers http.Header) (*Conn, error
 		return nil, fmt.Errorf("%w: invalid Sec-WebSocket-Accept", ErrProtocol)
 	}
 
+	if !stopCancel() || ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	ok = true
 	return &Conn{conn: netConn, reader: br, maxMessage: defaultMaxMessage}, nil
 }
 
 func (c *Conn) Close() error {
-	c.writeMu.Lock()
-	_ = c.writeFrame(true, OpcodeClose, nil)
-	c.writeMu.Unlock()
+	// Close must interrupt a blocked write/read. Waiting for the writer lock or
+	// trying a close frame first can deadlock teardown after network loss.
 	return c.conn.Close()
 }
 
@@ -160,6 +172,9 @@ func (c *Conn) WriteMessage(opcode byte, payload []byte) error {
 }
 
 func (c *Conn) writeFrame(fin bool, opcode byte, payload []byte) error {
+	if err := c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return err
+	}
 	if len(payload) > c.maxMessage {
 		return errors.New("websocket: message too large")
 	}
