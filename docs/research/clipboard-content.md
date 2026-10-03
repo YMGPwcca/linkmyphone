@@ -14,3 +14,9 @@ Source archive SHA-256 identifiers:
 Regression evidence includes explicit-empty protobuf fixtures, typed correlated immutable snapshots, fragmented PNG exchanges, size and malformed-content rejection, UTF-16 limits, MIME preference, HTML/image echo suppression and an opt-in real X11 integration test. Real authenticated HTML/image exchange with Link to Windows has not yet been validated for this release.
 
 Private storage controls access; it does not itself grant rights to reverse-engineered materials. The research corpus is separate from the independently written runtime and is not relicensed by the root MIT license. Any future public export should include only reviewed implementation and retain provenance/license notices. Existing first-party OAuth identifiers and service headers are unchanged and remain a separate compatibility and permission issue; this work does not resolve them.
+
+## Image direction and dimensions
+
+Behavioral inspection of the supplied Android clipboard utility and Windows clipboard monitor shows different responsibilities at each endpoint. Android may scale oversized encoded input before sending JPEG; Windows receives those bytes and creates its clipboard bitmap without an additional resize. Windows outbound clipboard images are encoded as PNG and constrained to 1048576 bytes. These observations describe the interoperability contract, not copied implementation code.
+
+Linux now mirrors that separation: incoming JPEG/GIF/BMP conversion preserves decoded dimensions; the desktop PNG and its observer hash remain unchanged. Only preparing an outbound snapshot or a live CONTENT response applies the PNG transfer budget. The independent area-average resampling algorithm remains in use; identical outbound pixels or dimensions to Windows are not asserted. Regression coverage includes a JPEG below 1 MiB whose decoded PNG exceeds the transfer limit, and native round-trip of a larger PNG.

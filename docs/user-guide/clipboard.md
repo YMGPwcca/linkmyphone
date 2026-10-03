@@ -29,9 +29,9 @@ Enable an existing record rather than creating it twice. See [first run](../gett
 
 ## Limits and ordering
 
-Text and HTML must be valid UTF-8 and contain fewer than 131072 UTF-16 units; an emoji outside the BMP counts as two units. Images are normalized to PNG and resized when necessary to fit 1048576 bytes. Incoming phone images and local encoded image input are capped at 16 MiB and decoded dimensions at 32 million pixels. Resizing changes dimensions and may lose detail. PNGs already within the limit retain their exact bytes.
+Text and HTML must be valid UTF-8 and contain fewer than 131072 UTF-16 units; an emoji outside the BMP counts as two units. Images received from the phone are converted to PNG without resizing: their decoded dimensions are preserved, even when PNG encoding exceeds 1 MiB. Android may already have reduced the image before sending it. Only Linux → phone images are resized when necessary to fit 1048576 PNG bytes. Incoming phone encodings and non-PNG native input are capped at 16 MiB; desktop PNGs at 128 MiB and decoded dimensions at 32 million pixels. Outbound resizing may lose detail. Valid native PNGs retain their exact bytes until outbound preparation.
 
-Published snapshots retain the advertised type, bytes and timestamp for two minutes, at most 64 entries and 16 MiB in aggregate. A matching CONTENT request receives that snapshot rather than an unrelated new selection. Newer phone/local generations suppress stale writes; superseded correlations are rejected. Format-aware hashes suppress reflected copies. There is no clipboard history or secret filter. Clipboard contents pass through Microsoft services; stop synchronization before copying secrets.
+Published snapshots retain the advertised type, bytes and timestamp for two minutes, at most 64 entries and 16 MiB in aggregate. A matching CONTENT request receives that snapshot rather than an unrelated new selection. Newer phone/local generations suppress stale writes; superseded correlations are rejected. Format-aware hashes suppress reflected copies using the full desktop representation, before outbound resizing. There is no clipboard history or secret filter. Clipboard contents pass through Microsoft services; stop synchronization before copying secrets.
 
 ## Validate on your devices
 

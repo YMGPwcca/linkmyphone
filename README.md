@@ -90,7 +90,7 @@ LinkMyPhone aims to provide broader Phone Link integration on Linux. The matrix 
 | **Feature lifecycle & CLI** | Supported | Live enable, disable, configure, or remove feature modules via CLI and Unix socket control plane. |
 | **Background daemon** | Supported | Per-user `systemd` unit (`linkmyphone.service`) tied to the graphical session. |
 | **Rich text & HTML clipboard** | Implemented | HTML fragments in both directions; optional GTK4 provider also offers plain text. Live phone validation remains required. |
-| **Image clipboard** | Implemented | PNG transfer, JPEG/GIF/BMP input normalization, automatic resizing to 1 MiB, and existing DCG fragmentation. Live phone validation remains required. |
+| **Image clipboard** | Implemented | PNG transfer, JPEG/GIF/BMP input normalization, outbound resizing to 1 MiB; incoming dimensions preserved, and existing DCG fragmentation. Live phone validation remains required. |
 | **Session recovery & refresh** | Partial | Long-running relay reconnect, sleep/wake recovery, and active-session token refresh remain open. |
 | **Notifications** | Not implemented | Push notification forwarding, dismissal synchronization, and inline quick-replies. |
 | **Messages (SMS / RCS)** | Not implemented | Reading SMS/RCS conversations, sending text messages, and MMS media attachments. |

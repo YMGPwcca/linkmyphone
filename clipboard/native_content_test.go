@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -38,14 +39,14 @@ func TestNativeX11RichContentIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	l := &NativeLocal{backend: "xclip", read: commandSpec{name: path, args: []string{"-selection", "clipboard", "-out", "-target", "UTF8_STRING"}}, write: commandSpec{name: path, args: []string{"-selection", "clipboard", "-in"}}}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
 	if gtkPython(ctx) == "" {
 		out, err := exec.CommandContext(ctx, "/usr/bin/python3", "-c", "import gi; gi.require_version('Gtk','4.0'); from gi.repository import Gtk").CombinedOutput()
 		t.Fatalf("integration suite requires Python GI and GTK4: %v %s", err, out)
 	}
 	defer l.WriteText(context.Background(), "")
-	for _, want := range []Content{TextContent(""), TextContent("Tiếng Việt\n😀"), {Type: proto.ItemTextHTML, Text: "<b>Tiếng Việt 😀</b>"}, {Type: proto.ItemImage, Image: testPNG(t, 220, 200)}} {
+	for _, want := range []Content{TextContent(""), TextContent("Tiếng Việt\n😀"), {Type: proto.ItemTextHTML, Text: "<b>Tiếng Việt 😀</b>"}, {Type: proto.ItemImage, Image: testPNG(t, 800, 700)}} {
 		if err := l.WriteContent(ctx, want); err != nil {
 			t.Fatal(err)
 		}
@@ -64,6 +65,36 @@ func TestNativeX11RichContentIntegration(t *testing.T) {
 		}
 		if want.Type == proto.ItemImage && !bytes.Equal(got.Image, want.Image) {
 			t.Fatal("image changed")
+		}
+	}
+}
+
+func TestNativeLargePNGReadKeepsRemoteEchoRepresentation(t *testing.T) {
+	data := testPNG(t, 800, 700)
+	if len(data) <= MaxClipboardImageBytes {
+		t.Fatal("fixture must exceed outbound budget")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "image.png"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	command := filepath.Join(dir, "wl-paste")
+	script := `#!/bin/sh
+case "$1" in
+  --list-types) printf 'image/png\n' ;;
+  *) cat "${0%/*}/image.png" ;;
+esac
+`
+	if err := os.WriteFile(command, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	l := &NativeLocal{backend: "wl-clipboard", read: commandSpec{name: command}}
+	// Include the cached read: both observations must match the bytes written
+	// by remote application so the feature's hash barrier can suppress echo.
+	for range 2 {
+		got, err := l.ReadContent(context.Background())
+		if err != nil || !bytes.Equal(got.Image, data) {
+			t.Fatal("native observer resized remote PNG", err)
 		}
 	}
 }

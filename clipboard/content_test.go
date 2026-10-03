@@ -270,23 +270,30 @@ func TestTypedSnapshotAggregateBudgetRetiresOldest(t *testing.T) {
 	}
 }
 
-func TestIncomingLargeBMPAndJPEGNormalizeBeforeOutputLimit(t *testing.T) {
+func TestIncomingImagesPreserveDimensionsAndOutboundIsBounded(t *testing.T) {
 	img, err := png.Decode(bytes.NewReader(testPNG(t, 1000, 900)))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, format := range []string{"bmp", "jpeg"} {
+	for _, format := range []string{"bmp", "jpeg", "phone-sized-jpeg"} {
 		t.Run(format, func(t *testing.T) {
 			var encoded bytes.Buffer
 			if format == "bmp" {
 				err = bmp.Encode(&encoded, img)
 			} else {
-				err = jpeg.Encode(&encoded, img, &jpeg.Options{Quality: 100})
+				quality := 100
+				if format == "phone-sized-jpeg" {
+					quality = 70
+				}
+				err = jpeg.Encode(&encoded, img, &jpeg.Options{Quality: quality})
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
-			if encoded.Len() <= MaxClipboardImageBytes {
+			if format == "phone-sized-jpeg" && encoded.Len() > MaxClipboardImageBytes {
+				t.Fatal("phone fixture must fit its JPEG transfer budget")
+			}
+			if format != "phone-sized-jpeg" && encoded.Len() <= MaxClipboardImageBytes {
 				t.Fatal("fixture must exceed old incoming limit")
 			}
 			c, err := contentFromResponse(proto.Response{Status: proto.ResponseOK, Items: []proto.Item{{Type: proto.ItemImage, ImageBytes: encoded.Bytes()}}})
@@ -297,8 +304,15 @@ func TestIncomingLargeBMPAndJPEGNormalizeBeforeOutputLimit(t *testing.T) {
 				t.Fatal(err)
 			}
 			cfg, err := png.DecodeConfig(bytes.NewReader(c.Image))
-			if err != nil || cfg.Width >= 1000 || cfg.Height >= 900 {
-				t.Fatal("normalization must reduce oversized PNG", cfg, err)
+			if err != nil || cfg.Width != 1000 || cfg.Height != 900 {
+				t.Fatal("incoming normalization changed dimensions", cfg, err)
+			}
+			if len(c.Image) <= MaxClipboardImageBytes {
+				t.Fatal("fixture must expand beyond the outbound PNG budget")
+			}
+			out, err := prepareOutboundContent(c)
+			if err != nil || len(out.Image) > MaxClipboardImageBytes {
+				t.Fatal("outbound transfer was not bounded", err)
 			}
 		})
 	}
@@ -321,5 +335,47 @@ func TestIncomingImageInputAndBMPDimensionBudgets(t *testing.T) {
 	}
 	if _, err := PrepareImage([]byte("BMcorrupt")); !errors.Is(err, ErrUnsupportedContent) {
 		t.Fatal(err)
+	}
+}
+
+func TestLargeDesktopImageOutboundSnapshotsAndLiveFallback(t *testing.T) {
+	original := Content{Type: proto.ItemImage, Image: testPNG(t, 800, 700)}
+	local := &contentLocal{value: original.Clone()}
+	fr := newFakeRelay()
+	c := New(fr, local, Config{Target: "phone", SelfDcgClientID: "linux"})
+	ctx := context.Background()
+	cid, err := c.PublishLocalContent(ctx, original, "snapshot-large")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{cid, "unpublished-live-request"} {
+		request := platform.NewDeviceResourceRequest(proto.MarshalDeviceResourceMessage(proto.WrapClipboardRequest(proto.NewContentRequest(id))), "request")
+		if err := c.handleIncomingRequest(ctx, relay.Received{Source: "phone"}, request); err != nil {
+			t.Fatal(err)
+		}
+		fr.mu.Lock()
+		sent := fr.sent[len(fr.sent)-1]
+		fr.mu.Unlock()
+		pm, err := platform.Unmarshal(sent.Payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		drm, err := proto.UnmarshalDeviceResourceResponse(pm.Payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := proto.UnmarshalResponse(drm.Payload)
+		if err != nil || resp.Status != proto.ResponseOK || len(resp.Items) != 1 {
+			t.Fatal("outbound CONTENT response failed", resp.Status, err)
+		}
+		data := resp.Items[0].ImageBytes
+		cfg, err := png.DecodeConfig(bytes.NewReader(data))
+		if err != nil || len(data) > MaxClipboardImageBytes || cfg.Width >= 800 || cfg.Height >= 700 {
+			t.Fatal("outbound PNG not prepared", id, len(data), cfg, err)
+		}
+	}
+	got, _ := local.ReadContent(ctx)
+	if !got.Equal(original) {
+		t.Fatal("outbound preparation changed the desktop selection")
 	}
 }

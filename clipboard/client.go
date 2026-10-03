@@ -327,7 +327,9 @@ func (c *Client) publishLocalContent(
 	generation uint64,
 	versioned bool,
 ) (string, error) {
-	if err := content.Validate(); err != nil {
+	var err error
+	content, err = prepareOutboundContent(content)
+	if err != nil {
 		return "", err
 	}
 	content = content.Clone()
@@ -799,7 +801,8 @@ func (c *Client) handleIncomingRequest(ctx context.Context, msg relay.Received, 
 			if err != nil {
 				response = proto.Response{Status: proto.ResponseInvalidContent, CorrelationID: req.CorrelationID, ErrorType: proto.ErrorFail, ErrorDetail: "local clipboard read failed"}
 			} else {
-				if err := content.Validate(); err != nil {
+				content, err = prepareOutboundContent(content)
+				if err != nil {
 					response = proto.Response{Status: proto.ResponseInvalidContent, CorrelationID: req.CorrelationID, ErrorType: proto.ErrorReject, ErrorDetail: "unsupported clipboard content or size"}
 				} else {
 					response = contentResponse(req.CorrelationID, content)

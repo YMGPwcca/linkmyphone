@@ -22,6 +22,7 @@ const (
 	MaxClipboardImageBytes = 1 << 20
 	MaxClipboardTextUnits  = 131071 // Android's limit is < 131072 UTF-16 units.
 	MaxImageInputBytes     = 16 << 20
+	MaxLocalImageBytes     = 128 << 20 // Decoded desktop PNG; not a wire limit.
 	MaxImagePixels         = 32 << 20
 )
 
@@ -84,7 +85,7 @@ func (c Content) Validate() error {
 		if c.Text != "" || len(c.Image) == 0 {
 			return ErrUnsupportedContent
 		}
-		if len(c.Image) > MaxClipboardImageBytes {
+		if len(c.Image) > MaxLocalImageBytes {
 			return ErrContentTooLarge
 		}
 		cfg, err := png.DecodeConfig(bytes.NewReader(c.Image))
@@ -109,26 +110,60 @@ func validImageDimensions(w, h int) bool {
 	return w > 0 && h > 0 && w <= MaxImagePixels/h
 }
 
-// PrepareImage converts supported local image encodings to PNG, preserving
-// the exact bytes of valid small PNGs. Its resizing algorithm is independent
-// of the Windows implementation; only the interoperable size limit is shared.
-func PrepareImage(data []byte) (Content, error) {
-	if len(data) > MaxImageInputBytes {
-		return Content{}, fmt.Errorf("%w: encoded image is %d bytes (input limit %d)", ErrContentTooLarge, len(data), MaxImageInputBytes)
+// normalizeImage preserves dimensions when translating an image for the desktop.
+// The phone has already applied its own transfer policy; PNG expansion must not
+// trigger a second resize. Limits still bound encoded input and decoded pixels.
+func normalizeImage(data []byte, inputLimit int) (Content, error) {
+	if len(data) > inputLimit {
+		return Content{}, fmt.Errorf("%w: encoded image is %d bytes (input limit %d)", ErrContentTooLarge, len(data), inputLimit)
 	}
 	cfg, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
-		return Content{}, fmt.Errorf("%w: unrecognized or invalid image header (%d bytes)", ErrUnsupportedContent, len(data))
+		return Content{}, fmt.Errorf("%w: unrecognized or invalid image header", ErrUnsupportedContent)
 	}
 	if !validImageDimensions(cfg.Width, cfg.Height) {
-		return Content{}, fmt.Errorf("%w: image dimensions %dx%d (pixel limit %d)", ErrContentTooLarge, cfg.Width, cfg.Height, MaxImagePixels)
+		return Content{}, fmt.Errorf("%w: image dimensions %dx%d", ErrContentTooLarge, cfg.Width, cfg.Height)
 	}
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
-		return Content{}, fmt.Errorf("%w: invalid %s image data (%d bytes)", ErrUnsupportedContent, format, len(data))
+		return Content{}, fmt.Errorf("%w: invalid %s image data", ErrUnsupportedContent, format)
 	}
-	if format == "png" && len(data) <= MaxClipboardImageBytes {
+	if format == "png" {
 		return Content{Type: proto.ItemImage, Image: bytes.Clone(data)}, nil
+	}
+	var out limitedOutput
+	out.max = MaxLocalImageBytes
+	if err := png.Encode(&out, img); err != nil {
+		return Content{}, err
+	}
+	return Content{Type: proto.ItemImage, Image: out.data.Bytes()}, nil
+}
+
+// prepareOutboundContent applies the transfer budget only at the wire boundary.
+// Local reads must retain the same bytes used by remote-write echo suppression.
+func prepareOutboundContent(c Content) (Content, error) {
+	if err := c.Validate(); err != nil {
+		return Content{}, err
+	}
+	if c.Type == proto.ItemImage {
+		return PrepareImage(c.Image)
+	}
+	return c.Clone(), nil
+}
+
+// PrepareImage prepares desktop image bytes for the phone's 1 MiB PNG budget.
+// Its independent area-average resampling preserves transparency.
+func PrepareImage(data []byte) (Content, error) {
+	c, err := normalizeImage(data, MaxLocalImageBytes)
+	if err != nil {
+		return Content{}, err
+	}
+	if len(c.Image) <= MaxClipboardImageBytes {
+		return c, nil
+	}
+	img, err := png.Decode(bytes.NewReader(c.Image))
+	if err != nil {
+		return Content{}, err
 	}
 	for {
 		var out bytes.Buffer
@@ -202,7 +237,7 @@ func contentFromResponse(resp proto.Response) (Content, error) {
 			c := Content{Type: kind}
 			if kind == proto.ItemImage {
 				var err error
-				c, err = PrepareImage(item.ImageBytes)
+				c, err = normalizeImage(item.ImageBytes, MaxImageInputBytes)
 				if err != nil {
 					return Content{}, err
 				}

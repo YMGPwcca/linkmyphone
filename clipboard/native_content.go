@@ -53,7 +53,11 @@ func (l *NativeLocal) ReadContent(ctx context.Context) (Content, error) {
 	if l.backend == "xclip" {
 		args = []string{"-selection", "clipboard", "-out", "-target", target}
 	}
-	data, err := boundedCommandOutput(ctx, name, args, MaxImageInputBytes)
+	inputLimit := MaxImageInputBytes
+	if target == "image/png" {
+		inputLimit = MaxLocalImageBytes
+	}
+	data, err := boundedCommandOutput(ctx, name, args, inputLimit)
 	if err != nil {
 		if errors.Is(err, ErrContentTooLarge) {
 			return Content{}, err
@@ -69,7 +73,7 @@ func (l *NativeLocal) ReadContent(ctx context.Context) (Content, error) {
 		if l.imageReady && l.imageHash == hash {
 			return l.imageContent.Clone(), nil
 		}
-		c, err := PrepareImage(data)
+		c, err := normalizeImage(data, inputLimit)
 		if err == nil {
 			l.imageContent = c.Clone()
 			l.imageHash = hash
