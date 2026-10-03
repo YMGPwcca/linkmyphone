@@ -79,8 +79,8 @@ func (c *Client) Wake(ctx context.Context, dcgToken string, request WakeRequest)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return &HTTPError{
-			StatusCode: resp.StatusCode,
-			Body:       strings.TrimSpace(string(body)),
+			StatusCode: resp.StatusCode, RetryAfter: resp.Header.Get("Retry-After"),
+			Body: strings.TrimSpace(string(body)),
 		}
 	}
 	return nil

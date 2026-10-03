@@ -26,6 +26,8 @@ type HTTPDoer interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
+var ErrIdentityMismatch = errors.New("dcgauth: sign-in identity mismatch")
+
 type Client struct {
 	BaseURL             string
 	HTTP                HTTPDoer
@@ -87,6 +89,7 @@ func (r TokenResponse) GeneralAccessToken() (AccessToken, error) {
 type HTTPError struct {
 	StatusCode int
 	Body       string
+	RetryAfter string
 }
 
 func (e *HTTPError) Error() string {
@@ -195,7 +198,8 @@ func (c *Client) SignInIdentity(ctx context.Context, msaToken string, identity *
 	}
 	if token.DeviceID != "" && token.DeviceID != identity.DeviceID {
 		return TokenResponse{}, fmt.Errorf(
-			"dcgauth: sign-in returned device id %q, want %q",
+			"%w: returned device id %q, want %q",
+			ErrIdentityMismatch,
 			token.DeviceID,
 			identity.DeviceID,
 		)
@@ -248,8 +252,8 @@ func (c *Client) postJSON(ctx context.Context, msaToken, path string, body, out 
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return &HTTPError{
-			StatusCode: resp.StatusCode,
-			Body:       strings.TrimSpace(string(responseBody)),
+			StatusCode: resp.StatusCode, RetryAfter: resp.Header.Get("Retry-After"),
+			Body: strings.TrimSpace(string(responseBody)),
 		}
 	}
 	if out == nil || len(responseBody) == 0 {

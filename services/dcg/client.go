@@ -37,6 +37,7 @@ type Client struct {
 type HTTPError struct {
 	StatusCode int
 	Body       string
+	RetryAfter string
 }
 
 func (e *HTTPError) Error() string {
@@ -257,8 +258,8 @@ func (c *Client) doJSON(
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return &HTTPError{
-			StatusCode: resp.StatusCode,
-			Body:       strings.TrimSpace(string(responseBody)),
+			StatusCode: resp.StatusCode, RetryAfter: resp.Header.Get("Retry-After"),
+			Body: strings.TrimSpace(string(responseBody)),
 		}
 	}
 	if out == nil || len(responseBody) == 0 {
@@ -307,4 +308,3 @@ func MetadataForClipboardPC(clientVersion, displayName, osVersion string) Device
 		CustomData:     "",
 	}
 }
-

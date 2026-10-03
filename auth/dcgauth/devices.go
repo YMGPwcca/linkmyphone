@@ -67,7 +67,7 @@ func (c *Client) GetDeviceInfoList(ctx context.Context, msaToken string) ([]Devi
 		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &HTTPError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(body))}
+		return nil, &HTTPError{StatusCode: resp.StatusCode, RetryAfter: resp.Header.Get("Retry-After"), Body: strings.TrimSpace(string(body))}
 	}
 	var items []DeviceInfoItem
 	if err := json.Unmarshal(body, &items); err != nil {
