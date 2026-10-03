@@ -62,7 +62,8 @@ The unit is `Type=notify`. The runtime sends readiness only after the control so
 | Transition | Behavior |
 | --- | --- |
 | Start | Stay `activating` until the runtime sends readiness. |
-| Failure | Retry after 5 seconds, subject to the five-starts-per-60-seconds limit. |
+| Transient cloud/peer failure | Recover inside the same process with host backoff; the socket remains reserved. |
+| Terminal process failure | systemd retries after 5 seconds, subject to the five-starts-per-60-seconds limit. |
 | Restart | Stop modules and watchers, then activate again. |
 | Explicit stop | Stop modules and watchers without an automatic restart. |
 
@@ -171,7 +172,7 @@ Custom systemd drop-ins are also retained. Review any `linkmyphone.service.d/` d
 
 The dated systemd install, readiness, empty-clipboard, restart, stop/start, logout/login, watcher, and live-control observations belong to the repository research record. Read [the validation history](../research/validation.md) for the environment, commands, and scope of those reports. They are historical evidence, not a claim that this documentation run repeated a live Microsoft or systemd test.
 
-Long-running reconnect, wake, and token-refresh resilience remains open. A service restart policy handles process failure; it does not establish full Phone Link recovery behavior after every network, suspend, or credential interruption.
+Transient cloud/peer failures now recover inside the existing process. The systemd restart policy handles terminal process failures. The unit uses `TimeoutStartSec=infinity` so an offline startup can keep retrying without exhausting the start limit. Each individual session-opening attempt still has a two-minute default deadline. A blocking `systemctl start` can wait until the phone is ready; use `systemctl --user --no-block start linkmyphone.service` if you want to return immediately. [Session recovery](session-recovery.md) describes retry behavior and pending live checks.
 
 The unit source is [`packaging/systemd/linkmyphone.service`](../../packaging/systemd/linkmyphone.service); installer behavior is implemented in [`cmd/linkmyphone/service.go`](../../cmd/linkmyphone/service.go) and covered by [`cmd/linkmyphone/service_test.go`](../../cmd/linkmyphone/service_test.go).
 

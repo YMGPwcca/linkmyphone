@@ -21,7 +21,7 @@ LinkMyPhone is an independent, unofficial project, not affiliated with, endorsed
 
 > [!NOTE]
 >
-> Experimental. Text, HTML and image clipboard support has live validation reports on a Samsung Galaxy S23 with CachyOS/Wayland. Long-running reconnect, wake recovery, and active-session token refresh remain open. [Validation and limits](docs/research/validation.md).
+> Experimental. Text, HTML and image clipboard support has live validation reports on a Samsung Galaxy S23 with CachyOS/Wayland. Automatic reconnect, wake recovery and token renewal are implemented with local regression tests; live recovery/soak validation is pending. [Session recovery](docs/operations/session-recovery.md). [Validation and limits](docs/research/validation.md).
 
 ## Try the current clipboard feature
 
@@ -91,7 +91,7 @@ LinkMyPhone aims to provide broader Phone Link integration on Linux. The matrix 
 | **Background daemon** | Supported | Per-user `systemd` unit (`linkmyphone.service`) tied to the graphical session. |
 | **Rich text & HTML clipboard** | Supported | Bidirectional HTML fragments; optional GTK4 provider also offers plain text. Rich formatting is supported through HTML, not a separate RTF codec. |
 | **Image clipboard** | Supported | Bidirectional PNG transfer with JPEG/GIF/BMP input normalization. Incoming dimensions are preserved; only outbound images are resized to fit 1 MiB. |
-| **Session recovery & refresh** | Partial | Long-running relay reconnect, sleep/wake recovery, and active-session token refresh remain open. |
+| **Session recovery & refresh** | Partial | Automatic relay/peer recovery, suspend-gap detection and token renewal are implemented. [Live recovery and soak validation](docs/operations/session-recovery.md) is pending. |
 | **Notifications** | Not implemented | Push notification forwarding, dismissal synchronization, and inline quick-replies. |
 | **Messages (SMS / RCS)** | Not implemented | Reading SMS/RCS conversations, sending text messages, and MMS media attachments. |
 | **Calls & Audio** | Not implemented | Incoming/outgoing call notifications, dialer, and in-call Bluetooth/relay audio routing. |

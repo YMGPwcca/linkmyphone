@@ -25,7 +25,7 @@ linkmyphone run
 
 Enable an existing record rather than creating it twice. See [first run](../getting-started/first-run.md) for authentication and target selection, and [configuration](../reference/configuration.md) for commands and timing ranges.
 
-`publish_initial` defaults to false: the clipboard present when the module starts is not sent. With it enabled, supported initial content is published once. `request_timeout_ms` bounds sending and waiting for protocol responses. Oversized, malformed, unavailable or unsupported content is skipped with a content-free diagnostic; a later valid copy can continue syncing.
+`publish_initial` defaults to false: the clipboard present when the module starts is not sent. With it enabled, supported initial content is published on each module start, including recovery. `request_timeout_ms` bounds sending and waiting for protocol responses. Oversized, malformed, unavailable or unsupported content is skipped with a content-free diagnostic; a later valid copy can continue syncing.
 
 ## Limits and ordering
 
@@ -44,7 +44,7 @@ Use non-sensitive samples in both directions:
 5. Copy a new local selection while a phone CONTENT response is delayed; the delayed value must not overwrite the newer generation.
 6. Stop/restart the module and verify initial publication follows configuration.
 
-Deterministic tests cover these content contracts and simulated fragmented relay transfers. They do not establish authenticated cloud compatibility. Existing relay reconnect, sleep/wake recovery and active-session token refresh limitations still apply. See [testing](../developer/testing.md) and [privacy](../operations/privacy-and-state.md).
+Deterministic tests cover these content contracts and simulated fragmented relay transfers. They do not establish authenticated cloud compatibility. The runtime now recovers sessions automatically and recreates the clipboard module; live recovery/soak validation is pending. See [session recovery](../operations/session-recovery.md) for what happens to interrupted copies. See [testing](../developer/testing.md) and [privacy](../operations/privacy-and-state.md).
 
 ## Image behavior compared with Windows
 

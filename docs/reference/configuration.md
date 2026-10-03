@@ -129,7 +129,7 @@ The catalog's only built-in feature has ID `linkmyphone.clipboard`, version `0.2
 | --- | --- | --- | --- |
 | `poll_interval_ms` | Integer, 50 through 60000 | `500` | MIME observation interval for rich backends; polling fallback for text-only providers. |
 | `request_timeout_ms` | Integer, 100 through 120000 | `10000` | Clipboard protocol request timeout. |
-| `publish_initial` | Boolean | `false` | Publish the current local clipboard once after module startup. |
+| `publish_initial` | Boolean | `false` | Publish the current local clipboard on each module start, including recovery. |
 
 The feature schema is [`features/clipboard/config.schema.json`](../../features/clipboard/config.schema.json). Empty or omitted config is decoded with defaults. `feature create --config JSON` validates the object before writing it. `feature update --config JSON` validates and replaces the entire object. It does not merge keys with the previous object.
 
@@ -149,7 +149,7 @@ Feature commands first try the control socket derived from the selected feature-
 
 When the socket is absent, refused, or invalid, commands read or write the selected registry file without starting a runtime. This fallback is useful for preparing state before the first run. It does not authenticate, contact the phone, or confirm that a feature can start.
 
-During runtime startup the socket exists before the live controller is installed. Commands receive `runtime is starting; retry the feature command` rather than silently changing offline state. During shutdown, the control plane rejects requests and the socket is closed as the runtime tears down modules.
+During runtime startup the socket exists before the live controller is installed. Commands receive `runtime is starting; retry the feature command` rather than silently changing offline state. During recovery the same socket returns `runtime is recovering; retry the feature command`; old mutation contexts are cancelled and handlers drained before module replacement. During final shutdown the control plane rejects requests and the socket closes. See [session recovery](../operations/session-recovery.md).
 
 The socket is a user-local Unix socket under `$XDG_RUNTIME_DIR/linkmyphone/` with a filename derived from a hash of the absolute feature-store path. If `XDG_RUNTIME_DIR` is unset or the candidate path reaches the 100-byte budget, the runtime uses `/tmp/linkmyphone-<uid>/`. The socket directory is mode `0700` and the socket is mode `0600`.
 

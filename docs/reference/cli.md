@@ -79,7 +79,7 @@ linkmyphone feature disable [--state PATH] ID
 | `enable` / `disable` | Change desired enabled state. `enable` rejects an unavailable feature. |
 | `delete` | Removes the record and, when live, stops and removes its module instance. It does not close the shared Phone Link session. |
 
-A live command uses the Unix control socket. If the socket is absent, refused, or not a socket, the command falls back to offline registry file behavior. If the runtime is starting, it returns `runtime is starting; retry the feature command` instead of making an offline edit. See [configuration and state](configuration.md).
+A live command uses the Unix control socket. If the socket is absent, refused, or not a socket, the command falls back to offline registry file behavior. If the runtime is starting, it returns `runtime is starting; retry the feature command` instead of making an offline edit. During recovery it returns `runtime is recovering; retry the feature command` through the same socket. See [configuration and state](configuration.md).
 
 ## Modular runtime: `run`
 
@@ -95,8 +95,12 @@ A live command uses the Unix control socket. If the socket is absent, refused, o
 | `--wake-timeout DURATION` | `45s` | Peer presence wait after wake. |
 | `--wake-ttl DURATION` | `60s` | Dispatcher wake time-to-live. |
 | `--request-timeout DURATION` | `10s` | Time to wait for the host's `/SessionValidation` response. Clipboard requests use the module's `request_timeout_ms` configuration. |
+| `--reconnect-min-delay DURATION` | `1s` | Initial recovery backoff base; equal jitter waits between half and all of it. |
+| `--reconnect-max-delay DURATION` | `1m` | Backoff base cap. Retry-After can impose a longer wait. |
+| `--session-open-timeout DURATION` | `2m` | Deadline for one complete auth/trust/relay/wake/SessionValidation attempt. |
+| `--refresh-margin DURATION` | `2m` | Renew before earliest token expiry; capped at 20% of token lifetime. |
 
-The runtime rejects non-positive timeout and TTL values. It creates a control socket derived from the feature store path, starts the shared host, loads and validates desired features, and then reports readiness. Only one runtime should own a feature store at a time.
+The runtime rejects non-positive timeout, TTL and recovery values; the maximum backoff must be at least the minimum. Both long-running commands use [automatic session recovery](../operations/session-recovery.md). It creates a control socket derived from the feature store path, starts the shared host, loads and validates desired features, and then reports readiness. Only one runtime should own a feature store at a time.
 
 ## Compatibility clipboard command
 
@@ -105,9 +109,9 @@ The runtime rejects non-positive timeout and TTL values. It creates a control so
 | Flag | Default | Effect |
 | --- | --- | --- |
 | `--poll-interval DURATION` | `500ms` | MIME observation interval on rich providers; fallback polling interval on text-only providers. It must be between `50ms` and `60s`. |
-| `--publish-initial` | `false` | Publishes the current Linux clipboard once after startup. |
+| `--publish-initial` | `false` | Publishes the current Linux clipboard on each module start, including after recovery. |
 
-The host flags are `--state`, `--app-version`, `--ring`, `--os-version`, `--target`, `--signalr-timeout`, `--wake-timeout`, `--wake-ttl`, and `--request-timeout`, with the `run` defaults above.
+The host flags are `--state`, `--app-version`, `--ring`, `--os-version`, `--target`, `--signalr-timeout`, `--wake-timeout`, `--wake-ttl`, `--request-timeout`, `--reconnect-min-delay`, `--reconnect-max-delay`, `--session-open-timeout`, and `--refresh-margin`, with the `run` defaults above.
 
 Unlike `run`, `clipboard-sync` also copies `--request-timeout` into its in-memory clipboard configuration. That value must satisfy the module's 100 through 120000 millisecond range.
 
