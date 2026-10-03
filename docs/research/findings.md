@@ -257,7 +257,7 @@ CachyOS/Wayland reports cover installation, empty-selection startup, restart, st
 
 ## Remaining gaps
 
-Automatic session recovery, peer re-presence, suspend-gap detection and token renewal are now implemented; see [source observations and implementation](../architecture/session-resilience.md). Their live cloud behavior and multi-hour reliability remain unvalidated. Live reports cover one linked S23 and a Wayland desktop; X11, other compositors, other phone models, and Windows WAM execution were not live validated in the tracked record.
+Automatic session recovery, peer re-presence, suspend-gap detection and token renewal are implemented; see [source observations and implementation](../architecture/session-resilience.md). The owner reports successful recovery after Linux network loss, phone network loss and suspend/resume at `a1f53ff`, with bidirectional clipboard working afterwards and desired feature state retained. Scheduled renewal through actual token expiry and multi-hour reliability still need distinct live evidence. Live reports cover one linked S23 and a Wayland desktop; X11, other compositors, other phone models, and Windows WAM execution were not live validated in the tracked record.
 
 Protocol versions, tag 9, enum values, capability versions 14 and 3, and advertised compatibility metadata describe particular contracts or observations. They do not guarantee interoperability with arbitrary peers. The [validation record](validation.md) preserves reported checks and limits; [history](history.md) links corrective commits.
 

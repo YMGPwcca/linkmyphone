@@ -44,4 +44,4 @@ For a new investigation, record the environment and evidence before drawing a co
 
 ## Session resilience evidence
 
-[Session resilience](../architecture/session-resilience.md) records the supplied Windows and Android source observations, Linux policy choices, recovery ownership and local fault tests. [Session recovery](../operations/session-recovery.md) lists the live checks still needed; [validation](validation.md#session-resilience-2026-10-03) records the current verification boundary.
+[Session resilience](../architecture/session-resilience.md) records the supplied Windows and Android source observations, Linux policy choices, recovery ownership and local fault tests. [Validation](validation.md#session-resilience-2026-10-03) also records the owner's full race-suite pass and live Linux/phone network-loss and suspend recovery at `a1f53ff`. [Session recovery](../operations/session-recovery.md) lists the checks and remaining token-expiry/soak evidence needed.

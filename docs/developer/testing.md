@@ -114,7 +114,7 @@ go run ./cmd/linkmyphone feature create --enabled linkmyphone.clipboard
 go run ./cmd/linkmyphone run
 ```
 
-With a running `run` process, feature CRUD uses the hashed Unix socket and reports live state and epochs. Local regression tests now cover recovery supervision, peer-loss and suspend detection, token-renewal scheduling, rotated-credential persistence, and transport deadlines. Real cloud recovery and multi-hour operation remain unvalidated; follow [session recovery checks](../operations/session-recovery.md#live-checks). See the [validation research](../research/validation.md) for historical reports and their environment.
+With a running `run` process, feature CRUD uses the hashed Unix socket and reports live state and epochs. Local regression tests cover recovery supervision, peer-loss and suspend detection, token-renewal scheduling, rotated-credential persistence, and transport deadlines. The owner reports the full race suite passing at `a1f53ff`, plus live recovery after Linux network loss, phone network loss and suspend/resume. Scheduled renewal through actual token expiry and multi-hour operation still need separate live evidence; follow [session recovery checks](../operations/session-recovery.md#live-checks). See the [validation research](../research/validation.md) for the reports and their environment.
 
 ## Desktop and systemd smokes
 
