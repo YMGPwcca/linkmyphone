@@ -85,14 +85,11 @@ func runPeerProbe(ctx context.Context, args []string) error {
 	configureDCGClients(authClient, serviceClient, clientInfo)
 
 	fmt.Println("[1/4] Refreshing Microsoft + DCG authentication...")
-	resumed, err := bootstrap.ResumeAuth(ctx, msaClient, authClient, snapshot)
+	resumed, err := bootstrap.ResumeAuthAndSave(ctx, msaClient, authClient, snapshot, opts.statePath)
 	if err != nil {
 		return fmt.Errorf("resume authentication: %w", err)
 	}
 	snapshot = resumed.State
-	if err := authstate.Save(opts.statePath, snapshot); err != nil {
-		return fmt.Errorf("persist refreshed authentication: %w", err)
-	}
 	fmt.Printf("[1/4] Authentication: OK (DCG %s)\n", shortID(resumed.Identity.DeviceID))
 
 	fmt.Println("[2/4] Refreshing linked-device trust...")

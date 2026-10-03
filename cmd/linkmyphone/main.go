@@ -277,14 +277,11 @@ func probeExistingState(ctx context.Context, opts probeOptions, snapshot authsta
 
 	fmt.Println("[1/4] Enrollment: existing state reused")
 	fmt.Println("[2/4] Refreshing Microsoft and DCG tokens with persisted identity...")
-	resumed, err := bootstrap.ResumeAuth(ctx, msaClient, authClient, snapshot)
+	resumed, err := bootstrap.ResumeAuthAndSave(ctx, msaClient, authClient, snapshot, opts.statePath)
 	if err != nil {
 		return fmt.Errorf("stage 2 resume authentication: %w", err)
 	}
 	snapshot = resumed.State
-	if err := authstate.Save(opts.statePath, snapshot); err != nil {
-		return fmt.Errorf("stage 2 persist refreshed state: %w", err)
-	}
 	fmt.Printf("[2/4] Resume: OK (DCG %s)\n", shortID(resumed.Identity.DeviceID))
 
 	fmt.Println("[3/4] Refreshing linked-device trust...")
