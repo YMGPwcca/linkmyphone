@@ -75,6 +75,9 @@ func (c *runtimeController) load(ctx context.Context) error {
 func (c *runtimeController) HandleControl(request controlplane.Request) controlplane.Response {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.ctx.Err() != nil {
+		return controlplane.Failure(errors.New("runtime is recovering; retry the feature command"))
+	}
 
 	ctx, cancel := context.WithTimeout(c.ctx, liveMutationTimeout)
 	defer cancel()

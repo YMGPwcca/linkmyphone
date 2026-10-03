@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	authstate "github.com/YMGPwcca/linkmyphone/auth/state"
@@ -22,15 +23,19 @@ import (
 )
 
 type runtimeHostOptions struct {
-	statePath      string
-	appVersion     string
-	ringName       string
-	osVersion      string
-	target         string
-	signalrTimeout time.Duration
-	wakeTimeout    time.Duration
-	wakeTTL        time.Duration
-	requestTimeout time.Duration
+	statePath          string
+	appVersion         string
+	ringName           string
+	osVersion          string
+	target             string
+	signalrTimeout     time.Duration
+	wakeTimeout        time.Duration
+	wakeTTL            time.Duration
+	requestTimeout     time.Duration
+	reconnectMinDelay  time.Duration
+	reconnectMaxDelay  time.Duration
+	sessionOpenTimeout time.Duration
+	refreshMargin      time.Duration
 }
 
 func addRuntimeHostFlags(fs *flag.FlagSet, opts *runtimeHostOptions) error {
@@ -47,20 +52,28 @@ func addRuntimeHostFlags(fs *flag.FlagSet, opts *runtimeHostOptions) error {
 	fs.DurationVar(&opts.wakeTimeout, "wake-timeout", bootstrap.DefaultPeerWakeTimeout, "time to wait for target peer presence after wake")
 	fs.DurationVar(&opts.wakeTTL, "wake-ttl", bootstrap.DefaultPeerWakeTTL, "Dispatcher wake time-to-live")
 	fs.DurationVar(&opts.requestTimeout, "request-timeout", 10*time.Second, "time to wait for PLATFORM feature requests")
+	fs.DurationVar(&opts.reconnectMinDelay, "reconnect-min-delay", phonehost.DefaultReconnectMinDelay, "initial session recovery backoff (with jitter)")
+	fs.DurationVar(&opts.reconnectMaxDelay, "reconnect-max-delay", phonehost.DefaultReconnectMaxDelay, "maximum session recovery backoff; Retry-After can exceed it")
+	fs.DurationVar(&opts.sessionOpenTimeout, "session-open-timeout", phonehost.DefaultSessionOpenTimeout, "deadline for one complete authentication/trust/relay/wake attempt")
+	fs.DurationVar(&opts.refreshMargin, "refresh-margin", phonehost.DefaultRefreshMargin, "refresh before earliest token expiry; capped at 20% of token lifetime")
 	return nil
 }
 
 func (o runtimeHostOptions) config() phonehost.Config {
 	return phonehost.Config{
-		StatePath:      o.statePath,
-		AppVersion:     o.appVersion,
-		RingName:       o.ringName,
-		OSVersion:      o.osVersion,
-		Target:         o.target,
-		SignalRTimeout: o.signalrTimeout,
-		WakeTimeout:    o.wakeTimeout,
-		WakeTTL:        o.wakeTTL,
-		RequestTimeout: o.requestTimeout,
+		StatePath:          o.statePath,
+		AppVersion:         o.appVersion,
+		RingName:           o.ringName,
+		OSVersion:          o.osVersion,
+		Target:             o.target,
+		SignalRTimeout:     o.signalrTimeout,
+		WakeTimeout:        o.wakeTimeout,
+		WakeTTL:            o.wakeTTL,
+		RequestTimeout:     o.requestTimeout,
+		ReconnectMinDelay:  o.reconnectMinDelay,
+		ReconnectMaxDelay:  o.reconnectMaxDelay,
+		SessionOpenTimeout: o.sessionOpenTimeout,
+		RefreshMargin:      o.refreshMargin,
 	}
 }
 
@@ -70,6 +83,9 @@ func (o runtimeHostOptions) validate() error {
 		o.wakeTTL <= 0 ||
 		o.requestTimeout <= 0 {
 		return errors.New("all timeout/TTL values must be positive")
+	}
+	if o.reconnectMinDelay <= 0 || o.reconnectMaxDelay < o.reconnectMinDelay || o.sessionOpenTimeout <= 0 || o.refreshMargin <= 0 {
+		return errors.New("recovery durations must be positive; reconnect-max-delay must be >= reconnect-min-delay")
 	}
 	return nil
 }
@@ -168,105 +184,119 @@ func runClipboardSync(ctx context.Context, args []string) error {
 	return runFeatureRuntime(ctx, hostOpts.config(), []kernel.FeatureRecord{record})
 }
 
-func runManagedFeatureRuntime(
-	ctx context.Context,
-	hostConfig phonehost.Config,
-	store *kernel.FeatureStore,
-) (runErr error) {
+func runManagedFeatureRuntime(ctx context.Context, hostConfig phonehost.Config, store *kernel.FeatureStore) (runErr error) {
 	reporter := consoleReporter{}
 	socketPath := controlplane.SocketPathForStore(store.Path())
-	switchHandler := controlplane.NewSwitchHandler(controlplane.HandlerFunc(
-		func(controlplane.Request) controlplane.Response {
-			return controlplane.Failure(errors.New("runtime is starting; retry the feature command"))
-		},
-	))
+	transientHandler := func(message string) controlplane.Handler {
+		return controlplane.HandlerFunc(func(controlplane.Request) controlplane.Response {
+			return controlplane.Failure(errors.New(message))
+		})
+	}
+	switchHandler := controlplane.NewSwitchHandler(transientHandler("runtime is starting; retry the feature command"))
 	server, err := controlplane.Listen(socketPath, switchHandler)
 	if err != nil {
 		return err
 	}
-	defer server.Close()
-
+	managedCtx, cancelManaged := context.WithCancel(ctx)
+	var stoppingOnce sync.Once
+	announceStopping := func() {
+		stoppingOnce.Do(func() {
+			if err := systemdnotify.Stopping("LinkMyPhone runtime stopping"); err != nil {
+				kernel.Report(reporter, kernel.Event{ModuleID: "runtime.systemd", Level: "warning",
+					Message: "systemd stopping notification failed", Fields: map[string]string{"error": err.Error()}})
+			}
+		})
+	}
 	controlErr := make(chan error, 1)
 	go func() {
-		controlErr <- server.Serve(ctx)
+		controlErr <- server.Serve(managedCtx)
+		cancelManaged()
 	}()
-
-	session, err := phonehost.Open(ctx, hostConfig, reporter)
-	if err != nil {
-		return err
-	}
-	defer session.Close()
-
-	registry := kernel.NewRegistry(reporter)
-	controller := newRuntimeController(ctx, store, registry, session, reporter)
-
-	// Register teardown before loading desired state so a partial startup
-	// failure still revokes any modules that already reached Ready.
 	defer func() {
-		if err := systemdnotify.Stopping("LinkMyPhone runtime stopping"); err != nil {
-			kernel.Report(reporter, kernel.Event{
-				ModuleID: "runtime.systemd",
-				Level:    "warning",
-				Message:  "systemd stopping notification failed",
-				Fields:   map[string]string{"error": err.Error()},
-			})
-		}
-		switchHandler.Set(controlplane.HandlerFunc(
-			func(controlplane.Request) controlplane.Response {
-				return controlplane.Failure(errors.New("runtime is stopping"))
-			},
-		))
-		// Close the control plane first and wait for in-flight handlers. Their
-		// operation contexts inherit ctx, so runtime cancellation aborts any
-		// network/lifecycle wait before module teardown begins.
+		announceStopping()
+		cancelManaged()
+		switchHandler.Set(transientHandler("runtime is stopping"))
 		if err := server.Close(); err != nil && runErr == nil {
 			runErr = err
 		}
-		stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := registry.StopAll(stopCtx); err != nil && runErr == nil {
-			runErr = err
-		}
 	}()
 
-	if err := controller.load(ctx); err != nil {
+	runErr = phonehost.Supervise(managedCtx, hostConfig, reporter, func(generationCtx context.Context, session *phonehost.Session) (generationErr error) {
+		controlCtx, cancelControl := context.WithCancel(generationCtx)
+		registry := kernel.NewRegistry(reporter)
+		controller := newRuntimeController(controlCtx, store, registry, session, reporter)
+		defer func() {
+			if generationCtx.Err() != nil {
+				announceStopping()
+			}
+			// Cancel active mutations before swapping the handler. Set waits for
+			// old handlers, so no operation can touch a revoked generation.
+			cancelControl()
+			switchHandler.Set(transientHandler("runtime is recovering; retry the feature command"))
+			if generationErr != nil {
+				_ = session.Close()
+			}
+			if err := stopFeatureGeneration(registry); err != nil {
+				generationErr = err
+			}
+		}()
+		if err := controller.load(controlCtx); err != nil {
+			return startupFailure(session, err)
+		}
+		switchHandler.Set(controller)
+		if err := systemdnotify.Ready("LinkMyPhone runtime ready"); err != nil {
+			return fmt.Errorf("notify systemd readiness: %w", err)
+		}
+		printRuntimeState(registry)
+		fmt.Printf("[runtime] Control socket: %s\n", socketPath)
+		fmt.Println("[OK] Modular runtime is running. Feature CRUD is live. Press Ctrl+C to stop.")
+		return waitFeatureGeneration(controlCtx, session, registry, reporter)
+	})
+	if ctx.Err() == nil && managedCtx.Err() != nil {
+		err := <-controlErr
+		if err == nil {
+			return errors.New("controlplane: server exited")
+		}
 		return err
 	}
-	switchHandler.Set(controller)
-	if err := systemdnotify.Ready("LinkMyPhone runtime ready"); err != nil {
-		return fmt.Errorf("notify systemd readiness: %w", err)
+	return runErr
+}
+
+func stopFeatureGeneration(registry *kernel.Registry) error {
+	stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := registry.StopAll(stopCtx); err != nil {
+		return fmt.Errorf("runtime generation teardown: %w", err)
 	}
+	return nil
+}
 
-	printRuntimeState(registry)
-	fmt.Printf("[runtime] Control socket: %s\n", socketPath)
-	fmt.Println()
-	fmt.Println("[OK] Modular runtime is running. Feature CRUD is live. Press Ctrl+C to stop.")
+func startupFailure(session *phonehost.Session, err error) error {
+	select {
+	case hostErr := <-session.Errors():
+		if hostErr != nil {
+			return hostErr
+		}
+	default:
+	}
+	return err
+}
 
+func waitFeatureGeneration(ctx context.Context, session *phonehost.Session, registry *kernel.Registry, reporter kernel.Reporter) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case err := <-session.Errors():
-			if err == nil || errors.Is(err, context.Canceled) {
-				return nil
+			if err == nil {
+				return errors.New("phonehost: session monitor exited")
 			}
 			return fmt.Errorf("LinkMyPhone host: %w", err)
-		case err := <-controlErr:
-			if err == nil || errors.Is(err, context.Canceled) {
-				if ctx.Err() != nil {
-					return nil
-				}
-				return errors.New("controlplane: server exited")
-			}
-			return err
 		case runtimeErr := <-registry.Errors():
 			kernel.Report(reporter, kernel.Event{
-				ModuleID: runtimeErr.ModuleID,
-				Level:    "error",
-				Message:  "module failed; shared runtime remains online",
-				Fields: map[string]string{
-					"error": runtimeErr.Err.Error(),
-				},
+				ModuleID: runtimeErr.ModuleID, Level: "error",
+				Message: "module failed; shared runtime remains online",
+				Fields:  map[string]string{"error": runtimeErr.Err.Error()},
 			})
 		}
 	}
@@ -304,13 +334,8 @@ func printRuntimeState(registry *kernel.Registry) {
 	}
 }
 
-func runFeatureRuntime(
-	ctx context.Context,
-	hostConfig phonehost.Config,
-	records []kernel.FeatureRecord,
-) (runErr error) {
+func runFeatureRuntime(ctx context.Context, hostConfig phonehost.Config, records []kernel.FeatureRecord) error {
 	reporter := consoleReporter{}
-
 	type preparedFeature struct {
 		record     kernel.FeatureRecord
 		definition features.Definition
@@ -327,89 +352,34 @@ func runFeatureRuntime(
 		if err := definition.Validate(record.Config); err != nil {
 			return fmt.Errorf("validate feature %s: %w", record.ID, err)
 		}
-		prepared = append(prepared, preparedFeature{
-			record:     record,
-			definition: definition,
-		})
+		prepared = append(prepared, preparedFeature{record: record, definition: definition})
 	}
-
-	session, err := phonehost.Open(ctx, hostConfig, reporter)
-	if err != nil {
-		return err
-	}
-	defer session.Close()
-
-	registry := kernel.NewRegistry(reporter)
-	for _, item := range prepared {
-		module, err := item.definition.Build(session)
-		if err != nil {
-			return fmt.Errorf("build feature %s: %w", item.record.ID, err)
-		}
-		if err := registry.Create(module, item.record); err != nil {
-			return err
-		}
-	}
-
-	// Register cleanup before starting any module so a partial StartEnabled
-	// failure still stops the subset that already reached Ready.
-	defer func() {
-		stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := registry.StopAll(stopCtx); err != nil && runErr == nil {
-			runErr = err
-		}
-	}()
-	if err := registry.StartEnabled(ctx); err != nil {
-		return err
-	}
-
-	ready := registry.List()
-	fmt.Println()
-	fmt.Println("[runtime] Modules:")
-	for _, snapshot := range ready {
-		fmt.Printf(
-			"  %s %s enabled=%t state=%s\n",
-			snapshot.ID,
-			snapshot.Version,
-			snapshot.Enabled,
-			snapshot.State,
-		)
-	}
-	capabilities := registry.Capabilities().Snapshot()
-	if len(capabilities) != 0 {
-		fmt.Println("[runtime] Live capabilities:")
-		for _, capability := range capabilities {
-			fmt.Printf(
-				"  %s@%s <- %s\n",
-				capability.ID,
-				capability.ContractVersion,
-				capability.ProviderID,
-			)
-		}
-	}
-	fmt.Println()
-	fmt.Println("[OK] Modular runtime is running. Press Ctrl+C to stop.")
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case err := <-session.Errors():
-			if err == nil || errors.Is(err, context.Canceled) {
-				return nil
+	return phonehost.Supervise(ctx, hostConfig, reporter, func(generationCtx context.Context, session *phonehost.Session) (generationErr error) {
+		registry := kernel.NewRegistry(reporter)
+		defer func() {
+			if generationErr != nil {
+				_ = session.Close()
 			}
-			return fmt.Errorf("LinkMyPhone host: %w", err)
-		case runtimeErr := <-registry.Errors():
-			kernel.Report(reporter, kernel.Event{
-				ModuleID: runtimeErr.ModuleID,
-				Level:    "error",
-				Message:  "module failed; shared runtime remains online",
-				Fields: map[string]string{
-					"error": runtimeErr.Err.Error(),
-				},
-			})
+			if err := stopFeatureGeneration(registry); err != nil {
+				generationErr = err
+			}
+		}()
+		for _, item := range prepared {
+			module, err := item.definition.Build(session)
+			if err != nil {
+				return fmt.Errorf("build feature %s: %w", item.record.ID, err)
+			}
+			if err := registry.Create(module, item.record); err != nil {
+				return err
+			}
 		}
-	}
+		if err := registry.StartEnabled(generationCtx); err != nil {
+			return startupFailure(session, err)
+		}
+		printRuntimeState(registry)
+		fmt.Println("[OK] Modular runtime is running. Press Ctrl+C to stop.")
+		return waitFeatureGeneration(generationCtx, session, registry, reporter)
+	})
 }
 
 type consoleReporter struct{}
