@@ -44,12 +44,19 @@ Use non-sensitive samples in both directions:
 5. Copy a new local selection while a phone CONTENT response is delayed; the delayed value must not overwrite the newer generation.
 6. Stop/restart the module and verify initial publication follows configuration.
 
-Deterministic tests cover these content contracts and simulated fragmented relay transfers. They do not establish authenticated cloud compatibility. The owner reports live bidirectional clipboard use after automatic recovery from Linux/phone network loss and suspend/resume. Scheduled token-expiry renewal and multi-hour reliability still need separate live evidence. See [session recovery](../operations/session-recovery.md) for what happens to interrupted copies. See [testing](../developer/testing.md) and [privacy](../operations/privacy-and-state.md).
+Also test after disconnecting either device or suspending Linux. Wait for runtime readiness, then copy a new selection and paste in both directions. The [session recovery guide](../operations/session-recovery.md) explains this sequence. See [testing](../developer/testing.md) for automated checks and [privacy](../operations/privacy-and-state.md) for local state and clipboard handling.
 
 ## Image behavior compared with Windows
 
-Phone → Linux conversion preserves the dimensions Android sends, as Windows does on receive. A live comparison on 2026-10-03 pasted the same phone image into both Linux and Windows at **1572×2096**. This verifies dimensions for that sample, not pixel-for-pixel equality for all images.
+Phone → Linux keeps the dimensions Android sends. Linux → phone prepares a PNG within **1048576 bytes (1 MiB)**, using area-average resampling when resizing is needed. Windows uses high-quality bicubic resizing and a different size-selection rule.
 
-Linux → phone sends PNG within **1048576 bytes (1 MiB)**. Linux uses independent area-average resampling and a different size-selection policy from Windows' high-quality bicubic path. In one owner-reported comparison of the same test image, Linux produced **583×1036** (displayed as 1.05 MB), while Windows produced **310×551** (displayed as 330 KB); the owner judged the Linux result better. Displayed file sizes are rounded, not exact wire-byte counts. This is a sample result, not a universal quality guarantee or exact Windows output parity.
+Each row in the [2026-10-03 comparison](../research/validation.md#clipboard-validation-2026-10-03) used the same source image on Linux and Windows:
+
+| Sample | Linux | Windows |
+| --- | --- | --- |
+| Same phone image pasted on each PC | 1572×2096 | 1572×2096 |
+| Same PC image sent to the phone | 583×1036, displayed as 1.05 MB | 310×551, displayed as 330 KB |
+
+The displayed file sizes are rounded. The outgoing limit is measured in exact encoded PNG bytes.
 
 To compare your own image, copy the same source file on both computers and paste into the same Android app without further recompression. Compare received dimensions, small text, fine edges and texture at the same displayed size. Inspect exact bytes if a file manager's rounded size appears to exceed 1 MiB.

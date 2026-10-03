@@ -170,9 +170,9 @@ Custom systemd drop-ins are also retained. Review any `linkmyphone.service.d/` d
 
 ## Validation record and open limits
 
-The dated systemd install, readiness, empty-clipboard, restart, stop/start, logout/login, watcher, and live-control observations belong to the repository research record. Read [the validation history](../research/validation.md) for the environment, commands, and scope of those reports. They are historical evidence, not a claim that this documentation run repeated a live Microsoft or systemd test.
+Installation, readiness, restart, logout/login, clipboard watchers and live feature control have been tested on CachyOS/Wayland. The commands and results are in [validation](../research/validation.md).
 
-Transient cloud/peer failures now recover inside the existing process. The systemd restart policy handles terminal process failures. The unit uses `TimeoutStartSec=infinity` so an offline startup can keep retrying without exhausting the start limit. Each individual session-opening attempt still has a two-minute default deadline. A blocking `systemctl start` can wait until the phone is ready; use `systemctl --user --no-block start linkmyphone.service` if you want to return immediately. [Session recovery](session-recovery.md) describes retry behavior and pending live checks.
+Temporary cloud or phone failures recover in the same process. systemd restarts the process after a terminal failure. `TimeoutStartSec=infinity` lets offline startup keep retrying; each session attempt still has a two-minute default timeout. Use `systemctl --user --no-block start linkmyphone.service` to start without waiting for readiness. See [session recovery](session-recovery.md) for interruption tests.
 
 The unit source is [`packaging/systemd/linkmyphone.service`](../../packaging/systemd/linkmyphone.service); installer behavior is implemented in [`cmd/linkmyphone/service.go`](../../cmd/linkmyphone/service.go) and covered by [`cmd/linkmyphone/service_test.go`](../../cmd/linkmyphone/service_test.go).
 
