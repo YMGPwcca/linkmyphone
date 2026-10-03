@@ -78,7 +78,7 @@ Empty optional fields are omitted. For example, a successful `get` response for 
   },
   "snapshot": {
     "id": "linkmyphone.clipboard",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "enabled": true,
     "state": "ready",
     "config": {},

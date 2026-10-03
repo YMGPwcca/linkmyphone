@@ -4,7 +4,7 @@
 
 LinkMyPhone is an independent, unofficial Phone Link client for Linux, written in Go. It aims to bring the Phone Link experience to Linux through interoperability with Microsoft's Phone Link and Link to Windows ecosystem, rather than remain a clipboard-only tool.
 
-The current implementation is command-line based and uses Microsoft's cloud services. Its first and currently only built-in feature is bidirectional text clipboard synchronization. This guide installs the client and the desktop tools needed for that feature; it does not imply full Phone Link feature parity. See [current support and broader scope](../../README.md#current-support-and-broader-scope).
+The current implementation is command-line based and uses Microsoft's cloud services. Its first and currently only built-in feature is bidirectional text, HTML and image clipboard synchronization. This guide installs the client and the desktop tools needed for that feature; it does not imply full Phone Link feature parity. See [current support and broader scope](../../README.md#current-support-and-broader-scope).
 
 LinkMyPhone is independent and unofficial, with no Microsoft affiliation, endorsement, or sponsorship. Microsoft, Phone Link, and Link to Windows are trademarks of the Microsoft group of companies.
 
@@ -36,9 +36,9 @@ Install exactly one provider that matches your session, or install more than one
 
 | Session and tools | Provider selected |
 | --- | --- |
-| `WAYLAND_DISPLAY` is set and both `wl-paste` and `wl-copy` are on `PATH` | `wl-clipboard` with event watching |
-| `DISPLAY` is set and `xclip` is on `PATH` | `xclip` |
-| `DISPLAY` is set and `xclip` is absent, with `xsel` on `PATH` | `xsel` |
+| `WAYLAND_DISPLAY` is set and both `wl-paste` and `wl-copy` are on `PATH` | `wl-clipboard`; MIME polling for text/HTML/images |
+| `DISPLAY` is set and `xclip` is on `PATH` | `xclip`; text, HTML and images |
+| `DISPLAY` is set and `xclip` is absent, with `xsel` on `PATH` | `xsel`; plain text only |
 | Session variables are missing but a complete provider is on `PATH` | The first complete provider found, preferring `wl-clipboard`, then `xclip`, then `xsel` |
 
 The detector does not install these utilities. A missing provider produces `no supported Linux clipboard backend found`; install `wl-clipboard`, `xclip`, or `xsel` with your distribution's package manager. The program executes these utilities directly, without a shell.
@@ -74,3 +74,13 @@ Authentication state contains a Microsoft refresh token, DCG and trust private k
 After the binary and a clipboard provider are available, follow [first run and enrollment](first-run.md). The first run uses Microsoft device-code sign-in and creates persistent state before it attempts the later trust and relay stages.
 
 Implementation references: [`auth/state/store.go`](../../auth/state/store.go) defines state paths and file modes; [`clipboard/native.go`](../../clipboard/native.go) defines provider detection; provider behavior is covered by [`clipboard/native_test.go`](../../clipboard/native_test.go).
+
+## HTML dependencies and existing installations
+
+For received HTML to offer both rich formatting and plain text to applications, install Python 3, PyGObject and GTK4. Without them, HTML remains available, but a text-only paste target may not accept it. On Arch/CachyOS:
+
+```bash
+sudo pacman -S --needed wl-clipboard gtk4 python-gobject
+```
+
+Existing `phonelink-linux` installations can reuse their enrollment through `--state "$HOME/.config/phonelink-linux/state.json"`. Stop `phonelink-linux.service` before starting a test binary, and invoke the newly built executable explicitly; running the old installed command does not test the new code. See [clipboard behavior](../user-guide/clipboard.md) for supported image codecs and limits.

@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md)
 
-This chronology follows the commit ancestry ending at main merge commit [`e51728b`](https://github.com/YMGPwcca/phonelink-linux/commit/e51728b12a148061c8076c67200ee4a8f366e423), the merge of PR #1. Every date below is a commit date in the main ancestry. The implementation was developed on 2026-09-30 and 2026-10-01.
+The baseline chronology below follows the commit ancestry ending at main merge commit [`e51728b`](https://github.com/YMGPwcca/phonelink-linux/commit/e51728b12a148061c8076c67200ee4a8f366e423), the merge of PR #1. Every date below is a commit date in the main ancestry. The implementation was developed on 2026-09-30 and 2026-10-01.
 
 A commit title identifies an implementation milestone. It does not prove that a live service or phone accepted the behavior. Historical live results are in [`validation.md`](validation.md) and [`findings.md`](findings.md).
 
@@ -110,3 +110,16 @@ The final merge commit is the main baseline for this documentation rewrite. The 
 ## PR #1 provenance
 
 GitHub PR #1 was merged into main as `e51728b`. Its body describes the protocol stack, authentication/bootstrap stages, early validation boundaries, and fixes for session identity, normal platform routing, binary handshake handling, and trace context. The body was written before later commits and still lists the native backend and live bootstrap as pending. Later main commits and the baseline README supersede those pending statements for historical status, while the PR body remains useful as dated design context. PR #1 has no review comments or attached raw packet/log artifacts in the repository record.
+
+## HTML and image clipboard support
+
+The following commits introduced typed clipboard content, image normalization, incoming dimension preservation and the current CI policy. Dates in this table use UTC commit timestamps.
+
+| Date (UTC) | Commit | Result |
+| --- | --- | --- |
+| 2026-10-02 | [`ecc54d6`](https://github.com/YMGPwcca/linkmyphone/commit/ecc54d65cc421f192fe9732a092463a526c5a331) | Typed text/HTML/image transfer, HTML fallback offers, immutable bounded snapshots, MIME polling and content tests. |
+| 2026-10-02 | [`2670f26`](https://github.com/YMGPwcca/linkmyphone/commit/2670f2656b9635f5359cd4b2f00945f4a9ab1f0c) | BMP decoding, larger encoded phone images, native MIME targets and third-party notices. |
+| 2026-10-03 | [`7f999f3`](https://github.com/YMGPwcca/linkmyphone/commit/7f999f3b3b5ca7a2857a49e5a6b0ea3b2016f088) | Preserve incoming dimensions and full desktop image hashes; enforce the PNG budget only on outbound snapshots and live CONTENT fallback. |
+| 2026-10-03 | [`98a9e5c`](https://github.com/YMGPwcca/linkmyphone/commit/98a9e5c17a280da3d840b12d61fb50c07fd23931) | Run CI only when main is updated. |
+
+Owner-reported live results on 2026-10-03 support marking Rich text & HTML clipboard and Image clipboard Supported. See [validation](validation.md#clipboard-validation-2026-10-03) for paste results, incoming dimension equality and the outbound comparison; commit titles alone are not compatibility evidence.

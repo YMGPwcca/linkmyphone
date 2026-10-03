@@ -1,4 +1,4 @@
-# Historical validation and safe probes
+# Validation and safe probes
 
 [Documentation index](../README.md)
 
@@ -6,28 +6,50 @@ The live results below were reported in the [baseline README at `e51728b`](https
 
 Command examples, feature IDs, paths, and expected log labels below use the current LinkMyPhone names, including in historical sequences. They are updated equivalents, not verbatim transcripts or evidence of a new live validation of the renamed client. Follow the linked baseline for the original names.
 
+The current rich clipboard results are recorded below separately from the baseline. The older stage sections retain their historical scope.
+
 ## Read the result before running a probe
 
-| Stage | Historical outcome | Boundary still open |
+| Stage | Recorded outcome | Boundary still open |
 | --- | --- | --- |
 | Microsoft device-code login | Migrated CrossDevice scope and public client reached the device-code endpoint; login succeeded. | Service and account availability are not guaranteed now. |
 | Identity, enrollment, trust, relay | Identity and trust enrollment succeeded; linked peers, assigned shard, and `relayhub/` reached `OnConnected`. | Reconnect and token refresh during an active relay remain unvalidated. |
 | Peer wake | S23 presence/wake path was reported, including pre-wake presence flush. | Repeated wake recovery after sleep or network loss remains open. |
 | SessionValidation | One S23 run accepted PLATFORM `/SessionValidation`; response included capability versions 14 and 3. | These versions are one observation, not a support matrix. |
 | Context Publish | Tag-9 publication reached the S23; STATUS then CONTENT was observed, and explicit non-sensitive text was pasteable. | Negotiation is not mandatory for every peer; raw exchange is absent. |
-| Continuous clipboard | Bidirectional text sync, Wayland watcher, echo suppression, and clean shutdown were reported on CachyOS/Wayland with an S23. | X11, other compositors, other phones, and durable reconnect are unvalidated. |
+| Continuous clipboard | Baseline text sync plus current HTML/image reports on CachyOS/Wayland with an S23; see the dated results below. | Live authenticated X11, other compositors, other phones, and durable reconnect are unvalidated. |
 | Modular CRUD and service | Live feature CRUD and systemd lifecycle were reported on the same Wayland/S23 setup. | Other session managers and init systems are unvalidated. |
 
 ## Evidence classes and environment
 
 | Class | Meaning |
 | --- | --- |
+| Current owner report | A new operator report establishes visible behavior on the reported devices; absent payload files do not permit pixel or byte comparison. |
 | Historical live report | The baseline README says a prior operator saw the result in a real environment. No raw artifact is tracked. |
 | Automated test report | The baseline README reports that a prior branch run completed a named command; this is historical evidence, not a fresh result. |
 | Current source contract | A source or focused test path provides a checkable local contract, independent of remote availability. |
 | Unvalidated | No tracked live report establishes the behavior for the stated environment or scenario. |
 
 The historical live environment was a Linux desktop running CachyOS with Wayland and a linked Samsung S23. The README does not identify a complete hardware, compositor, package, network, or service-version manifest. Windows WAM behavior came from source findings, not this Linux probe. X11 and other phone models were not live validated in the tracked record.
+
+## Clipboard validation (2026-10-03)
+
+Environment reported by the owner: CachyOS/Wayland, `wl-clipboard`, a Samsung Galaxy S23 running Link to Windows, and Windows Phone Link for comparison. The new executable reused the old `~/.config/phonelink-linux/state.json` through an explicit state flag. HTML dual offers had GTK4/Python GI available. Exact Android, Windows, Link to Windows and compositor versions were not supplied. Dates here use the owner's Asia/Ho_Chi_Minh timezone.
+
+| Check | Reported result | Evidence boundary |
+| --- | --- | --- |
+| Runtime and content negotiation | PLATFORM session ready, FEATURE_ON synchronized, module `0.2.0` ready; text/HTML/image read/write/bidirectional capabilities active. | Readiness establishes negotiated runtime state, not every paste target. |
+| Received HTML and text | Runtime applied `text/html` and `text/plain;charset=utf-8`; rich clipboard support accepted for this tested setup. | Received HTML is recorded; a controlled Windows-versus-Linux formatting comparison and arbitrary RTF support are not established. |
+| Image transfer in both directions | Phone → Linux and Linux → phone image pastes worked. JPEG/BMP normalization was added; the owner confirmed phone-image transfer after `2670f26`. | Automated tests establish codec variants and budgets; the live sample set does not cover every codec variant or app. |
+| Incoming resize regression | Before the fix, an earlier phone sample yielded 1523×2706 on Windows but 471×836 on Linux. After `7f999f3`, the same new phone copy pasted as **1572×2096 on both PCs**. | The before/after dimensions refer to different reported samples. The matching new sample verifies dimension preservation, not byte or pixel identity. |
+| Outbound same-source comparison | Linux → phone: **583×1036**, displayed **1.05 MB**. Windows → phone: **310×551**, displayed **330 KB**. Owner judged Linux better for this comparison card. | Linux retained about 3.54 times the pixels in this case. Sizes were rounded UI values; exact payload files and byte counts were not supplied. No universal quality ranking is inferred. |
+| Automated verification | [Run 37098891014](https://github.com/YMGPwcca/linkmyphone/actions/runs/37098891014) at `7f999f3` passed vet, build, full race suite and real X11 text/HTML/image MIME transfers. | Xvfb is local desktop integration, not a live authenticated Android/X11 check. |
+
+Rich text & HTML clipboard and Image clipboard are **Supported** within the documented provider, format and size limits. The receive conversion preserves dimensions; only outbound PNG preparation applies **1048576 bytes (1 MiB)**. A display rounded to 1.05 MB is not by itself evidence of exceeding that exact limit. Linux and Windows use different outbound resampling and size-selection policies.
+
+CI subsequently changed at `98a9e5c` to run only on main updates, including merges and direct pushes. Historical successful feature-branch runs remain valid evidence of those commits; future feature pushes or manual dispatch do not trigger the workflow.
+
+No original clipboard image files, pixel comparisons or full live transcripts are committed. Long-running reconnect, sleep/wake recovery, active-session token refresh, other phones and live authenticated X11 remain open.
 
 ## Safety rules for every live probe
 

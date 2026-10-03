@@ -4,7 +4,7 @@
 
 LinkMyPhone is an independent, unofficial Phone Link client for Linux. The project aims for broader phone–PC integration; clipboard synchronization is its first implemented feature, not its full scope.
 
-The usage guides cover what works today: a command-line client with bidirectional text clipboard synchronization. See [current support and broader scope](../README.md#current-support-and-broader-scope) for the distinction between the project goal and available features.
+The usage guides cover what works today: a command-line client with bidirectional plain-text, HTML and image clipboard synchronization. See [current support and broader scope](../README.md#current-support-and-broader-scope) for the distinction between the project goal and available features.
 
 ## Start with your task
 
@@ -27,7 +27,7 @@ Need one option? Use [CLI](reference/cli.md) or [configuration](reference/config
 | --- | --- |
 | [Installation](getting-started/installation.md) | Linux requirements, clipboard providers, source access, and build steps. |
 | [First run](getting-started/first-run.md) | Sign-in, enrollment, phone selection, and a two-way clipboard check. |
-| [Clipboard behavior](user-guide/clipboard.md) | Startup, clears, watching and polling, conflicts, and echo suppression. |
+| [Clipboard behavior](user-guide/clipboard.md) | Supported formats, image limits, startup, clears, MIME polling, conflicts, and echo suppression. |
 | [CLI](reference/cli.md) | Commands, flags, and live versus offline feature operations. |
 | [Configuration](reference/configuration.md) | State paths, authentication records, feature settings, and timeouts. |
 | [systemd service](operations/systemd.md) | Install, readiness, session environment, custom profiles, logs, and uninstall. |
@@ -64,7 +64,7 @@ Need one option? Use [CLI](reference/cli.md) or [configuration](reference/config
 | [Research method](research/method.md) | Investigation steps, evidence collection, provenance, and absent artifacts. |
 | [Findings](research/findings.md) | Observations, failed assumptions, fixes, and regression evidence. |
 | [Development history](research/history.md) | Dated, commit-linked milestones. |
-| [Validation](research/validation.md) | Historical live results, safe probes, test boundaries, and unresolved behavior. |
+| [Validation](research/validation.md) | Historical and current live results, Windows image comparisons, test boundaries, and unresolved behavior. |
 
 </details>
 

@@ -8,7 +8,7 @@ Use the smallest probe that answers the question, record the boundary that faile
 
 | Evidence | What it establishes |
 | --- | --- |
-| Go source and source comments | Implemented wire shape, control flow, constants, and stated upstream correspondence |
+| Go/Python source and source comments | Implemented wire shape, control flow, constants, and stated upstream correspondence |
 | Deterministic tests | Behavior under the test's inputs and simulated peers, clocks, processes, or HTTP services |
 | Commit history | When an implementation or correction entered the repository, and the exact diff |
 | Written live reports | Results reported for the tested Microsoft services, S23, Wayland desktop, and systemd session |
@@ -135,3 +135,5 @@ These references explain public framing and authentication layers. They do not s
 - [W3C Trace Context recommendation](https://www.w3.org/TR/2021/REC-trace-context-1-20211123/): distributed trace identifiers and HTTP propagation conventions. The Hub Relay trace packet shape is documented separately in the [transport reference](../protocol/transport.md).
 
 For implemented Phone Link contracts, begin with the [source map](../developer/source-map.md) and the [protocol references](README.md#follow-a-message).
+
+Current clipboard research additionally uses owner-supplied Windows and Android reverse-engineering observations, recorded archive identifiers and independent runtime code. [Clipboard content evidence](clipboard-content.md) documents that provenance without importing the source corpus into the public repository. The [2026-10-03 validation](validation.md#clipboard-validation-2026-10-03) records user-visible paste results and approximate displayed image sizes; those reports do not supply original payloads for exact-byte or pixel comparison.

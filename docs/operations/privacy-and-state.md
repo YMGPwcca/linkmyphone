@@ -6,11 +6,11 @@ LinkMyPhone uses Microsoft cloud services. Sign-in uses Microsoft's identity ser
 
 ## Before you enable clipboard sync
 
-The clipboard module has no content-based secret filter. The Wayland watcher treats `CLIPBOARD_STATE=sensitive` as a text event and synchronizes it like any other text. Stop or disable the feature before copying secrets. Do not rely on an application's sensitive-selection label to keep them local.
+The clipboard module has no content-based secret filter. Supported MIME selections are synchronized even if the source application labels them sensitive. Stop or disable the feature before copying secrets. Do not rely on an application's sensitive-selection label to keep them local.
 
-The module does not print clipboard text in normal runtime, probe, or service output. Diagnostics report byte counts and shortened correlation IDs. A desktop clipboard provider, journal collector, crash handler, or other process may have separate logging behavior outside this program.
+The module does not print clipboard contents in normal runtime, probe, or service output. Diagnostics report byte counts and shortened correlation IDs. A desktop clipboard provider, journal collector, crash handler, or other process may have separate logging behavior outside this program.
 
-`publish_initial` controls whether the current local text is sent once at module startup; it defaults to false.
+`publish_initial` controls whether the current local content is sent once at module startup; it defaults to false.
 
 ## What the program stores
 
@@ -23,7 +23,7 @@ The default authentication state is `~/.config/linkmyphone/state.json`. It store
 - enrollment account certificate and root certificate chain;
 - account metadata and linked-device trust relationships.
 
-The default feature registry is `~/.config/linkmyphone/features.json`. It stores desired feature IDs, enabled flags, and feature configuration. The built-in clipboard configuration contains timing values and `publish_initial`; it is not a clipboard history and does not contain clipboard text.
+The default feature registry is `~/.config/linkmyphone/features.json`. It stores desired feature IDs, enabled flags, and feature configuration. The built-in clipboard configuration contains timing values and `publish_initial`; it is not a clipboard history and does not contain clipboard contents.
 
 The runtime control socket is a user-local Unix socket derived from the absolute feature-store path. It is created under `$XDG_RUNTIME_DIR/linkmyphone/` when the path fits the Unix socket limit, with a short `/tmp/linkmyphone-<uid>/` fallback otherwise. The directory is mode `0700` and socket mode is `0600`.
 
@@ -31,9 +31,9 @@ Authentication and feature files are written atomically. The state directory is 
 
 ## What clipboard sync sends
 
-When a local text change is observed, the clipboard module publishes it through the Microsoft DCG/SignalR clipboard protocol. When the phone publishes a change, the module requests the associated CONTENT payload and writes the returned text to the selected local provider. `publish_initial` controls whether the current local text is sent once at module startup; it defaults to false.
+When a local supported-content change is observed, the clipboard module publishes it through the Microsoft DCG/SignalR clipboard protocol. When the phone publishes a change, the module requests the associated CONTENT payload and writes the returned text, HTML or PNG to the selected local provider. `publish_initial` controls whether the current local content is sent once at module startup; it defaults to false.
 
-There is no content-based secret filter. The Wayland watcher treats `CLIPBOARD_STATE=sensitive` as a text event rather than excluding it from synchronization. Stop or disable the feature before copying secrets; do not rely on an application's sensitive-selection label to keep them local. The handling is visible in [`features/clipboard/sync.go`](../../features/clipboard/sync.go#L401-L415).
+There is no content-based secret filter. Sensitive-selection labels do not exclude content from synchronization. Stop or disable the feature before copying secrets; do not rely on an application's sensitive-selection label to keep them local. The handling is visible in [`features/clipboard/sync.go`](../../features/clipboard/sync.go#L401-L415).
 
 ## Account and device boundary
 
@@ -66,3 +66,7 @@ If a maintainer requests a state fixture for a parser defect, create a separate 
 See [troubleshooting](troubleshooting.md) for stage-specific recovery and [configuration](../reference/configuration.md) for the complete stored-field reference.
 
 The state implementation and permission tests are [`auth/state/store.go`](../../auth/state/store.go) and [`auth/state/store_test.go`]; clipboard transfer behavior is in [`clipboard/client.go`](../../clipboard/client.go) and [`features/clipboard/sync.go`](../../features/clipboard/sync.go).
+
+## Content held in memory
+
+Published typed snapshots contain text, HTML or outbound PNG, retained for up to two minutes, at most 64 entries and 16 MiB total. The native image cache retains the latest normalized desktop image; its PNG budget is 128 MiB and decoded images are bounded to 33554432 pixels. These limits are distinct from outbound PNG's 1 MiB budget. They are not a total process-memory ceiling: decoding, encoding and clones allocate additional memory. Received HTML may be owned by a GTK clipboard helper until another selection replaces it. No disk clipboard history is implemented; desktop clipboard managers and receiving apps may retain their own copies.

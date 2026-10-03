@@ -10,7 +10,7 @@ LinkMyPhone targets Linux with Go 1.23 or newer. Microsoft cloud services are pa
 
 The Go module is `github.com/YMGPwcca/linkmyphone`; use that path for project imports and `cmd/linkmyphone` for the CLI.
 
-The project is licensed under the [MIT License](../../LICENSE). There is no configured release process. The automated workflow runs `go test ./...` only when manually dispatched; use the local checks in [testing](testing.md) before submitting a change.
+The project is licensed under the [MIT License](../../LICENSE). There is no configured release process. GitHub Actions runs only on pushes to `main`, including merged pull requests and direct pushes. Feature-branch pushes, open pull requests and manual dispatch do not trigger CI. It runs vet, build and the full race suite with X11 integration; use the local checks in [testing](testing.md) before submitting a change.
 
 ## Find the owner before editing
 
@@ -55,8 +55,8 @@ These details are easy to blur during a refactor:
 - Authentication `Save` chmods the existing parent directory. The CLI first-run path saves before trust, while the library first-run path saves after trust.
 - Capability registration occurs before lifecycle `Ready`; the capability and module registries use separate locks, so their snapshots are not atomic together.
 - ACK success can complete a send before Hub `Completion`. Negative ACK, rejection, and cancellation fail without retry.
-- Unknown clipboard correlation fallback excludes retired and superseded IDs. Duplicates do not retire active snapshots. Snapshots last two minutes and are capped at 64; retired IDs are capped at 256 with no time expiry.
-- The clipboard echo barrier lasts three seconds and tracks text hashes. It is not sensitive-clipboard filtering.
+- Unknown clipboard correlation fallback excludes retired and superseded IDs. Duplicates do not retire active snapshots. Snapshots last two minutes and are capped at 64 and 16 MiB total; retired IDs are capped at 256 with no time expiry.
+- The clipboard echo barrier lasts three seconds and tracks format-aware content hashes. It is not sensitive-clipboard filtering.
 
 These are contract facts, not implementation trivia. Keep them in tests and documentation when changing the relevant owner.
 

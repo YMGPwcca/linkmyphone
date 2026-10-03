@@ -1,0 +1,100 @@
+package clipboard
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+	"time"
+
+	proto "github.com/YMGPwcca/linkmyphone/protocol/clipboard"
+)
+
+func TestNativeOfferPreferenceAndOutputBounds(t *testing.T) {
+	if got := preferredNativeTarget([]string{"text/plain", "text/html", "image/png"}); got != "image/png" {
+		t.Fatal(got)
+	}
+	for _, mime := range []string{"image/bmp", "image/x-bmp", "image/x-ms-bmp"} {
+		if got := preferredNativeTarget([]string{"text/plain", mime}); got != mime {
+			t.Fatal("BMP offer lost", got)
+		}
+	}
+	if got := preferredNativeTarget([]string{"text/uri-list"}); got != "" {
+		t.Fatal("file selections are not clipboard text")
+	}
+	if _, err := boundedCommandOutput(context.Background(), "head", []string{"-c", "1000", "/dev/zero"}, 32); !errors.Is(err, ErrContentTooLarge) {
+		t.Fatal(err)
+	}
+}
+
+func TestNativeX11RichContentIntegration(t *testing.T) {
+	if os.Getenv("LINKMYPHONE_NATIVE_INTEGRATION") != "1" {
+		t.Skip("set LINKMYPHONE_NATIVE_INTEGRATION=1 with an X11 display")
+	}
+	path, err := exec.LookPath("xclip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := &NativeLocal{backend: "xclip", read: commandSpec{name: path, args: []string{"-selection", "clipboard", "-out", "-target", "UTF8_STRING"}}, write: commandSpec{name: path, args: []string{"-selection", "clipboard", "-in"}}}
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+	defer cancel()
+	if gtkPython(ctx) == "" {
+		out, err := exec.CommandContext(ctx, "/usr/bin/python3", "-c", "import gi; gi.require_version('Gtk','4.0'); from gi.repository import Gtk").CombinedOutput()
+		t.Fatalf("integration suite requires Python GI and GTK4: %v %s", err, out)
+	}
+	defer l.WriteText(context.Background(), "")
+	for _, want := range []Content{TextContent(""), TextContent("Tiếng Việt\n😀"), {Type: proto.ItemTextHTML, Text: "<b>Tiếng Việt 😀</b>"}, {Type: proto.ItemImage, Image: testPNG(t, 800, 700)}} {
+		if err := l.WriteContent(ctx, want); err != nil {
+			t.Fatal(err)
+		}
+		got, err := l.ReadContent(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !got.Equal(want) {
+			t.Fatal("native MIME transfer changed content", want.MIME())
+		}
+		if want.Type == proto.ItemTextHTML && l.gtkRuntime != "" {
+			plain, err := l.ReadText(ctx)
+			if err != nil || plain != "Tiếng Việt 😀" {
+				t.Fatal("HTML plain-text fallback unavailable", err)
+			}
+		}
+		if want.Type == proto.ItemImage && !bytes.Equal(got.Image, want.Image) {
+			t.Fatal("image changed")
+		}
+	}
+}
+
+func TestNativeLargePNGReadKeepsRemoteEchoRepresentation(t *testing.T) {
+	data := testPNG(t, 800, 700)
+	if len(data) <= MaxClipboardImageBytes {
+		t.Fatal("fixture must exceed outbound budget")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "image.png"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	command := filepath.Join(dir, "wl-paste")
+	script := `#!/bin/sh
+case "$1" in
+  --list-types) printf 'image/png\n' ;;
+  *) cat "${0%/*}/image.png" ;;
+esac
+`
+	if err := os.WriteFile(command, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	l := &NativeLocal{backend: "wl-clipboard", read: commandSpec{name: command}}
+	// Include the cached read: both observations must match the bytes written
+	// by remote application so the feature's hash barrier can suppress echo.
+	for range 2 {
+		got, err := l.ReadContent(context.Background())
+		if err != nil || !bytes.Equal(got.Image, data) {
+			t.Fatal("native observer resized remote PNG", err)
+		}
+	}
+}
