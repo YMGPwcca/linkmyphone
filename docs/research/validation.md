@@ -49,7 +49,24 @@ Rich text & HTML clipboard and Image clipboard are **Supported** within the docu
 
 CI subsequently changed at `98a9e5c` to run only on main updates, including merges and direct pushes. Historical successful feature-branch runs remain valid evidence of those commits; future feature pushes or manual dispatch do not trigger the workflow.
 
-No original clipboard image files, pixel comparisons or full live transcripts are committed. Long-running reconnect, sleep/wake recovery, active-session token refresh, other phones and live authenticated X11 remain open.
+No original clipboard image files, pixel comparisons or full live transcripts are committed. Live recovery/soak validation, other phones and live authenticated X11 remain open. Automatic recovery and token renewal are now implemented; see [session resilience](#session-resilience-2026-10-03).
+
+## Session resilience (2026-10-03)
+
+Implementation on `feature/session-resilience` adds in-process session supervision to `run` and `clipboard-sync`, relay keepalive/deadlines, peer-disconnect and wall-clock gap detection, scheduled token renewal, credential checkpoints and feature-generation handoff. [Source observations and ownership](../architecture/session-resilience.md) document the supplied Android/Windows evidence and Linux policy choices.
+
+| Check | Current result | Evidence boundary |
+| --- | --- | --- |
+| `go vet ./...` and CLI build | Passed with Go 1.24.4 on Linux. | Compilation/static checks, not authenticated operation. |
+| Auth/bootstrap/phonehost/transport/protocol fault tests with race detector | Passed. | Includes local HTTP/WebSocket faults, cancellation, silence timeout, retry/throttling, renewal scheduling and rotated-credential persistence. |
+| Controller handoff and reloading committed desired state | Passed with race detector. | In-memory handler tests; replacement respects disabled state/config and CRUD can enable it afterwards. |
+| Full `go test -race ./...` | Blocked: 11 existing tests fail with `socket: operation not permitted` in this workspace. The same 11 fail on the untouched baseline. | Three feature-command tests, seven Unix control-socket tests and one systemd Unix-datagram test need a Linux environment that permits AF_UNIX. No passing full-suite result is claimed. |
+| Full race run excluding exactly those 11 blocked tests | Passed across all packages. | Test code and CI were not changed to skip them; Unix-socket integration remains unverified in this run. |
+| Production network/phone loss, actual suspend and multi-hour renewal | Not run. | No authenticated Microsoft session, phone recovery report, real X11 MIME integration run or soak result was supplied for this change. |
+
+The skip list for this environment was `TestFeatureCommandCRUDForClipboard`, `TestFeatureCommandCanDisableAndDeleteStaleRecord`, `TestFeatureCommandDoesNotFallbackOfflineWhenRuntimeRejectsMutation`, `TestServerRoundTripAndSocketPermissions`, `TestCallUnavailable`, `TestListenReplacesStaleNonSocketPath`, `TestSwitchHandlerTransitionsWithoutReplacingSocket`, `TestServerCloseStopsServeWithoutContextCancellation`, `TestHandlerPanicReturnsFailureAndServerSurvives`, `TestSocketPathRemainsShortForDeepFeatureStore`, and `TestReadySendsSystemdDatagram`. Other tests in these packages, including the new handoff/controller tests, ran.
+
+**Session recovery & refresh remains Partial** because the implementation has local regression coverage while real cloud recovery and multi-hour reliability are still unvalidated. Follow [live checks](../operations/session-recovery.md#live-checks) and record device, desktop and network conditions before promoting it to Supported. CI remains limited to main pushes; this feature branch does not trigger it.
 
 ## Safety rules for every live probe
 
@@ -344,4 +361,4 @@ The checkable record is current source, focused tests, dated commits, PR #1 body
 
 ## Open limitations
 
-Microsoft cloud services remain required. Finite bootstrap, wake, SessionValidation, Context Publish, and clipboard probes do not establish a durable connection. Long-running reconnect, wake/re-presence after sleep or relay loss, and token refresh during an active session remain open. Protocol constants such as MSAEP version 1.1, clipboard tag 9, enum values, and observed capability versions 14 and 3 must not be read as a general compatibility or phone-support matrix.
+Microsoft cloud services remain required. Finite bootstrap, wake, SessionValidation, Context Publish, and clipboard probes do not establish a durable connection. Automatic recovery, wake/re-presence and token renewal now have local regression coverage. Live cloud recovery and multi-hour reliability remain unvalidated. Protocol constants such as MSAEP version 1.1, clipboard tag 9, enum values, and observed capability versions 14 and 3 must not be read as a general compatibility or phone-support matrix.
