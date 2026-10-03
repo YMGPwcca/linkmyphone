@@ -1,69 +1,86 @@
 # Session resilience
 
-[Architecture](overview.md) · [Operating behavior and live checks](../operations/session-recovery.md) · [Validation](../research/validation.md#session-resilience-2026-10-03)
+[Architecture](overview.md) · [Session recovery guide](../operations/session-recovery.md) · [Test results](../research/validation.md#session-resilience-2026-10-03)
 
-The host supervisor owns recovery. Feature modules continue to own their domain protocol and local resources; a module cannot reconnect the shared relay itself.
+`phonehost.Supervise` opens and replaces cloud sessions. Each session has its own relay, router, feature registry and module instances. Feature modules use the host's endpoints and leave reconnection to the host.
 
-## Ownership
-
-| Owner | Contract |
-| --- | --- |
-| [phonehost/resilience.go](../../runtime/phonehost/resilience.go) | Retry classification, capped exponential backoff with equal jitter, Retry-After, startup deadline, peer pinning, token-renewal deadline and wall-clock health checks. |
-| [phonehost/session.go](../../runtime/phonehost/session.go) | One authentication/trust/relay/wake/SessionValidation generation, router ownership and recoverable host-error reporting. |
-| [runtime_run.go](../../cmd/linkmyphone/runtime_run.go) | Feature-generation construction and teardown; one stable control socket for managed run. Reload desired records on each generation. |
-| [switch_handler.go](../../runtime/controlplane/switch_handler.go) and [runtime_control.go](../../cmd/linkmyphone/runtime_control.go) | Cancel old mutation contexts, wait for old handlers before swapping, reject cancelled controllers, and keep CRUD out of retired generations. |
-| [bootstrap/resume.go](../../bootstrap/resume.go) | Checkpoint a rotated MSA refresh credential before DCG calls; save the new general token after same-identity SignIn. |
-| [signalr/client.go](../../transport/signalr/client.go) | Bounded handshake, MessagePack Hub ping, server-silence deadline, typed HTTP status and Retry-After. |
-| [wsclient/client.go](../../transport/wsclient/client.go) | Cancellation closes blocked handshake I/O; writes have deadlines; Close interrupts I/O without waiting for the writer lock. |
-| [relay/client.go](../../transport/relay/client.go) | Retain peer disconnect counts so a fast reconnect still invalidates the platform generation. |
+## Session lifecycle
 
 ```mermaid
 flowchart TD
-    Open["Open validated host"] --> Features["Start enabled modules"]
-    Features --> Monitor["Wait for host or module events"]
-    Monitor -->|"Host interruption or renewal"| Retire["Cancel control calls and retire modules"]
-    Retire --> Backoff["Cancellable retry delay"]
+    Open["Authenticate and validate session"] --> Features["Start enabled modules"]
+    Features --> Monitor["Monitor session"]
+    Monitor -->|"Disconnect or renewal"| Retire["Close old session and stop modules"]
+    Retire --> Backoff["Wait before retry"]
     Backoff --> Open
-    Open -->|"Transient startup failure"| Backoff
-    Monitor -->|"Feature failure"| Isolate["Report module failure"]
+    Open -->|"Temporary failure"| Backoff
+    Monitor -->|"Module failure"| Isolate["Report module error"]
     Isolate --> Monitor
     Open -->|"Permanent failure"| Stop["Stop runtime"]
 ```
 
-The callback to Supervise must finish its module teardown before returning a recoverable host error. A module/configuration/control-plane failure does not become an unlimited restart loop. Ordinary module runtime failures remain isolated by the kernel. Shutdown cancels the attempt or retry wait and stops the current generation.
+The callback passed to `Supervise` owns module startup and shutdown. It must finish teardown before returning a recoverable host error. The supervisor waits for that return before opening another session.
 
-Recovery creates a fresh relay/router/registry rather than changing the transport underneath active feature requests. Old CONTENT requests, snapshots and correlation IDs stay in their original generation. A replacement validates SessionValidation before creating features and starts from the latest successfully committed desired state.
+For `run`, teardown cancels the old controller's context and waits for active control calls to finish. It then closes the failed host and stops its modules. The control socket stays open, with a temporary handler that asks callers to retry. Once the replacement host passes SessionValidation, the runtime loads the saved feature records and installs a new controller.
 
-Backoff grows across rapid failures and resets after a generation remains active for at least 30 seconds. Equal jitter waits between half and all of the current base delay. Retry-After is a lower bound. A relay 401 gets one refresh/reopen retry; persistent rejection and permanent OAuth/DCG failures stop. Invalid state or persistence failure never causes reenrollment.
+Old requests, snapshots and correlation IDs stay with the old session. New modules start from the saved enabled flags and configuration. Registry epochs can restart at zero or one because each replacement has a new registry.
 
-Renewal uses the earlier of Microsoft expires_in and the DCG general token's absolute expiry. The margin is capped at one fifth of the lifetime; missing Microsoft expires_in uses a conservative 30-minute fallback, still bounded by DCG expiry. The five-second monitor compares wall time so suspend does not hide expiry behind a paused monotonic clock. A gap over 20 seconds also rebuilds the session. This is a Linux recovery heuristic, not a source-confirmed replacement for an OS resume-event API.
+Feature configuration, control-server and teardown errors stop the runtime. A module's own runtime error is reported through the kernel while the shared host keeps running. Shutdown cancels the current attempt or retry wait, then stops the modules.
 
-## Supplied-source observations
+## Code map
 
-Reviewed the owner's ltw-baseline-20260929-203827(1).zip and phonelink-winrev(1).zip. Android observations use the Microsoft-Active JADX tree. Decompiled source files remain external research inputs and are not added to this repository.
-
-| Supplied file | Observed behavior | Linux decision |
-| --- | --- | --- |
-| Windows YourPhone.YPP.SignalR.Transport.Connection/SignalRConnectionFactory.cs | Configures server timeout, keepalive, token provider and automatic reconnect. | Add deadlines and Hub pings around the existing MessagePack transport. |
-| Windows YourPhone.YPP.SignalR/HubReconnectionRetryPolicy.cs | Uses configured retry intervals, stops when exhausted and treats 429 specially. | Use continuous capped backoff for a long-running daemon, plus Retry-After. These are Linux policy choices, not copied Windows values. |
-| Windows YourPhone.YPP.SignalR/SignalRResiliencyPolicyFactory.cs | Excludes cancellation and account-token-provider errors from ordinary connection retry; first 401 forces a general-token refresh. | Classify permanent/cancelled failures separately and refresh credentials before retrying relay 401. |
-| Windows YourPhone.YPP.Auth.ServicesClient/ScopedServicesAccessTokenProvider.cs | Requests general-scope service tokens through the auth manager. | Resume the existing identity and reconnect with a fresh general token. |
-| Android signalr/transport/connection/SignalRConnectionV2.java | Tracks active open attempts, runs network/open/reconnect strategies, handles connection loss and bounds OnConnected waiting. | Retire an entire generation before replacement, with cancellable startup and finite per-attempt deadlines. |
-| Android signalr/transport/connection/SignalRConfiguration.java | Separates network, initial-open and reconnect retry strategies. | Keep retry ownership in the host, independent of DCG fragment retry. |
-| Android signalr/SignalRAccessTokenProvider.java | Retrieves general-scope tokens using an explicit retrieval policy. | Keep account/DCG authentication separate from application fragment delivery. |
-
-The implementation is independent Go code using existing repository wire contracts. It recreates feature modules during renewal; it does not claim seamless in-place token rotation, Windows-identical retry timing, WAM parity, key rotation, or offline message replay.
-
-## Regression evidence
-
-| Behavior exercised | Tests |
+| File | Responsibility |
 | --- | --- |
-| Backoff/cap/reset, startup deadline, cancellation, pinned target after teardown, transient versus permanent failure, relay 401 and throttling | [resilience_test.go](../../runtime/phonehost/resilience_test.go) |
-| Earlier token expiry, capped renewal margin, peer loss, suspend/wall gap | [resilience_test.go](../../runtime/phonehost/resilience_test.go) |
-| Credential checkpoint survives DCG outage and is consumed by retry; persistence failure stops further calls; old refresh credential retained when omitted; wrong identity rejected | [resume_persistence_test.go](../../bootstrap/resume_persistence_test.go) |
-| Actual loopback WebSocket handshake cancellation/deadline, Hub ping wire shape, silent server timeout and Retry-After | [signalr/client_test.go](../../transport/signalr/client_test.go) |
-| Blocked writer interrupted by Close | [shutdown_test.go](../../transport/wsclient/shutdown_test.go) |
-| Fast phone disconnect/reconnect retains invalidation | [relay/client_test.go](../../transport/relay/client_test.go) |
-| Old control handler drains, cancelled controller cannot commit desired state, and replacement reloads committed enable/config settings | [switch_handler_test.go](../../runtime/controlplane/switch_handler_test.go), [runtime_resilience_test.go](../../cmd/linkmyphone/runtime_resilience_test.go) |
+| [phonehost/resilience.go](../../runtime/phonehost/resilience.go) | Retry policy, startup deadline, target pinning, token renewal and health monitor. |
+| [phonehost/session.go](../../runtime/phonehost/session.go) | Open one authenticated session through trust, relay, wake and SessionValidation; report host failures. |
+| [runtime_run.go](../../cmd/linkmyphone/runtime_run.go) | Start and stop module generations; reload feature records; keep the control socket. |
+| [switch_handler.go](../../runtime/controlplane/switch_handler.go), [runtime_control.go](../../cmd/linkmyphone/runtime_control.go) | Drain old control calls and reject mutations after their controller is cancelled. |
+| [bootstrap/resume.go](../../bootstrap/resume.go) | Save a rotated Microsoft refresh token before calling DCG; save the new general token after sign-in. |
+| [signalr/client.go](../../transport/signalr/client.go) | Handshake timeout, Hub pings, read deadline and HTTP errors. |
+| [wsclient/client.go](../../transport/wsclient/client.go) | Cancel blocked handshake I/O, bound writes and close a socket with a blocked writer. |
+| [relay/client.go](../../transport/relay/client.go) | Count peer disconnects, including a disconnect/reconnect between monitor ticks. |
 
-Tests inject faults and clocks or use local HTTP/WebSocket servers. They establish local behavior, not Microsoft-service compatibility. See the dated [validation record](../research/validation.md#session-resilience-2026-10-03) for commands, environment limits and remaining live work.
+## Retry policy
+
+The base delay starts at one second and doubles to a one-minute cap. Each retry waits between half and all of the base delay. After a session has run for at least 30 seconds, the next failure starts again at the minimum. Retry-After sets a minimum wait and can exceed the cap.
+
+Temporary network errors, timeouts and retryable HTTP failures reopen the session. Invalid local state, failed credential writes, identity mismatches and permanent OAuth/DCG errors stop it. A relay 401 gets one refresh-and-reopen attempt; a repeated 401 stops it. Recovery reuses the enrolled identity and keys.
+
+The first successful session pins the phone's DCG ID. Subsequent discovery must return that phone.
+
+## Token renewal and health checks
+
+Renewal uses the earlier of Microsoft `expires_in` and the DCG general token's absolute expiry. The default margin is two minutes, limited to one fifth of the remaining lifetime. If Microsoft omits `expires_in`, the calculation uses 30 minutes and still respects the DCG expiry.
+
+A refreshed Microsoft credential is saved before any DCG call. If DCG sign-in fails, the next attempt can use the rotated credential. A successful sign-in must return the existing device identity before its general token is saved.
+
+The health monitor runs every five seconds. It checks the renewal deadline, the selected phone's connection state and its disconnect count. It also compares wall-clock readings: a gap over 20 seconds reopens the session after suspend or a clock jump.
+
+## Source notes
+
+The source review used `ltw-baseline-20260929-203827.zip` and `phonelink-winrev.zip`. Android paths are relative to `jadx/Microsoft-Active/sources/com/microsoft/mmx/agents/ypp/`; Windows paths are relative to the decompiled root. The decompiled files are kept outside this repository.
+
+| Source file | Behavior used in the design |
+| --- | --- |
+| Windows `YourPhone.YPP/YourPhone.YPP.SignalR.Transport.Connection/SignalRConnectionFactory.cs` | Sets server timeout, keepalive, token provider and automatic reconnect. |
+| Windows `YourPhone.YPP/YourPhone.YPP.SignalR/HubReconnectionRetryPolicy.cs` | Uses configured retry intervals, stops when they run out and handles HTTP 429 specially. |
+| Windows `YourPhone.YPP/YourPhone.YPP.SignalR/SignalRResiliencyPolicyFactory.cs` | Excludes cancellation and account-token errors from connection retry; refreshes the general token after the first 401. |
+| Windows `YourPhone.YPP.Auth/YourPhone.YPP.Auth.ServicesClient/ScopedServicesAccessTokenProvider.cs` | Requests general-scope service tokens through the auth manager. |
+| Android `signalr/transport/connection/SignalRConnectionV2.java` | Tracks open attempts, runs network/open/reconnect strategies and bounds the OnConnected wait. |
+| Android `signalr/transport/connection/SignalRConfiguration.java` | Defines network, initial-open and reconnect retry strategies. |
+| Android `signalr/SignalRAccessTokenProvider.java` | Retrieves general-scope tokens with a token-retrieval policy. |
+
+The Linux daemon retries temporary failures until shutdown or a permanent error. Its delay values are defined in `phonehost`, independently of the Windows retry configuration. Renewal opens a fresh session and restarts modules. The supervisor keeps enrolled keys and discards interrupted requests; key rotation and offline replay are outside its scope. Account authentication follows the [Linux device-code flow](../protocol/authentication.md).
+
+## Tests
+
+| Test file | Cases |
+| --- | --- |
+| [resilience_test.go](../../runtime/phonehost/resilience_test.go) | Backoff, jitter, startup timeout, cancellation, target pinning, teardown order, fatal errors, 401, Retry-After, renewal timing, suspend and peer loss. |
+| [resume_persistence_test.go](../../bootstrap/resume_persistence_test.go) | Rotated credential saved before DCG; retry uses it; failed writes stop cloud calls; omitted refresh token keeps the old one; identity mismatch rejected. |
+| [signalr/client_test.go](../../transport/signalr/client_test.go) | Handshake cancellation and timeout, Hub Ping framing, silent-server timeout and Retry-After. |
+| [shutdown_test.go](../../transport/wsclient/shutdown_test.go) | Close interrupts a blocked writer. |
+| [relay/client_test.go](../../transport/relay/client_test.go) | A fast peer reconnect keeps its disconnect count. |
+| [switch_handler_test.go](../../runtime/controlplane/switch_handler_test.go), [runtime_resilience_test.go](../../cmd/linkmyphone/runtime_resilience_test.go) | Handler handoff, cancelled mutations, saved feature state and live enable after replacement. |
+
+See [validation](../research/validation.md#session-resilience-2026-10-03) for the full-suite and device test results.
