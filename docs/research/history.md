@@ -111,9 +111,9 @@ The final merge commit is the main baseline for this documentation rewrite. The 
 
 GitHub PR #1 was merged into main as `e51728b`. Its body describes the protocol stack, authentication/bootstrap stages, early validation boundaries, and fixes for session identity, normal platform routing, binary handshake handling, and trace context. The body was written before later commits and still lists the native backend and live bootstrap as pending. Later main commits and the baseline README supersede those pending statements for historical status, while the PR body remains useful as dated design context. PR #1 has no review comments or attached raw packet/log artifacts in the repository record.
 
-## Rich clipboard development branch
+## HTML and image clipboard support
 
-The following commits are on `feature/clipboard-content`; this documentation describes that branch and does not assert that it has already been merged into main. Dates in this table use UTC commit timestamps.
+The following commits introduced typed clipboard content, image normalization, incoming dimension preservation and the current CI policy. Dates in this table use UTC commit timestamps.
 
 | Date (UTC) | Commit | Result |
 | --- | --- | --- |

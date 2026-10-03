@@ -45,14 +45,11 @@ The detector does not install these utilities. A missing provider produces `no s
 
 ## Build from source
 
-The rich clipboard changes documented here are on `feature/clipboard-content` until merged into main. The commands below select that branch explicitly.
-
 The module path is `github.com/YMGPwcca/linkmyphone`. If the repository URL asks for credentials, use an account with repository access and configure Git authentication. Repository access and Microsoft sign-in are separate.
 
 ```bash
 git clone https://github.com/YMGPwcca/linkmyphone.git
 cd linkmyphone
-git switch feature/clipboard-content
 go build -o linkmyphone ./cmd/linkmyphone
 ```
 

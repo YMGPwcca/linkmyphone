@@ -34,12 +34,9 @@ You need:
 
 ### 1. Build
 
-These rich clipboard changes are on `feature/clipboard-content` until merged into main.
-
 ```bash
 git clone https://github.com/YMGPwcca/linkmyphone.git
 cd linkmyphone
-git switch feature/clipboard-content
 go build -o linkmyphone ./cmd/linkmyphone
 ```
 
