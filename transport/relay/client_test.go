@@ -24,6 +24,17 @@ func newFakeHub() *fakeHub {
 	return &fakeHub{reads: make(chan []byte, 8), closed: make(chan struct{})}
 }
 
+func TestPartnerDisconnectIsRetainedAfterFastReconnect(t *testing.T) {
+	client := New(newFakeHub(), Config{})
+	client.markPartnerConnected("phone")
+	epoch := client.PartnerDisconnects("phone")
+	client.markPartnerDisconnected("phone")
+	client.markPartnerConnected("phone")
+	if !client.PartnerConnected("phone") || client.PartnerDisconnects("phone") != epoch+1 {
+		t.Fatal("phone reconnection erased the platform-session invalidation")
+	}
+}
+
 func (h *fakeHub) SendBinary(b []byte) error {
 	h.mu.Lock()
 	h.sent = append(h.sent, append([]byte(nil), b...))
