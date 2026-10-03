@@ -14,6 +14,9 @@ const (
 	HubMessageTypeClose            = 7
 )
 
+// FramePing is the MessagePack Hub Protocol keepalive, [6], with its length prefix.
+func FramePing() []byte { return []byte{2, 0x91, HubMessageTypePing} }
+
 // ParseHubMessage decodes a MessagePack Hub Protocol body and returns its
 // numeric message type plus the complete top-level array.
 func ParseHubMessage(body []byte) (int64, []any, error) {

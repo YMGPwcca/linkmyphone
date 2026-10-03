@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,9 +15,150 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	psignalr "github.com/YMGPwcca/linkmyphone/protocol/signalr"
 )
 
 const guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+func TestSignalRKeepAliveUsesHubPingAndStopsOnClose(t *testing.T) {
+	server, done := newSignalRTestServer(t, func(c net.Conn, r *bufio.Reader) error {
+		if _, _, err := readMasked(r); err != nil {
+			return err
+		}
+		writePlain(c, 1, []byte("{}\x1e"))
+		op, payload, err := readMasked(r)
+		if err != nil {
+			return err
+		}
+		if op != 2 {
+			return fmt.Errorf("keepalive opcode=%d", op)
+		}
+		frames, err := psignalr.SplitFrames(payload)
+		if err != nil || len(frames) != 1 {
+			return fmt.Errorf("invalid keepalive frame: %v", err)
+		}
+		mt, values, err := psignalr.ParseHubMessage(frames[0])
+		if err != nil || mt != psignalr.HubMessageTypePing || len(values) != 1 {
+			return fmt.Errorf("keepalive is not [6]: %v", err)
+		}
+		return nil
+	})
+	defer server.Close()
+	client, err := Dial(context.Background(), Config{HubURL: server.URL, KeepAliveInterval: 5 * time.Millisecond, ServerTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no keepalive")
+	}
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-client.keepAliveDone:
+	default:
+		t.Fatal("keepalive survived close")
+	}
+}
+
+func TestSignalRServerSilenceTimesOutDespiteSuccessfulWrites(t *testing.T) {
+	server, done := newSignalRTestServer(t, func(c net.Conn, r *bufio.Reader) error {
+		if _, _, err := readMasked(r); err != nil {
+			return err
+		}
+		writePlain(c, 1, []byte("{}\x1e"))
+		// Accept client pings forever without sending any hub traffic.
+		for {
+			if _, _, err := readMasked(r); err != nil {
+				return nil
+			}
+		}
+	})
+	defer server.Close()
+	client, err := Dial(context.Background(), Config{HubURL: server.URL, KeepAliveInterval: 10 * time.Millisecond, ServerTimeout: 100 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	_, err = client.ReadBinary()
+	var timeout net.Error
+	if !errors.As(err, &timeout) || !timeout.Timeout() {
+		t.Fatalf("err=%v", err)
+	}
+	_ = client.Close()
+	<-done
+}
+
+func TestSignalRHandshakeCancellationClosesBlockedRead(t *testing.T) {
+	handshake := make(chan struct{})
+	server, done := newSignalRTestServer(t, func(c net.Conn, r *bufio.Reader) error {
+		if _, _, err := readMasked(r); err != nil {
+			return err
+		}
+		close(handshake)
+		_, _, err := readMasked(r)
+		if err == nil {
+			return errors.New("unexpected frame while handshake incomplete")
+		}
+		return nil
+	})
+	defer server.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() { _, err := Dial(ctx, Config{HubURL: server.URL}); result <- err }()
+	<-handshake
+	cancel()
+	select {
+	case err := <-result:
+		if err == nil {
+			t.Fatal("cancelled handshake succeeded")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("handshake read did not cancel")
+	}
+	<-done
+}
+
+func TestSignalRHandshakeHasOwnDeadline(t *testing.T) {
+	server, done := newSignalRTestServer(t, func(c net.Conn, r *bufio.Reader) error {
+		if _, _, err := readMasked(r); err != nil {
+			return err
+		}
+		_, _, err := readMasked(r)
+		if err == nil {
+			return errors.New("unexpected second frame")
+		}
+		return nil
+	})
+	defer server.Close()
+	_, err := Dial(context.Background(), Config{HubURL: server.URL, HandshakeTimeout: 50 * time.Millisecond})
+	if err == nil {
+		t.Fatal("silent handshake succeeded")
+	}
+	<-done
+}
+
+func TestSignalRHTTPFailureRetainsRetryAfter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "90")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte("private error body"))
+	}))
+	defer server.Close()
+	_, err := Dial(context.Background(), Config{HubURL: server.URL})
+	var failure *HTTPError
+	if !errors.As(err, &failure) || failure.StatusCode != 429 || failure.RetryAfter != "90" || strings.Contains(err.Error(), "private") {
+		t.Fatalf("err=%v", err)
+	}
+}
 
 func TestDialHandshakeAndBinary(t *testing.T) {
 	server, done := newSignalRTestServer(t, func(c net.Conn, r *bufio.Reader) error {
