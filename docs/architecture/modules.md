@@ -35,7 +35,7 @@ The parser accepts only builtin modules in runtime API 1.0. There is no process 
 
 `configuration_schema` is a manifest contract and safe relative path, not a generic runtime validator. The catalog supplies the Go validator that the module owns. The clipboard module's [`config.schema.json`](../../features/clipboard/config.schema.json) and `DecodeConfig` agree on an object with no unknown fields:
 
-- `poll_interval_ms`, integer from 50 through 60000, used only by polling fallback;
+- `poll_interval_ms`, integer from 50 through 60000, used for MIME polling on rich providers and polling fallback on text-only providers;
 - `request_timeout_ms`, integer from 100 through 120000;
 - `publish_initial`, boolean, default false.
 
@@ -116,11 +116,11 @@ A delete removes the registry entry and capabilities after stopping it. Reusing 
 
 The capability map and module registry are separately synchronized. A reader that needs a coherent lifecycle answer should read the kernel snapshot, not infer `ready` from a capability lookup. This is an intentional race boundary in runtime API 1.0, not an atomic combined snapshot.
 
-Clipboard publication snapshots have their own bounded lifetime. Snapshots last two minutes and are capped at 64 entries and 16 MiB total. Evicted or expired correlations are retained as retired IDs, capped at 256 entries with no time expiry. A duplicate CONTENT request does not retire an active snapshot. An unknown correlation may fall back to current local content only when it is not retired or superseded. These rules prevent a late request from receiving unrelated current text, while keeping memory bounded.
+Clipboard publication snapshots have their own bounded lifetime. Snapshots last two minutes and are capped at 64 entries and 16 MiB total. Evicted or expired correlations are retained as retired IDs, capped at 256 entries with no time expiry. A duplicate CONTENT request does not retire an active snapshot. An unknown correlation may fall back to current local content only when it is not retired or superseded. These rules prevent a late request from receiving unrelated current content, while keeping memory bounded.
 
 ## Clipboard module ownership
 
-`features/clipboard` is the concrete extension. `Module.Start` validates configuration, detects a native local text backend, reads the initial local text, subscribes to `phonehost.Session` with a narrow target and PLATFORM matcher, starts the protocol client and publisher worker, sends `FEATURE_ON`, optionally publishes the initial text, and starts the instance run loop. It does not read `transport/relay.Client.Received()` directly.
+`features/clipboard` is the concrete extension. `Module.Start` validates configuration, detects a native local provider, reads initial typed content, subscribes to `phonehost.Session` with a narrow target and PLATFORM matcher, starts the protocol client and publisher worker, sends `FEATURE_ON`, optionally publishes initial supported content, and starts the instance run loop. It does not read `transport/relay.Client.Received()` directly.
 
 The module owns:
 
@@ -136,9 +136,9 @@ The matcher accepts only PLATFORM messages from the selected target and only the
 
 Mutable ownership is split deliberately: `transport/relay.Client` serializes DCG sends per peer; `runtime/phonehost.Router` owns the raw receive stream; each feature owns its endpoint queue; `clipboard.Client` owns clipboard request dispatch and the cross-device generation sequence; and `features/clipboard` owns native observation, echo suppression, and watcher fallback. This prevents two layers from concurrently deciding the same ordering or cleanup action.
 
-Local and phone changes share one monotonically increasing generation domain. A phone publication advances the generation and tombstones older versioned local snapshots. A later CONTENT request for a superseded correlation ID is rejected instead of receiving unrelated current text. A newer local event remains eligible after a phone event. Identical phone text is not written again, which prevents a reflected desktop publication from creating an echo.
+Local and phone changes share one monotonically increasing generation domain. A phone publication advances the generation and tombstones older versioned local snapshots. A later CONTENT request for a superseded correlation ID is rejected instead of receiving unrelated current content. A newer local event remains eligible after a phone event. Identical phone content is not written again, which prevents a reflected desktop publication from creating an echo.
 
-The origin barrier suppresses both the previous and incoming normalized text hashes for a three-second remote-write settle window. This is echo tracking, not a filter for secret clipboard content.
+The origin barrier suppresses both the previous and incoming format-aware content hashes for a three-second remote-write settle window. This is echo tracking, not a filter for secret clipboard content.
 
 Rich backends poll MIME offers at `poll_interval_ms`. The legacy text watcher supplies events through the hidden helper in the same executable. A transient `CLIPBOARD_STATE=nil` handoff is debounced before an empty value is observed. A real clear still publishes one empty value. If watching is unsupported or fails, the module uses bounded polling at `poll_interval_ms`; X11 uses polling. Native commands are executed directly without a shell. The module's stop path attempts `FEATURE_OFF` with a short advisory budget, then cancels workers and closes its endpoint even if the phone is unresponsive.
 
@@ -182,3 +182,5 @@ A feature removal is the reverse cutover:
 5. Leave stale desired-state records readable, disable-able, and delete-able. They cannot be enabled or reconfigured until an implementation with the same ID returns.
 
 The kernel and phone host must remain unchanged for a feature-specific removal. A catalog change is expected because the catalog is composition metadata. There is no supported out-of-process feature path in this runtime API.
+
+The current module version is `0.2.0`. Rich backends expose text, HTML and image read/write/bidirectional capabilities at contract version `1.0.0`; `xsel` exposes only text capabilities. Native rich-content reads preserve the full desktop PNG for echo suppression. Image conversion and outbound preparation belong to `clipboard/content.go`, MIME transfers to `clipboard/native_content.go`, and HTML fallback offers to `clipboard/html_offer.py`. Only outbound snapshots and live CONTENT fallback apply the 1 MiB PNG transfer budget.

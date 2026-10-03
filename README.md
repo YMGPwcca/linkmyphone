@@ -10,7 +10,7 @@ LinkMyPhone aims to bring the Phone Link experience to Linux through interoperab
   <source media="(prefers-color-scheme: dark) and (max-width: 640px)" srcset="docs/assets/sync-flow-mobile-dark.svg">
   <source media="(max-width: 640px)" srcset="docs/assets/sync-flow-mobile-light.svg">
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/sync-flow-dark.svg">
-  <img src="docs/assets/sync-flow-light.svg" width="860" alt="Current clipboard feature: two-way text synchronization between Linux and Android through Microsoft's DCG and Hub Relay services.">
+  <img src="docs/assets/sync-flow-light.svg" width="860" alt="Current clipboard feature: two-way text, HTML and image synchronization between Linux and Android through Microsoft's DCG and Hub Relay services.">
 </picture>
 
 *The diagram shows the current clipboard feature, not the full scope of the project.*
@@ -21,7 +21,7 @@ LinkMyPhone is an independent, unofficial project, not affiliated with, endorsed
 
 > [!NOTE]
 >
-> Experimental. Two-way sync was reported working on a Samsung Galaxy S23 with CachyOS/Wayland. Long-running reconnect, wake recovery, and active-session token refresh remain open. [Validation and limits](docs/research/validation.md).
+> Experimental. Text, HTML and image clipboard support has live validation reports on a Samsung Galaxy S23 with CachyOS/Wayland. Long-running reconnect, wake recovery, and active-session token refresh remain open. [Validation and limits](docs/research/validation.md).
 
 ## Try the current clipboard feature
 
@@ -34,9 +34,12 @@ You need:
 
 ### 1. Build
 
+These rich clipboard changes are on `feature/clipboard-content` until merged into main.
+
 ```bash
 git clone https://github.com/YMGPwcca/linkmyphone.git
 cd linkmyphone
+git switch feature/clipboard-content
 go build -o linkmyphone ./cmd/linkmyphone
 ```
 
@@ -61,7 +64,7 @@ Follow the device-code instructions printed in the terminal.
 ./linkmyphone run
 ```
 
-Wait for `Modular runtime is running`, then copy fresh, non-sensitive text and try pasting on the other device. The existing clipboard is not published at startup by default. Press Ctrl+C to stop.
+Wait for `Modular runtime is running`, then copy fresh, non-sensitive text, formatted HTML or an image and try pasting on the other device. The existing clipboard is not published at startup by default. Press Ctrl+C to stop.
 
 <details>
 <summary>Already enrolled, or choosing a specific phone?</summary>
@@ -89,8 +92,8 @@ LinkMyPhone aims to provide broader Phone Link integration on Linux. The matrix 
 | **Relay & PLATFORM transport** | Supported | WebSocket SignalR Hub Relay and PLATFORM session validation handshake. |
 | **Feature lifecycle & CLI** | Supported | Live enable, disable, configure, or remove feature modules via CLI and Unix socket control plane. |
 | **Background daemon** | Supported | Per-user `systemd` unit (`linkmyphone.service`) tied to the graphical session. |
-| **Rich text & HTML clipboard** | Implemented | HTML fragments in both directions; optional GTK4 provider also offers plain text. Live phone validation remains required. |
-| **Image clipboard** | Implemented | PNG transfer, JPEG/GIF/BMP input normalization, outbound resizing to 1 MiB; incoming dimensions preserved, and existing DCG fragmentation. Live phone validation remains required. |
+| **Rich text & HTML clipboard** | Supported | Bidirectional HTML fragments; optional GTK4 provider also offers plain text. Rich formatting is supported through HTML, not a separate RTF codec. |
+| **Image clipboard** | Supported | Bidirectional PNG transfer with JPEG/GIF/BMP input normalization. Incoming dimensions are preserved; only outbound images are resized to fit 1 MiB. |
 | **Session recovery & refresh** | Partial | Long-running relay reconnect, sleep/wake recovery, and active-session token refresh remain open. |
 | **Notifications** | Not implemented | Push notification forwarding, dismissal synchronization, and inline quick-replies. |
 | **Messages (SMS / RCS)** | Not implemented | Reading SMS/RCS conversations, sending text messages, and MMS media attachments. |
@@ -137,7 +140,7 @@ go test ./...
 go test -race ./...
 ```
 
-The [testing guide](docs/developer/testing.md) covers prerequisites and which checks prove which behavior. GitHub Actions runs on the clipboard development branch and through manual dispatch. Automated tests do not establish live Microsoft or phone compatibility.
+The [testing guide](docs/developer/testing.md) covers prerequisites and which checks prove which behavior. GitHub Actions runs only on pushes to `main`, including merged pull requests and direct pushes. Feature-branch pushes, open pull requests and manual dispatch do not trigger CI. Automated tests do not establish live Microsoft or phone compatibility.
 
 The repository does not track the original decompiled Windows sources or production capture logs. The [research record](docs/research/README.md) identifies the available evidence and its limits.
 

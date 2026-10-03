@@ -13,7 +13,8 @@ The [baseline README at `e51728b`](https://github.com/YMGPwcca/phonelink-linux/b
 | Session and clipboard | Session capability versions were observed on one S23; PubSub direction is asymmetric; STATUS is optional in later runs; correlation snapshots and generation tombstones prevent stale content. |
 | Ordering and native clipboard | Receive handling continues while publication waits; a 3-second echo barrier handles remote-write races; Wayland writes avoid inherited pipe blocking and debounce transient nil selection. |
 | Runtime and service | Shared host and feature lifecycle are separate; capability registration and Ready use separate locks; live CRUD reserves the startup socket; systemd readiness follows the graphical session. |
-| Limits | Long-running reconnect, repeated wake/re-presence, active-session token refresh, X11, other compositors, other phones, and Windows WAM execution remain unvalidated in the tracked record. |
+| Rich clipboard | Text/HTML/images are supported; incoming image dimensions are preserved, and the 1 MiB PNG budget applies only to outbound preparation. Live owner reports and X11 integration tests are recorded separately. |
+| Limits | Long-running reconnect, repeated wake/re-presence, active-session token refresh, live authenticated X11, other compositors, other phones, and Windows WAM execution remain unvalidated in the tracked record. |
 
 Each result keeps its evidence trail in an expandable section. Findings and uncertainty stay visible; open the evidence when tracing a source, test, or corrective commit.
 
@@ -259,3 +260,9 @@ CachyOS/Wayland reports cover installation, empty-selection startup, restart, st
 Long-running reconnect after relay or network failure, repeated peer wake/re-presence, and token refresh during an active session remain open. Live reports cover one linked S23 and a Wayland desktop; X11, other compositors, other phone models, and Windows WAM execution were not live validated in the tracked record.
 
 Protocol versions, tag 9, enum values, capability versions 14 and 3, and advertised compatibility metadata describe particular contracts or observations. They do not guarantee interoperability with arbitrary peers. The [validation record](validation.md) preserves reported checks and limits; [history](history.md) links corrective commits.
+
+## Rich content and image direction (2026-10-03)
+
+The initial image implementation normalized received JPEG/BMP to PNG and then applied the outbound 1 MiB budget to that desktop PNG. This caused a second resize when the PNG expanded, even though Android had already prepared the transfer. Windows receive creates its clipboard bitmap without that extra resize. Commit `7f999f3` separates incoming normalization from outbound preparation and retains full native image bytes for echo suppression.
+
+The owner subsequently pasted the same phone image on Linux and Windows and reported **1572×2096** on both. For another same-source image sent from the PCs to Android, Linux produced **583×1036**, Windows **310×551**; the owner judged Linux better in that case. Windows uses high-quality bicubic while Linux retains independent area-average resampling and different size selection. These are sample observations, not a universal quality ranking. See [content evidence](clipboard-content.md) and [validation](validation.md#clipboard-validation-2026-10-03).

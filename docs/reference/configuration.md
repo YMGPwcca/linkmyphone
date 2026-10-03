@@ -123,7 +123,7 @@ The store writes mode `0600` files under a mode `0700` directory and replaces th
 
 ## Clipboard configuration
 
-The catalog's only built-in feature has ID `linkmyphone.clipboard`, version `0.1.0`, and this default configuration:
+The catalog's only built-in feature has ID `linkmyphone.clipboard`, version `0.2.0`, and this default configuration:
 
 | Property | Type and range | Default | Effect |
 | --- | --- | --- | --- |

@@ -61,7 +61,7 @@ go test ./cmd/linkmyphone -run 'TestFeatureCommand'
 go test ./features/clipboard -run 'TestConfig|TestManifest|TestInstanceStop'
 ```
 
-The CI workflow at [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs on pushes to `feature/clipboard-content` and through `workflow_dispatch`. It uses the Go version declared by `go.mod`, runs vet and build, then runs the full race suite under Xvfb with real X11 MIME transfers. Format changed Go files with `gofmt`. No separate linter, release command, or coverage threshold is configured here.
+The CI workflow at [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs only on pushes to `main` (merged pull requests or direct pushes); feature pushes, open pull requests and manual dispatch do not trigger it. It uses the Go version declared by `go.mod`, runs vet and build, then runs the full race suite under Xvfb with real X11 MIME transfers. Format changed Go files with `gofmt`. No separate linter, release command, or coverage threshold is configured here.
 
 ## Invariant map
 
@@ -80,7 +80,7 @@ Run the test package that owns the invariant after changing its implementation. 
 | Startup and shutdown handler transitions are visible without replacing the socket; handler panic is isolated; active handlers drain on close | `runtime/controlplane/controlplane_test.go`, `cmd/linkmyphone/runtime_run.go` |
 | Connected CLI mutations do not fall back to offline persistence when the runtime rejects them; stale records can be disabled and deleted | `cmd/linkmyphone/feature_test.go` |
 | Offline feature create, update, toggle, delete, manifest lookup, and default configuration follow the catalog contract | `cmd/linkmyphone/feature_test.go`, `features/catalog_test.go` |
-| Clipboard config rejects unknown and out-of-range values and the manifest exposes all three text capabilities | `features/clipboard/config_test.go` |
+| Clipboard config rejects unknown and out-of-range values and the manifest exposes text capabilities plus HTML/image capabilities on rich providers | `features/clipboard/config_test.go` |
 | Clipboard stop does not spend the full request timeout on advisory `FEATURE_OFF` and is idempotent after cancellation | `features/clipboard/module_test.go` |
 | Clipboard protocol codecs, platform routes, MSAEP envelopes, DCG fragments, SignalR framing, and relay transport preserve their wire contracts | `protocol/**`, `transport/**`, `clipboard/*_test.go` |
 | Native clipboard commands avoid a shell, detect supported Wayland or X11 utilities, normalize empty Wayland selection, and frame watch-helper events | `clipboard/native_test.go`, `clipboard/native_watch_test.go` |
@@ -131,3 +131,14 @@ go run ./cmd/linkmyphone service uninstall
 Rich Wayland and X11 providers poll MIME offers. Empty selections are debounced and re-read before publication. The legacy text watcher remains available for text-only providers. A desktop smoke should observe local copy, phone-to-Linux write, reflected-echo suppression, genuine clear, and clean Ctrl+C or service stop. Keep clipboard text non-sensitive. `service install` changes the user executable and systemd unit, so use a disposable user environment when testing installation behavior.
 
 The archived project findings include dated Wayland, S23, and systemd validation reports, plus race-test repetitions. Those reports are evidence of the environments described at the time, not a promise that an untested machine or a current Microsoft service will behave the same way.
+
+## Rich clipboard regression and live evidence
+
+```bash
+go test -race ./clipboard ./features/clipboard ./protocol/clipboard
+LINKMYPHONE_NATIVE_INTEGRATION=1 xvfb-run -a go test -race ./...
+```
+
+The second command requires Xvfb, xclip, Python GI and GTK4, matching CI. Content tests cover explicit-empty text, UTF-16 limits, immutable typed snapshots, fragmented image payloads, malformed/oversized input, BMP/JPEG conversion, incoming dimension preservation, and the outbound budget on both snapshots and live CONTENT fallback. Native tests check MIME preference, bounded command output, full PNG observer/cache bytes above 1 MiB and actual X11 text/HTML/image round-trips. Feature tests cover format-aware echo suppression.
+
+[CI run 37098891014](https://github.com/YMGPwcca/linkmyphone/actions/runs/37098891014) passed vet, build and the full race suite with X11 transfers at `7f999f3`, before CI was restricted to main. Owner-reported live checks on 2026-10-03 now establish received HTML and bidirectional image pastes on Wayland/S23, including image comparisons with Windows. Those reports are recorded separately in [validation](../research/validation.md#clipboard-validation-2026-10-03); automated tests do not replace them. Run local checks before merging because this workflow runs after main updates, not as a pre-merge gate.

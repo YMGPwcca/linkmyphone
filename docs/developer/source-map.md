@@ -59,7 +59,7 @@ flowchart TD
 
 | Path | Role and entry points |
 | --- | --- |
-| [`clipboard`](../../clipboard) | Domain clipboard client and native Linux integration. `client.go` owns request dispatch, correlation snapshots, generation ordering, publication, phone CONTENT pulls, and feature-state requests. `native.go` detects and invokes Wayland or X11 text utilities without a shell. `native_watch.go` frames `wl-paste --watch` events and implements the hidden helper. |
+| [`clipboard`](../../clipboard) | Domain clipboard client and native Linux integration. `client.go` owns request dispatch, correlation snapshots, generation ordering, publication, phone CONTENT pulls, and feature-state requests. `content.go` validates typed content, preserves received dimensions and prepares outbound PNG. `native_content.go` discovers and transfers MIME selections; `html_offer.py` offers HTML plus plain text. `native.go` detects and invokes Wayland or X11 utilities without a shell. `native_watch.go` frames `wl-paste --watch` events and implements the hidden helper. |
 | [`protocol/clipboard`](../../protocol/clipboard) | Clipboard request, response, item, PubSub, and Device Resource Manager codecs. |
 | [`protocol/platform`](../../protocol/platform) | PLATFORM message headers, routes, and binary message framing. |
 | [`protocol/msaep`](../../protocol/msaep) | MSAEP envelope and message-tag encoding used by cloud PubSub. |
@@ -69,8 +69,8 @@ flowchart TD
 
 | Direction | Clipboard behavior |
 | --- | --- |
-| Linux to phone | Observe local text, publish tag 9 through `PubSubPayload.Data`, then answer the phone's matching CONTENT request with the snapshot. |
-| Phone to Linux | Decode tag 9 from `PubSubPayload.Additional`, pull CONTENT through the endpoint, then apply the response to the native clipboard. |
+| Linux to phone | Observe typed local content, prepare outbound PNG within 1 MiB when applicable, publish tag 9 through `PubSubPayload.Data`, then answer the phone's matching CONTENT request with the snapshot. |
+| Phone to Linux | Decode tag 9 from `PubSubPayload.Additional`, pull CONTENT through the endpoint, then normalize supported IMAGE bytes to PNG without resizing, then apply typed text/HTML/image content to the native clipboard. |
 
 All raw incoming relay traffic passes through the shared router before a matcher-scoped feature endpoint. The endpoint is the clipboard client's transport; only the router consumes raw `Received()` traffic.
 

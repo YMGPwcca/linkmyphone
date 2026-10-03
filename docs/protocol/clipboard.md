@@ -57,7 +57,7 @@ phone-to-Linux publication
   -> CLIPBOARD_CHANGE correlation_id
   -> PLATFORM /DeviceResourceManager GET /clipboard CONTENT
   -> PLATFORM /internal/response with _originalRequestId
-  -> ClipboardResponseMessage OK + text/plain item
+  -> ClipboardResponseMessage OK + IMAGE / TEXT_HTML / TEXT_PLAIN item
   -> Linux clipboard backend
 ```
 
@@ -70,13 +70,13 @@ For phone-to-Linux publication, the phone puts the serialized change response in
 | Concern | Implemented behavior |
 | --- | --- |
 | Wire direction | PC publication uses `PubSubPayload.Data`; phone publication uses `Additional`. A phone publication containing only `Data` is rejected. |
-| Clipboard type | The Linux feature accepts successful `TEXT_PLAIN` responses. Codecs represent `IMAGE` and `TEXT_HTML`, but the native feature does not advertise or apply them. |
+| Clipboard type | The Linux feature accepts successful `IMAGE`, `TEXT_HTML` and `TEXT_PLAIN` responses. Rich native providers advertise and apply all three; `xsel` advertises text only. |
 | Resource request | Clipboard uses `UNKNOWN=4`, `GET=1`, and resource path `/clipboard`. |
 | Correlation | PLATFORM `_requestId` matches `_originalRequestId`; inner clipboard correlation must also match. |
 | Snapshots | Exact published content is retained for two minutes, up to 64 entries and 16 MiB total. Retired IDs are bounded to 256 entries and have no time expiry. |
 | Stale content | Known retired or superseded IDs return `INVALID_CONTENT` with `ErrorType=REJECT`. The bounded retirement history and unknown-ID fallback are explained below. |
 | Ordering | One generation domain covers local and remote changes. New remote generations cancel older pulls and supersede older versioned local snapshots. |
-| Echo | The origin barrier lasts 3 seconds. CRLF/LF and one terminal newline are normalized for comparison while protocol bytes remain unchanged. |
+| Echo | The origin barrier lasts 3 seconds. Hashes include content type and full desktop bytes. Plain-text comparison normalizes CRLF/LF and one terminal newline while publication preserves its original text. |
 | Safety | CLI probes never print clipboard text, explicit probe text is limited to 4096 bytes, and sensitive command-line arguments can remain in shell history. |
 
 ## Protobuf-compatible messages
@@ -235,14 +235,14 @@ The normal client answers inbound resource requests in a worker. It filters by c
 
 `clipboard.Client.request` matches the pending response by `_originalRequestId`, then checks that the inner response correlation equals the request correlation. A mismatch is an error, preventing one phone response from completing another local request. See [`clipboard/client.go`](../../clipboard/client.go#L463-L515).
 
-A PC publication records exact content under its correlation ID before sending `CLIPBOARD_CHANGE`. If the desktop clipboard changes before the phone asks for CONTENT, that live correlation still receives the advertised text. Snapshots expire after two minutes and are bounded to 64 entries and 16 MiB total. Expired or evicted snapshots are retired. Duplicate CONTENT requests do not retire a live snapshot and return the same snapshot, covering peer retry without replacing it with newer local text. A retained retired correlation returns `INVALID_CONTENT` with `ErrorType=REJECT`. The retired-ID map is bounded to 256 entries and has no time expiry, so rejection is not an unlimited historical guarantee once older tombstones are evicted. See [`clipboard/client.go`](../../clipboard/client.go#L205-L343), [`clipboard/client.go`](../../clipboard/client.go#L361-L405), and [`clipboard/client_test.go`](../../clipboard/client_test.go#L611-L682).
+A PC publication records exact content under its correlation ID before sending `CLIPBOARD_CHANGE`. If the desktop clipboard changes before the phone asks for CONTENT, that live correlation still receives the advertised typed content. Snapshots expire after two minutes and are bounded to 64 entries and 16 MiB total. Expired or evicted snapshots are retired. Duplicate CONTENT requests do not retire a live snapshot and return the same snapshot, covering peer retry without replacing it with newer local content. A retained retired correlation returns `INVALID_CONTENT` with `ErrorType=REJECT`. The retired-ID map is bounded to 256 entries and has no time expiry, so rejection is not an unlimited historical guarantee once older tombstones are evicted. See [`clipboard/client.go`](../../clipboard/client.go#L205-L343), [`clipboard/client.go`](../../clipboard/client.go#L361-L405), and [`clipboard/client_test.go`](../../clipboard/client_test.go#L611-L682).
 
 ## Generation ordering and tombstones
 
 The modular and continuous paths use one monotonically increasing generation domain for local and remote changes:
 
 1. Reserve a local generation when the native observer sees a change, before the publication worker sends it.
-2. Store the local text snapshot with its generation and correlation ID.
+2. Prepare outbound image bytes if needed, then store the typed content snapshot with its generation and correlation ID.
 3. Reserve a remote generation when a phone publication arrives.
 4. Advance the publication floor and mark older versioned local snapshots as superseded.
 5. Cancel an older phone CONTENT pull when a newer phone publication arrives.
@@ -273,4 +273,6 @@ The native runtime supports text, HTML and images through wl-clipboard and xclip
 
 The feature depends on Microsoft cloud services and a linked peer. Long-running relay reconnect, wake recovery, and token-refresh resilience remain open. A successful finite CONTENT exchange does not establish indefinite synchronization after sleep, network loss, or token expiry.
 
-Incoming IMAGE bytes use the 16 MiB encoded-input budget and 32-million-pixel limit before PNG normalization. Incoming conversion preserves decoded dimensions. Desktop PNG output has a separate 128 MiB safety budget; it is not constrained by the 1 MiB outbound transfer limit. Native reads retain that full representation for echo suppression. Every outbound image, including live CONTENT request fallback, is prepared as PNG within 1 MiB before transmission. Registered decoders are PNG, JPEG, GIF and BMP.
+Incoming IMAGE bytes use the 16 MiB encoded-input budget and 33554432-pixel limit before PNG normalization. Incoming conversion preserves decoded dimensions. Desktop PNG output has a separate 128 MiB safety budget; it is not constrained by the 1 MiB outbound transfer limit. Native reads retain that full representation for echo suppression. Every outbound image, including live CONTENT request fallback, is prepared as PNG within 1 MiB before transmission. Registered decoders are PNG, JPEG, GIF and BMP.
+
+HTML and image support has live owner reports on Wayland/S23; [validation](../research/validation.md#clipboard-validation-2026-10-03) separates those reports from automated codec and transport tests. Incoming dimension parity with Windows was observed for one image. Outbound encoding shares the PNG/1 MiB contract but uses independent resampling and size selection, so exact Windows output parity is not promised.

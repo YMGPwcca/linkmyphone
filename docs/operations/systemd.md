@@ -174,3 +174,14 @@ The dated systemd install, readiness, empty-clipboard, restart, stop/start, logo
 Long-running reconnect, wake, and token-refresh resilience remains open. A service restart policy handles process failure; it does not establish full Phone Link recovery behavior after every network, suspend, or credential interruption.
 
 The unit source is [`packaging/systemd/linkmyphone.service`](../../packaging/systemd/linkmyphone.service); installer behavior is implemented in [`cmd/linkmyphone/service.go`](../../cmd/linkmyphone/service.go) and covered by [`cmd/linkmyphone/service_test.go`](../../cmd/linkmyphone/service_test.go).
+
+## Updating an older phonelink-linux installation
+
+The old executable and user unit may still be named `phonelink-linux` and `phonelink-linux.service`. A newly built `linkmyphone service stop` targets `linkmyphone.service`; it does not stop the old unit. Stop the actual old unit before running the new foreground binary:
+
+```bash
+systemctl --user stop phonelink-linux.service
+./linkmyphone clipboard-sync --state "$HOME/.config/phonelink-linux/state.json"
+```
+
+This reuses existing enrollment and starts the current clipboard module without editing the feature registry. For a permanent update, stop the foreground process and configure the new unit's state path before installing/starting it. Keep only one clipboard runtime active; see the custom-profile instructions above.

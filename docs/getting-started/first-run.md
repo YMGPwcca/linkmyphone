@@ -111,6 +111,8 @@ The first host startup can take time while authentication, trust refresh, peer w
 4. Check the runtime's direction and byte-count events. The logs intentionally omit the copied text.
 5. Press Ctrl+C and confirm that the module stops cleanly.
 
+Also copy a formatted HTML fragment and an image in each direction. Use an HTML-capable paste target for formatting and the same image file when comparing Linux with Windows. Check dimensions and successful paste; rich content support is documented in the [clipboard guide](../user-guide/clipboard.md).
+
 The clipboard value present before startup is not sent by default. Test with a new copy after readiness, and avoid passwords or private text while synchronization is enabled. The [clipboard guide](../user-guide/clipboard.md) explains initial publication, clear events, conflicts, and reflected updates.
 
 <details>

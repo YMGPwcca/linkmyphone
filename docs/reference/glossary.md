@@ -65,10 +65,10 @@ The [clipboard protocol reference](../protocol/clipboard.md) explains how correl
 | Control plane | The local, versioned JSON request/response protocol over a Unix socket used by `feature` commands to reconcile a running runtime. |
 | Auth state | `state.json`: enrollment, credentials, keys, certificates, trust, and account metadata. Treat it as a secret. |
 | Feature store | `features.json`: installed feature records and configuration. It is separate from authentication state. |
-| Native observer | The desktop source of clipboard-change events, normally `wl-paste --watch` on Wayland. |
+| Native observer | The desktop source of clipboard-change events, MIME polling on rich backends; the legacy plain-text path can use `wl-paste --watch` on Wayland. |
 | Polling fallback | Repeated native reads used on X11 or when Wayland watching is unavailable or fails. |
 | Nil debounce | The 100 ms delay used to distinguish a genuine Wayland selection clear from a transient ownership handoff. |
-| Echo suppression | Avoiding a phone-originated or reflected clipboard update being published back as a new Linux change. The origin barrier tracks both normalized text hashes for three seconds; it does not filter sensitive clipboard content. |
+| Echo suppression | Avoiding a phone-originated or reflected clipboard update being published back as a new Linux change. The origin barrier tracks previous and incoming format-aware content hashes for three seconds; plain-text comparison normalizes line endings; it does not filter sensitive clipboard content. |
 | Graphical-session service | A systemd user unit enabled under and coupled to `graphical-session.target`. It follows the desktop login session. |
 
 For lifecycle, dependency, capability, and snapshot rules, see [architecture](../architecture/overview.md) and [feature modules](../architecture/modules.md). For socket reconciliation, see [control plane](../architecture/control-plane.md). For stored options, see [configuration](configuration.md), and for operational clipboard behavior, see [clipboard behavior](../user-guide/clipboard.md).

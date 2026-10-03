@@ -4,7 +4,7 @@
 
 The executable is `linkmyphone`. Go's standard flag parser is used for each command, so put flags before positional IDs, for example `feature get --state PATH ID` and `feature update --enabled true ID`.
 
-Run `linkmyphone help` for the top-level list. Commands return a non-zero status on invalid arguments or an operational failure. Secrets and clipboard text are intentionally omitted from probe output.
+Run `linkmyphone help` for the top-level list. Commands return a non-zero status on invalid arguments or an operational failure. Secrets and clipboard contents are intentionally omitted from probe output.
 
 ## Choose a command
 
@@ -104,7 +104,7 @@ The runtime rejects non-positive timeout and TTL values. It creates a control so
 
 | Flag | Default | Effect |
 | --- | --- | --- |
-| `--poll-interval DURATION` | `500ms` | Fallback clipboard polling interval. It must be between `50ms` and `60s`. |
+| `--poll-interval DURATION` | `500ms` | MIME observation interval on rich providers; fallback polling interval on text-only providers. It must be between `50ms` and `60s`. |
 | `--publish-initial` | `false` | Publishes the current Linux clipboard once after startup. |
 
 The host flags are `--state`, `--app-version`, `--ring`, `--os-version`, `--target`, `--signalr-timeout`, `--wake-timeout`, `--wake-ttl`, and `--request-timeout`, with the `run` defaults above.

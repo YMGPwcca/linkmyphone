@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md)
 
-The clipboard module synchronizes plain text, HTML fragments and images through the existing CDEH/DCG clipboard.v1 publication and CONTENT exchange. This release adds rich content; authenticated HTML/image compatibility still requires a real phone test.
+The clipboard module synchronizes plain text, HTML fragments and images through the existing CDEH/DCG clipboard.v1 publication and CONTENT exchange. Plain text, Rich text & HTML clipboard, and Image clipboard are Supported. Live checks on CachyOS/Wayland with a Samsung S23 include received HTML and image pastes in both directions; see [validation](../research/validation.md#clipboard-validation-2026-10-03). Rich formatting uses HTML fragments; arbitrary RTF and document formats are not supported.
 
 ## Providers
 
@@ -29,7 +29,7 @@ Enable an existing record rather than creating it twice. See [first run](../gett
 
 ## Limits and ordering
 
-Text and HTML must be valid UTF-8 and contain fewer than 131072 UTF-16 units; an emoji outside the BMP counts as two units. Images received from the phone are converted to PNG without resizing: their decoded dimensions are preserved, even when PNG encoding exceeds 1 MiB. Android may already have reduced the image before sending it. Only Linux → phone images are resized when necessary to fit 1048576 PNG bytes. Incoming phone encodings and non-PNG native input are capped at 16 MiB; desktop PNGs at 128 MiB and decoded dimensions at 32 million pixels. Outbound resizing may lose detail. Valid native PNGs retain their exact bytes until outbound preparation.
+Text and HTML must be valid UTF-8 and contain fewer than 131072 UTF-16 units; an emoji outside the BMP counts as two units. Images received from the phone are converted to PNG without resizing: their decoded dimensions are preserved, even when PNG encoding exceeds 1 MiB. Android may already have reduced the image before sending it. Only Linux → phone images are resized when necessary to fit 1048576 PNG bytes. Incoming phone encodings and non-PNG native input are capped at 16 MiB; desktop PNGs at 128 MiB and decoded dimensions at 33554432 pixels (32 Mi pixels). Outbound resizing may lose detail. Valid native PNGs retain their exact bytes until outbound preparation.
 
 Published snapshots retain the advertised type, bytes and timestamp for two minutes, at most 64 entries and 16 MiB in aggregate. A matching CONTENT request receives that snapshot rather than an unrelated new selection. Newer phone/local generations suppress stale writes; superseded correlations are rejected. Format-aware hashes suppress reflected copies using the full desktop representation, before outbound resizing. There is no clipboard history or secret filter. Clipboard contents pass through Microsoft services; stop synchronization before copying secrets.
 
@@ -45,3 +45,11 @@ Use non-sensitive samples in both directions:
 6. Stop/restart the module and verify initial publication follows configuration.
 
 Deterministic tests cover these content contracts and simulated fragmented relay transfers. They do not establish authenticated cloud compatibility. Existing relay reconnect, sleep/wake recovery and active-session token refresh limitations still apply. See [testing](../developer/testing.md) and [privacy](../operations/privacy-and-state.md).
+
+## Image behavior compared with Windows
+
+Phone → Linux conversion preserves the dimensions Android sends, as Windows does on receive. A live comparison on 2026-10-03 pasted the same phone image into both Linux and Windows at **1572×2096**. This verifies dimensions for that sample, not pixel-for-pixel equality for all images.
+
+Linux → phone sends PNG within **1048576 bytes (1 MiB)**. Linux uses independent area-average resampling and a different size-selection policy from Windows' high-quality bicubic path. In one owner-reported comparison of the same test image, Linux produced **583×1036** (displayed as 1.05 MB), while Windows produced **310×551** (displayed as 330 KB); the owner judged the Linux result better. Displayed file sizes are rounded, not exact wire-byte counts. This is a sample result, not a universal quality guarantee or exact Windows output parity.
+
+To compare your own image, copy the same source file on both computers and paste into the same Android app without further recompression. Compare received dimensions, small text, fine edges and texture at the same displayed size. Inspect exact bytes if a file manager's rounded size appears to exceed 1 MiB.

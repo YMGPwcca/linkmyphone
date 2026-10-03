@@ -42,7 +42,10 @@ flowchart TD
 | `clipboard: no supported Linux clipboard backend found` | Native clipboard startup | Install `wl-clipboard`, `xclip`, or `xsel`; ensure the selected graphical session's provider is on `PATH`. |
 | `wl-paste` or `wl-copy` connection error | Wayland environment | Check `WAYLAND_DISPLAY`, the user manager environment, and access to the current compositor. For a service, run `service import-environment` and restart. |
 | `xclip` or `xsel` connection error | X11 environment | Check `DISPLAY`, `XAUTHORITY`, and the X11 provider from the same user session that runs the process. |
-| `native clipboard text exceeds 4194304 bytes` | Local clipboard limit | Use text under 4 MiB. This feature does not handle larger or binary selections. |
+| `clipboard: content too large` | Typed content budget | Text/HTML must stay below 131072 UTF-16 units. Phone image input is capped at 16 MiB, desktop PNG at 128 MiB and decoded dimensions at 33554432 pixels. Only outbound PNG must fit 1 MiB. |
+| `clipboard: unsupported content` | MIME or codec | Supported images are PNG/JPEG/GIF/BMP. File selections, HEIC/AVIF/TIFF/WebP and malformed images are skipped; a later supported copy can resume sync. |
+| HTML pastes into a rich editor but not a text-only app | Native HTML offer | Install Python 3, PyGObject and GTK4 for the dual HTML/plain-text provider. `xsel` supports only plain text. |
+| Received phone image is smaller than the original file | Sender or old binary | Android may scale before sending. Current Linux conversion preserves received dimensions; rebuild and run the new binary if Linux still shrinks more than Windows. |
 | `native clipboard watch unavailable; using polling fallback` | Watcher | The module continues with `poll_interval_ms`. If polling fails, inspect the following error and provider logs. |
 | Module is not `Ready` | Feature lifecycle | Run `feature get linkmyphone.clipboard` and inspect the runtime snapshot. A disabled record, invalid config, unavailable provider, or failed host stage prevents readiness. |
 | `runtime is starting; retry the feature command` | Control plane startup | Wait for systemd readiness or the interactive runtime's ready message, then retry. The command intentionally does not make an offline edit during startup. |

@@ -23,7 +23,7 @@ The default authentication state is `~/.config/linkmyphone/state.json`. It store
 - enrollment account certificate and root certificate chain;
 - account metadata and linked-device trust relationships.
 
-The default feature registry is `~/.config/linkmyphone/features.json`. It stores desired feature IDs, enabled flags, and feature configuration. The built-in clipboard configuration contains timing values and `publish_initial`; it is not a clipboard history and does not contain clipboard text.
+The default feature registry is `~/.config/linkmyphone/features.json`. It stores desired feature IDs, enabled flags, and feature configuration. The built-in clipboard configuration contains timing values and `publish_initial`; it is not a clipboard history and does not contain clipboard contents.
 
 The runtime control socket is a user-local Unix socket derived from the absolute feature-store path. It is created under `$XDG_RUNTIME_DIR/linkmyphone/` when the path fits the Unix socket limit, with a short `/tmp/linkmyphone-<uid>/` fallback otherwise. The directory is mode `0700` and socket mode is `0600`.
 
@@ -66,3 +66,7 @@ If a maintainer requests a state fixture for a parser defect, create a separate 
 See [troubleshooting](troubleshooting.md) for stage-specific recovery and [configuration](../reference/configuration.md) for the complete stored-field reference.
 
 The state implementation and permission tests are [`auth/state/store.go`](../../auth/state/store.go) and [`auth/state/store_test.go`]; clipboard transfer behavior is in [`clipboard/client.go`](../../clipboard/client.go) and [`features/clipboard/sync.go`](../../features/clipboard/sync.go).
+
+## Content held in memory
+
+Published typed snapshots contain text, HTML or outbound PNG, retained for up to two minutes, at most 64 entries and 16 MiB total. The native image cache retains the latest normalized desktop image; its PNG budget is 128 MiB and decoded images are bounded to 33554432 pixels. These limits are distinct from outbound PNG's 1 MiB budget. They are not a total process-memory ceiling: decoding, encoding and clones allocate additional memory. Received HTML may be owned by a GTK clipboard helper until another selection replaces it. No disk clipboard history is implemented; desktop clipboard managers and receiving apps may retain their own copies.
