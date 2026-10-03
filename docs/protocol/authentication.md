@@ -61,7 +61,7 @@ The production service base is `https://dcg.microsoft.com/`, with default Hub en
 | Relay and wake | Assigned SignalR shards use the `general` DCG services token; wake uses a trust-identity `DCG-CryptoWakeJwt`. |
 | Resume | Refresh the MSA token, obtain a fresh nonce, call `/Auth/SignIn`, and keep the same DCG client ID. |
 
-Cloud services are required for account tokens, identity, enrollment, trust discovery, relay, and wake. The repository makes no offline-operation claim. Long-running reconnect, peer wake recovery, and token-refresh resilience remain open; finite probes and startup paths do not establish indefinite availability.
+Cloud services are required for account tokens, identity, enrollment, trust discovery, relay, and wake. The repository makes no offline-operation claim. Automatic reconnect, peer wake recovery and token renewal are implemented with local regression tests; live recovery/soak validation remains pending; finite probes and startup paths do not establish indefinite availability.
 
 ## Identity and token roles
 
@@ -222,4 +222,4 @@ The historical S23 probe observed versions 14 and 3 for persistent messaging and
 
 ## Current boundary
 
-Microsoft cloud services are required for account tokens, identity, enrollment, trust discovery, relay, and wake. The repository has no claim of offline operation. Long-running reconnect, peer wake recovery, and token-refresh resilience remain open. The probes and normal startup paths are finite workflows; they do not establish indefinite session availability.
+Microsoft cloud services are required for account tokens, identity, enrollment, trust discovery, relay, and wake. The repository has no claim of offline operation. Automatic reconnect, peer wake recovery and token renewal are implemented with local regression tests; live recovery/soak validation remains pending. The probes and normal startup paths are finite workflows; they do not establish indefinite session availability.

@@ -41,3 +41,7 @@ For a new investigation, record the environment and evidence before drawing a co
 ## Current rich clipboard evidence
 
 [Clipboard content implementation evidence](clipboard-content.md) records the supplied source observations, independent implementation, BMP dependency and image direction policy. The [2026-10-03 validation](validation.md#clipboard-validation-2026-10-03) records live HTML/image results, the incoming 1572×2096 comparison, and the outbound Linux/Windows test-image results. These support the current Supported status; they do not establish arbitrary rich-text formats, every device, or durable reconnect.
+
+## Session resilience evidence
+
+[Session resilience](../architecture/session-resilience.md) records the supplied Windows and Android source observations, Linux policy choices, recovery ownership and local fault tests. [Session recovery](../operations/session-recovery.md) lists the live checks still needed; [validation](validation.md#session-resilience-2026-10-03) records the current verification boundary.

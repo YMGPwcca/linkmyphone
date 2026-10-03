@@ -233,7 +233,7 @@ Use the first failing layer to classify a failure:
 
 | Boundary | Typical failure | Retry behavior |
 | --- | --- | --- |
-| WebSocket or negotiate | No binary WebSocket, invalid handshake, read failure | Account bootstrap (`OpenCloudRelay`) tries assigned shards during setup; SignalR `Dial` negotiates one endpoint. Long-running reconnect remains open. |
+| WebSocket or negotiate | No binary WebSocket, invalid handshake, read failure | Account bootstrap (`OpenCloudRelay`) tries assigned shards during setup; SignalR `Dial` negotiates one endpoint. The runtime supervisor reopens failed sessions; SignalR adds keepalive and server-silence deadlines. |
 | SignalR frame or MessagePack | Invalid length, malformed record, unexpected text after handshake | Fail the relay read loop |
 | Hub Completion | `SendMessageAsync` rejected | Return a Hub rejection; do not call it a peer ACK |
 | DCG ACK | `Success=false`, missing ACK, or timeout | Negative ACK fails immediately. Timeout retries retain the sequence and stop at retry count or context cancellation. |
@@ -241,4 +241,4 @@ Use the first failing layer to classify a failure:
 | PLATFORM | Unsupported version, malformed headers, trailing bytes | Reject that payload |
 | Application response | Wrong route, source, request ID, or clipboard correlation | Ignore unrelated messages while explicitly waiting, or return a correlation error for its own response |
 
-Long-running reconnect, wake retry, and token-refresh resilience remain open even though finite fragment retries and account-level shard selection are implemented.
+The [session supervisor](../architecture/session-resilience.md) adds whole-session recovery to finite fragment retries and shard selection. A failed in-flight CONTENT exchange is not replayed into the next generation. Live reconnect, wake/re-presence and long-session token renewal still need validation.

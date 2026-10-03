@@ -271,7 +271,7 @@ No clipboard text is printed by the CLI. Documented probes limit explicit probe 
 
 The native runtime supports text, HTML and images through wl-clipboard and xclip; xsel remains text-only. Protocol enum values, platform version, message tag, and resource enum values are compatibility constants. They do not establish full Phone Link parity, arbitrary resource operations, or support for a specific phone model.
 
-The feature depends on Microsoft cloud services and a linked peer. Long-running relay reconnect, wake recovery, and token-refresh resilience remain open. A successful finite CONTENT exchange does not establish indefinite synchronization after sleep, network loss, or token expiry.
+The feature depends on Microsoft cloud services and a linked peer. The runtime now recreates this module after relay/peer loss, suspend gaps or scheduled token renewal. [Session recovery](../operations/session-recovery.md) explains interruption and publication behavior; live recovery/soak validation is pending. A successful finite CONTENT exchange does not establish indefinite synchronization after sleep, network loss, or token expiry.
 
 Incoming IMAGE bytes use the 16 MiB encoded-input budget and 33554432-pixel limit before PNG normalization. Incoming conversion preserves decoded dimensions. Desktop PNG output has a separate 128 MiB safety budget; it is not constrained by the 1 MiB outbound transfer limit. Native reads retain that full representation for echo suppression. Every outbound image, including live CONTENT request fallback, is prepared as PNG within 1 MiB before transmission. Registered decoders are PNG, JPEG, GIF and BMP.
 
