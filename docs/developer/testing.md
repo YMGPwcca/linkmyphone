@@ -45,6 +45,7 @@ The same package commands are useful while changing one owner:
 ```bash
 go test ./runtime/kernel
 go test ./runtime/phonehost
+go test -race ./runtime/phonehost ./bootstrap ./transport/signalr ./transport/wsclient
 go test ./runtime/controlplane
 go test ./features/...
 go test ./clipboard ./protocol/... ./transport/...
@@ -75,6 +76,7 @@ Run the test package that owns the invariant after changing its implementation. 
 | An old instance cannot mutate a replacement epoch; dependency failure degrades active dependents; a stale start is rolled back and its capabilities never become live | `runtime/kernel/registry_test.go` |
 | Stop removes capabilities and remains safe to repeat; stopped update preserves the stopped lifecycle fact | `runtime/kernel/registry_test.go`, `features/clipboard/module_test.go` |
 | The raw relay stream has one receiver; matching messages fan out with copied payloads; a slow bounded endpoint is revoked without harming another endpoint | `runtime/phonehost/router_test.go`, `runtime/phonehost/session_test.go` |
+| Recovery retries transient failures, pins the phone, honors throttling, renews tokens, detects resume/peer loss and preserves rotated credentials | `runtime/phonehost/resilience_test.go`, `bootstrap/resume_persistence_test.go`, `transport/signalr/client_test.go`, `transport/wsclient/shutdown_test.go` |
 | Endpoint close revokes sending and closes receiving; router cancellation and no-subscriber draining work | `runtime/phonehost/router_test.go` |
 | Control requests use version 1, unknown fields fail, socket paths are store-scoped and short, permissions are `0700` for the directory and `0600` for the socket, and stale sockets are replaced safely | `runtime/controlplane/controlplane_test.go` |
 | Startup and shutdown handler transitions are visible without replacing the socket; handler panic is isolated; active handlers drain on close | `runtime/controlplane/controlplane_test.go`, `cmd/linkmyphone/runtime_run.go` |
@@ -112,7 +114,7 @@ go run ./cmd/linkmyphone feature create --enabled linkmyphone.clipboard
 go run ./cmd/linkmyphone run
 ```
 
-With a running `run` process, feature CRUD uses the hashed Unix socket and reports live state and epochs. Long-running reconnect, peer wake after later disconnects, and token refresh during a long session remain open limitations even where dated production validation succeeded for startup and live CRUD. See the [validation research](../research/validation.md) for historical reports and their environment.
+Once `run` is ready, feature commands use its Unix socket and return live module state and epochs. For recovery testing, leave the same process running while interrupting networking or suspending Linux. Check readiness, fresh clipboard transfers and saved feature state after each interruption. The [recovery checklist](../operations/session-recovery.md#live-checks) gives the steps; [validation](../research/validation.md#session-resilience-2026-10-03) records completed runs.
 
 ## Desktop and systemd smokes
 
@@ -141,4 +143,4 @@ LINKMYPHONE_NATIVE_INTEGRATION=1 xvfb-run -a go test -race ./...
 
 The second command requires Xvfb, xclip, Python GI and GTK4, matching CI. Content tests cover explicit-empty text, UTF-16 limits, immutable typed snapshots, fragmented image payloads, malformed/oversized input, BMP/JPEG conversion, incoming dimension preservation, and the outbound budget on both snapshots and live CONTENT fallback. Native tests check MIME preference, bounded command output, full PNG observer/cache bytes above 1 MiB and actual X11 text/HTML/image round-trips. Feature tests cover format-aware echo suppression.
 
-[CI run 37098891014](https://github.com/YMGPwcca/linkmyphone/actions/runs/37098891014) passed vet, build and the full race suite with X11 transfers at `7f999f3`, before CI was restricted to main. Owner-reported live checks on 2026-10-03 now establish received HTML and bidirectional image pastes on Wayland/S23, including image comparisons with Windows. Those reports are recorded separately in [validation](../research/validation.md#clipboard-validation-2026-10-03); automated tests do not replace them. Run local checks before merging because this workflow runs after main updates, not as a pre-merge gate.
+[CI run 37098891014](https://github.com/YMGPwcca/linkmyphone/actions/runs/37098891014) passed vet, build, the full race suite and X11 transfers at `7f999f3`. The [2026-10-03 device tests](../research/validation.md#clipboard-validation-2026-10-03) cover HTML and bidirectional image pastes on S23/Wayland, including the Windows comparison. Run local checks before merging: CI runs after main pushes, and feature branches do not trigger it.

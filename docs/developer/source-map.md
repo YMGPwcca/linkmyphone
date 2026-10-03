@@ -11,6 +11,7 @@ Start here when you know the behavior but not the package. The repository is org
 | CLI dispatch, feature CRUD, runtime startup, or service commands | [`cmd/linkmyphone`](../../cmd/linkmyphone) | [Control-plane contract](../architecture/control-plane.md) |
 | Builtin registration or defaults | [`features/catalog.go`](../../features/catalog.go) | [Module architecture](../architecture/modules.md) |
 | Generic lifecycle, dependencies, epochs, capabilities, or desired state | [`runtime/kernel`](../../runtime/kernel) | [Module architecture](../architecture/modules.md) |
+| Session recovery and token-renewal policy | [resilience.go](../../runtime/phonehost/resilience.go) | [Session resilience](../architecture/session-resilience.md) |
 | Shared cloud session, peer selection, wake, SessionValidation, or feature subscriptions | [`runtime/phonehost`](../../runtime/phonehost) | [Architecture overview](../architecture/overview.md) |
 | Local JSON-over-Unix-socket protocol | [`runtime/controlplane`](../../runtime/controlplane) | [Control-plane contract](../architecture/control-plane.md) |
 | Clipboard behavior or Linux desktop integration | [`clipboard`](../../clipboard) and [`features/clipboard`](../../features/clipboard) | [Clipboard behavior](../user-guide/clipboard.md) |

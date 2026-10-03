@@ -106,6 +106,9 @@ stateDiagram-v2
     [*] --> starting: reserve socket
     starting --> live: load records, start enabled modules
     starting --> stopping: runtime startup fails or is cancelled
+    live --> recovering: host lost or tokens need renewal
+    recovering --> live: replacement host and modules ready
+    recovering --> stopping: terminal failure or shutdown
     live --> stopping: shutdown begins
     stopping --> closed: wait for handlers and remove socket
     closed --> teardown: Registry.StopAll
@@ -118,7 +121,7 @@ The CLI treats a live response error as authoritative. It does not fall back to 
 runtime is stopping
 ```
 
-The server closes before registry teardown and waits for in-flight handlers. Their contexts inherit the runtime context, so a shutdown cancellation can end a pending lifecycle or network wait. The registry then executes reverse actual start-order teardown. This ordering prevents a CLI mutation from racing capability revocation or module stop.
+Recovery cancels the old controller context before swapping the handler. Handler replacement waits for in-flight calls; a cancelled controller rejects further changes. The same reserved socket returns `runtime is recovering; retry the feature command` until the new session and modules are ready. Registry teardown runs after old handlers drain. Final shutdown closes the server and removes the socket after generation cleanup. This prevents a CLI mutation from touching a retired generation. See [session resilience](session-resilience.md).
 
 ## Reconciliation semantics
 

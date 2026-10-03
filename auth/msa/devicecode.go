@@ -59,9 +59,13 @@ type OAuthError struct {
 	Timestamp     string `json:"timestamp,omitempty"`
 	TraceID       string `json:"trace_id,omitempty"`
 	StatusCode    int    `json:"-"`
+	RetryAfter    string `json:"-"`
 }
 
 func (e *OAuthError) Error() string {
+	if e.Code == "http_error" {
+		return fmt.Sprintf("msa: token endpoint HTTP %d", e.StatusCode)
+	}
 	if e.Description == "" {
 		return "msa: oauth error: " + e.Code
 	}
@@ -212,9 +216,10 @@ func (c *DeviceCodeClient) postForm(ctx context.Context, suffix string, form url
 		var oauthErr OAuthError
 		if err := json.Unmarshal(body, &oauthErr); err == nil && oauthErr.Code != "" {
 			oauthErr.StatusCode = resp.StatusCode
+			oauthErr.RetryAfter = resp.Header.Get("Retry-After")
 			return &oauthErr
 		}
-		return fmt.Errorf("msa: token endpoint HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return &OAuthError{Code: "http_error", StatusCode: resp.StatusCode, RetryAfter: resp.Header.Get("Retry-After")}
 	}
 	if out == nil {
 		return nil

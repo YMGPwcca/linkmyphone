@@ -153,8 +153,8 @@ func (c *Client) EnrollDevice(ctx context.Context, msaToken, dcgToken, partnerDe
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return EnrollmentResponse{}, &HTTPError{
-			StatusCode: resp.StatusCode,
-			Body:       strings.TrimSpace(string(body)),
+			StatusCode: resp.StatusCode, RetryAfter: resp.Header.Get("Retry-After"),
+			Body: strings.TrimSpace(string(body)),
 		}
 	}
 	var out EnrollmentResponse

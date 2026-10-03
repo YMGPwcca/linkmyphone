@@ -134,9 +134,9 @@ The controller serializes control requests with one mutex and gives each mutatio
 | Delete | Stop and remove the runtime entry first. | Delete the record. A persistence failure restores the registry entry and enabled instance where possible. |
 | List or get | Read live kernel snapshots. | Return persisted records alongside snapshots. A snapshot includes state, enabled flag, configuration, version, epoch, and the last error when present. |
 
-When shutdown begins, the socket handler changes to `runtime is stopping`. The server closes and waits for in-flight handlers before registry teardown. Operation contexts inherit the runtime context, so cancellation can stop a pending mutation. `StopAll` then stops entries in reverse actual start order, revokes their capabilities, closes the phone session, and removes the socket. Module stop is idempotent.
+When a generation ends, operation contexts are cancelled before the socket handler changes. Handler replacement waits for in-flight calls, then `StopAll` stops entries in reverse actual start order and revokes capabilities. A failed session is closed before module teardown to interrupt blocked network I/O; normal shutdown can send advisory FEATURE_OFF first. The supervisor closes the session before opening a replacement. Final shutdown sets `runtime is stopping` and removes the control socket. Module stop is idempotent.
 
-The control plane does not reconnect the cloud session. Long-running reconnect, peer wake, and token-refresh resilience remain open work even though the startup path and live feature CRUD have been validated against a production S23. See the [validation trail](../research/validation.md) for dated evidence and scope.
+The phone host supervisor now owns automatic session recovery. It closes a failed generation, refreshes authentication and trust, wakes the same selected peer when needed, validates the new PLATFORM session, and recreates enabled modules. The control socket stays reserved and rejects mutations during the handoff. See [session resilience](session-resilience.md) for ownership and [validation](../research/validation.md#session-resilience-2026-10-03) for the remaining live checks.
 
 ## Data and trust boundaries
 

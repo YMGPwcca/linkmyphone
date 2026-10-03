@@ -133,4 +133,4 @@ Implementation references: [`cmd/linkmyphone/main.go`](../../cmd/linkmyphone/mai
 
 ## What remains open
 
-Microsoft cloud services are part of every authenticated run. The current implementation has live validation reports for the bootstrap, relay, SessionValidation, clipboard, modular runtime, and systemd paths. Read the [validation history](../research/validation.md) for the dated scope. Long-running reconnect, wake, and token-refresh resilience remains open. A successful first run does not establish parity with Phone Link after network loss, suspend, logout, or token expiry.
+An internet connection is required for Microsoft sign-in, device trust, relay and wake. `run` reconnects after network loss or suspend and restarts enabled modules. See [session recovery](../operations/session-recovery.md) for what to expect during an interruption, and [test results](../research/validation.md) for the tested devices and remaining checks.

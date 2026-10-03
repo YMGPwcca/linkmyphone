@@ -9,7 +9,7 @@ StartLimitBurst=5
 [Service]
 Type=notify
 NotifyAccess=main
-TimeoutStartSec=90s
+TimeoutStartSec=infinity
 ExecStart=%h/.local/bin/linkmyphone run
 Restart=on-failure
 RestartSec=5s

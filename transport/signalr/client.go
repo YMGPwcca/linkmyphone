@@ -11,28 +11,51 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
+	psignalr "github.com/YMGPwcca/linkmyphone/protocol/signalr"
 	"github.com/YMGPwcca/linkmyphone/transport/wsclient"
 )
 
+const (
+	DefaultHandshakeTimeout  = 15 * time.Second
+	DefaultKeepAliveInterval = 15 * time.Second
+	DefaultServerTimeout     = 45 * time.Second
+)
+
+type HTTPError struct {
+	StatusCode int
+	RetryAfter string
+}
+
+func (e *HTTPError) Error() string { return fmt.Sprintf("signalr: HTTP %d", e.StatusCode) }
+
 type Config struct {
-	HubURL      string
-	AccessToken string
-	Headers     http.Header
-	HTTPClient  *http.Client
+	HubURL            string
+	AccessToken       string
+	Headers           http.Header
+	HTTPClient        *http.Client
+	HandshakeTimeout  time.Duration
+	KeepAliveInterval time.Duration
+	ServerTimeout     time.Duration
 }
 
 type Client struct {
-	ws      *wsclient.Conn
-	pending []byte
+	ws            *wsclient.Conn
+	pending       []byte
+	serverTimeout time.Duration
+	done          chan struct{}
+	keepAliveDone chan struct{}
+	closeOnce     sync.Once
+	closeErr      error
 }
 
 type negotiateResponse struct {
-	ConnectionToken string `json:"connectionToken"`
-	URL             string `json:"url"`
-	AccessToken     string `json:"accessToken"`
-	Error           string `json:"error"`
+	ConnectionToken     string `json:"connectionToken"`
+	URL                 string `json:"url"`
+	AccessToken         string `json:"accessToken"`
+	Error               string `json:"error"`
 	AvailableTransports []struct {
 		Transport       string   `json:"transport"`
 		TransferFormats []string `json:"transferFormats"`
@@ -43,6 +66,20 @@ func Dial(ctx context.Context, cfg Config) (*Client, error) {
 	if cfg.HubURL == "" {
 		return nil, errors.New("signalr: empty hub URL")
 	}
+	if cfg.HandshakeTimeout == 0 {
+		cfg.HandshakeTimeout = DefaultHandshakeTimeout
+	}
+	if cfg.KeepAliveInterval == 0 {
+		cfg.KeepAliveInterval = DefaultKeepAliveInterval
+	}
+	if cfg.ServerTimeout == 0 {
+		cfg.ServerTimeout = DefaultServerTimeout
+	}
+	if cfg.HandshakeTimeout <= 0 || cfg.KeepAliveInterval <= 0 || cfg.ServerTimeout <= cfg.KeepAliveInterval {
+		return nil, errors.New("signalr: timeouts must be positive and server timeout must exceed keepalive interval")
+	}
+	ctx, cancelHandshake := context.WithTimeout(ctx, cfg.HandshakeTimeout)
+	defer cancelHandshake()
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: 15 * time.Second}
@@ -86,14 +123,24 @@ func Dial(ctx context.Context, cfg Config) (*Client, error) {
 	}
 	ws, err := wsclient.Dial(ctx, wsURL, headers)
 	if err != nil {
+		var upgrade *wsclient.HTTPError
+		if errors.As(err, &upgrade) {
+			return nil, &HTTPError{StatusCode: upgrade.StatusCode, RetryAfter: upgrade.RetryAfter}
+		}
 		return nil, err
 	}
+	stopCancel := context.AfterFunc(ctx, func() { _ = ws.Close() })
+	defer stopCancel()
 	ok := false
 	defer func() {
 		if !ok {
 			_ = ws.Close()
 		}
 	}()
+	deadline, _ := ctx.Deadline()
+	if err := ws.SetReadDeadline(deadline); err != nil {
+		return nil, err
+	}
 	if err := ws.WriteText([]byte("{\"protocol\":\"messagepack\",\"version\":1}\x1e")); err != nil {
 		return nil, err
 	}
@@ -111,13 +158,58 @@ func Dial(ctx context.Context, cfg Config) (*Client, error) {
 	if len(pending) != 0 && op != wsclient.OpcodeBinary {
 		return nil, errors.New("signalr: text handshake response carried trailing hub data")
 	}
+	if !stopCancel() || ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	if err := ws.SetReadDeadline(time.Time{}); err != nil {
+		return nil, err
+	}
 	ok = true
-	return &Client{ws: ws, pending: pending}, nil
+	client := &Client{ws: ws, pending: pending, serverTimeout: cfg.ServerTimeout, done: make(chan struct{}), keepAliveDone: make(chan struct{})}
+	go client.keepAlive(cfg.KeepAliveInterval)
+	return client, nil
 }
 
-func (c *Client) Close() error                    { return c.ws.Close() }
-func (c *Client) SendBinary(frame []byte) error   { return c.ws.WriteBinary(frame) }
+func (c *Client) Close() error {
+	err := c.close()
+	<-c.keepAliveDone
+	return err
+}
+
+func (c *Client) close() error {
+	c.closeOnce.Do(func() { close(c.done); c.closeErr = c.ws.Close() })
+	return c.closeErr
+}
+
+func (c *Client) keepAlive(interval time.Duration) {
+	defer close(c.keepAliveDone)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	frame := psignalr.FramePing()
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-ticker.C:
+			if err := c.SendBinary(frame); err != nil {
+				_ = c.close()
+				return
+			}
+		}
+	}
+}
+
+func (c *Client) SendBinary(frame []byte) error {
+	err := c.ws.WriteBinary(frame)
+	if err != nil {
+		_ = c.close()
+	}
+	return err
+}
 func (c *Client) ReadBinary() ([]byte, error) {
+	if err := c.ws.SetReadDeadline(time.Now().Add(c.serverTimeout)); err != nil {
+		return nil, err
+	}
 	if len(c.pending) != 0 {
 		p := c.pending
 		c.pending = nil
@@ -165,8 +257,7 @@ func negotiate(ctx context.Context, client *http.Client, hubURL, token string, h
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return out, fmt.Errorf("signalr negotiate: HTTP %s: %s", resp.Status, strings.TrimSpace(string(body)))
+		return out, &HTTPError{StatusCode: resp.StatusCode, RetryAfter: resp.Header.Get("Retry-After")}
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
 		return out, err

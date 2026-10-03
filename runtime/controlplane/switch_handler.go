@@ -19,8 +19,8 @@ func (s *SwitchHandler) Set(handler Handler) {
 
 func (s *SwitchHandler) HandleControl(request Request) Response {
 	s.mu.RLock()
+	defer s.mu.RUnlock()
 	handler := s.handler
-	s.mu.RUnlock()
 	if handler == nil {
 		return Failure(ErrUnavailable)
 	}

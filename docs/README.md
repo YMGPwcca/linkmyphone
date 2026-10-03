@@ -12,7 +12,8 @@ The usage guides cover what works today: a command-line client with bidirectiona
 | --- | --- | --- |
 | Understand the project goal and current support | [Project overview](../README.md) | [Architecture](architecture/overview.md) |
 | Sync your first clipboard | [Installation](getting-started/installation.md) | [First run](getting-started/first-run.md) |
-| Run it every day | [systemd service](operations/systemd.md) | [Clipboard behavior](user-guide/clipboard.md) |
+| Run it every day | [Session recovery](operations/session-recovery.md) | Reconnect, token renewal, interruption behavior and remaining live checks. |
+| [systemd service](operations/systemd.md) | [Clipboard behavior](user-guide/clipboard.md) |
 | Change the client | [Source map](developer/source-map.md) | [Contributing](developer/contributing.md) |
 | Understand the protocol | [Authentication](protocol/authentication.md) | [Transport](protocol/transport.md) · [Clipboard messages](protocol/clipboard.md) |
 
@@ -30,6 +31,7 @@ Need one option? Use [CLI](reference/cli.md) or [configuration](reference/config
 | [Clipboard behavior](user-guide/clipboard.md) | Supported formats, image limits, startup, clears, MIME polling, conflicts, and echo suppression. |
 | [CLI](reference/cli.md) | Commands, flags, and live versus offline feature operations. |
 | [Configuration](reference/configuration.md) | State paths, authentication records, feature settings, and timeouts. |
+| [Session recovery](operations/session-recovery.md) | Reconnect, token renewal, interruption behavior and remaining live checks. |
 | [systemd service](operations/systemd.md) | Install, readiness, session environment, custom profiles, logs, and uninstall. |
 | [Troubleshooting](operations/troubleshooting.md) | Find the failing stage and collect a redacted report. |
 | [Privacy and local state](operations/privacy-and-state.md) | Credentials, keys, permissions, clipboard exposure, backups, and retained state. |
@@ -42,6 +44,7 @@ Need one option? Use [CLI](reference/cli.md) or [configuration](reference/config
 | Guide | What you will find |
 | --- | --- |
 | [Architecture](architecture/overview.md) | Startup, message flow, ownership, and shutdown. |
+| [Session resilience](architecture/session-resilience.md) | Supervisor ownership, supplied source observations and fault-test coverage. |
 | [Feature modules](architecture/modules.md) | Manifests, lifecycle, dependencies, capabilities, and the built-in catalog. |
 | [Control plane](architecture/control-plane.md) | Socket ownership, wire contracts, reconciliation, and offline state. |
 | [Source map](developer/source-map.md) | Packages and entry points grouped by the behavior they own. |

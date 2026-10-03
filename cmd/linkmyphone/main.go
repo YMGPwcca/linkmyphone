@@ -96,7 +96,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "session-probe continues through PLATFORM /SessionValidation and reports")
 	fmt.Fprintln(os.Stderr, "the peer capability/version response without dumping raw payloads.")
 	fmt.Fprintln(os.Stderr, "feature manages the persistent modular feature registry (CRUD + enable/disable).")
-	fmt.Fprintln(os.Stderr, "run opens one LinkMyPhone host session and starts all enabled feature modules.")
+	fmt.Fprintln(os.Stderr, "run maintains the LinkMyPhone host session and starts all enabled feature modules.")
 	fmt.Fprintln(os.Stderr, "service installs and manages the systemd --user daemon.")
 	fmt.Fprintln(os.Stderr, "clipboard-sync is a compatibility alias for the linkmyphone.clipboard module.")
 }
@@ -277,14 +277,11 @@ func probeExistingState(ctx context.Context, opts probeOptions, snapshot authsta
 
 	fmt.Println("[1/4] Enrollment: existing state reused")
 	fmt.Println("[2/4] Refreshing Microsoft and DCG tokens with persisted identity...")
-	resumed, err := bootstrap.ResumeAuth(ctx, msaClient, authClient, snapshot)
+	resumed, err := bootstrap.ResumeAuthAndSave(ctx, msaClient, authClient, snapshot, opts.statePath)
 	if err != nil {
 		return fmt.Errorf("stage 2 resume authentication: %w", err)
 	}
 	snapshot = resumed.State
-	if err := authstate.Save(opts.statePath, snapshot); err != nil {
-		return fmt.Errorf("stage 2 persist refreshed state: %w", err)
-	}
 	fmt.Printf("[2/4] Resume: OK (DCG %s)\n", shortID(resumed.Identity.DeviceID))
 
 	fmt.Println("[3/4] Refreshing linked-device trust...")

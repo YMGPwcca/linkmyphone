@@ -43,7 +43,7 @@ type Received struct {
 type pendingKey struct {
 	source    string
 	sessionID string
-	sequence int
+	sequence  int
 }
 
 type Client struct {
@@ -57,16 +57,17 @@ type Client struct {
 	messageID   atomic.Int64
 	invocation  atomic.Uint64
 
-	mu            sync.Mutex
-	sendGates     map[string]chan struct{}
-	sequencers    map[string]*dcg.Sequencer
-	sessions      map[string]string
-	pending       map[pendingKey]chan dcg.Ack
-	completions   map[string]chan psignalr.Completion
-	partners      map[string]bool
-	partnerWaiters map[string][]chan struct{}
-	hubConnected  *psignalr.OnConnectedPayload
-	hubWaiters    []chan psignalr.OnConnectedPayload
+	mu                 sync.Mutex
+	sendGates          map[string]chan struct{}
+	sequencers         map[string]*dcg.Sequencer
+	sessions           map[string]string
+	pending            map[pendingKey]chan dcg.Ack
+	completions        map[string]chan psignalr.Completion
+	partners           map[string]bool
+	partnerDisconnects map[string]uint64
+	partnerWaiters     map[string][]chan struct{}
+	hubConnected       *psignalr.OnConnectedPayload
+	hubWaiters         []chan psignalr.OnConnectedPayload
 
 	received chan Received
 }
@@ -85,24 +86,25 @@ func New(hub Hub, cfg Config) *Client {
 		cfg.AckRetries = DefaultAckRetries
 	}
 	return &Client{
-		hub:          hub,
-		fragmentSize: cfg.FragmentSize,
-		ackTimeout:   cfg.AckTimeout,
-		ackRetries:   cfg.AckRetries,
-		reassembler:  dcg.NewReassembler(32<<20, 4096),
-		sendGates:     make(map[string]chan struct{}),
-		sequencers:    make(map[string]*dcg.Sequencer),
-		sessions:      make(map[string]string),
-		pending:       make(map[pendingKey]chan dcg.Ack),
-		completions:   make(map[string]chan psignalr.Completion),
-		partners:       make(map[string]bool),
-		partnerWaiters: make(map[string][]chan struct{}),
-		received:       make(chan Received, 32),
+		hub:                hub,
+		fragmentSize:       cfg.FragmentSize,
+		ackTimeout:         cfg.AckTimeout,
+		ackRetries:         cfg.AckRetries,
+		reassembler:        dcg.NewReassembler(32<<20, 4096),
+		sendGates:          make(map[string]chan struct{}),
+		sequencers:         make(map[string]*dcg.Sequencer),
+		sessions:           make(map[string]string),
+		pending:            make(map[pendingKey]chan dcg.Ack),
+		completions:        make(map[string]chan psignalr.Completion),
+		partners:           make(map[string]bool),
+		partnerDisconnects: make(map[string]uint64),
+		partnerWaiters:     make(map[string][]chan struct{}),
+		received:           make(chan Received, 32),
 	}
 }
 
 func (c *Client) Received() <-chan Received { return c.received }
-func (c *Client) Close() error             { return c.hub.Close() }
+func (c *Client) Close() error              { return c.hub.Close() }
 
 // Run owns the hub read side. It must be running while Send waits for DCG ACKs.
 func (c *Client) Run(ctx context.Context) error {
@@ -251,6 +253,14 @@ func (c *Client) PartnerConnected(target string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.partners[target]
+}
+
+// PartnerDisconnects changes even when a phone reconnects between health ticks.
+// Its platform session and feature state still need to be renegotiated.
+func (c *Client) PartnerDisconnects(target string) uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.partnerDisconnects[target]
 }
 
 func (c *Client) WaitHubConnected(ctx context.Context) (psignalr.OnConnectedPayload, error) {
@@ -601,6 +611,7 @@ func (c *Client) markPartnerDisconnected(target string) {
 	}
 	c.mu.Lock()
 	c.partners[target] = false
+	c.partnerDisconnects[target]++
 	c.mu.Unlock()
 }
 

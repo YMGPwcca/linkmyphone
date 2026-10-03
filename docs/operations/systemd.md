@@ -62,7 +62,8 @@ The unit is `Type=notify`. The runtime sends readiness only after the control so
 | Transition | Behavior |
 | --- | --- |
 | Start | Stay `activating` until the runtime sends readiness. |
-| Failure | Retry after 5 seconds, subject to the five-starts-per-60-seconds limit. |
+| Transient cloud/peer failure | Recover inside the same process with host backoff; the socket remains reserved. |
+| Terminal process failure | systemd retries after 5 seconds, subject to the five-starts-per-60-seconds limit. |
 | Restart | Stop modules and watchers, then activate again. |
 | Explicit stop | Stop modules and watchers without an automatic restart. |
 
@@ -91,7 +92,7 @@ Restart=on-failure
 RestartSec=5s
 StartLimitIntervalSec=60
 StartLimitBurst=5
-TimeoutStartSec=90s
+TimeoutStartSec=infinity
 TimeoutStopSec=20s
 KillMode=mixed
 UMask=0077
@@ -169,9 +170,9 @@ Custom systemd drop-ins are also retained. Review any `linkmyphone.service.d/` d
 
 ## Validation record and open limits
 
-The dated systemd install, readiness, empty-clipboard, restart, stop/start, logout/login, watcher, and live-control observations belong to the repository research record. Read [the validation history](../research/validation.md) for the environment, commands, and scope of those reports. They are historical evidence, not a claim that this documentation run repeated a live Microsoft or systemd test.
+Installation, readiness, restart, logout/login, clipboard watchers and live feature control have been tested on CachyOS/Wayland. The commands and results are in [validation](../research/validation.md).
 
-Long-running reconnect, wake, and token-refresh resilience remains open. A service restart policy handles process failure; it does not establish full Phone Link recovery behavior after every network, suspend, or credential interruption.
+Temporary cloud or phone failures recover in the same process. systemd restarts the process after a terminal failure. `TimeoutStartSec=infinity` lets offline startup keep retrying; each session attempt still has a two-minute default timeout. Use `systemctl --user --no-block start linkmyphone.service` to start without waiting for readiness. See [session recovery](session-recovery.md) for interruption tests.
 
 The unit source is [`packaging/systemd/linkmyphone.service`](../../packaging/systemd/linkmyphone.service); installer behavior is implemented in [`cmd/linkmyphone/service.go`](../../cmd/linkmyphone/service.go) and covered by [`cmd/linkmyphone/service_test.go`](../../cmd/linkmyphone/service_test.go).
 

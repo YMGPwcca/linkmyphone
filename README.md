@@ -2,7 +2,7 @@
 
 An independent, unofficial Phone Link client for Linux.
 
-LinkMyPhone aims to bring the Phone Link experience to Linux through interoperability with Microsoft's Phone Link and Link to Windows ecosystem. Clipboard synchronization is the first implemented feature, not the limit of the project's scope.
+LinkMyPhone connects Linux to an Android phone through Microsoft's Phone Link services. The first working feature is clipboard sync for text, HTML and images.
 
 [Get started](docs/getting-started/installation.md) · [Documentation](docs/README.md) · [Protocol and research](docs/research/README.md)
 
@@ -13,7 +13,7 @@ LinkMyPhone aims to bring the Phone Link experience to Linux through interoperab
   <img src="docs/assets/sync-flow-light.svg" width="860" alt="Current clipboard feature: two-way text, HTML and image synchronization between Linux and Android through Microsoft's DCG and Hub Relay services.">
 </picture>
 
-*The diagram shows the current clipboard feature, not the full scope of the project.*
+*Current clipboard sync path.*
 
 The current implementation is a reverse-engineered, command-line client supporting bidirectional text, HTML and image clipboard synchronization. A personal Microsoft account and an internet connection are required.
 
@@ -21,7 +21,7 @@ LinkMyPhone is an independent, unofficial project, not affiliated with, endorsed
 
 > [!NOTE]
 >
-> Experimental. Text, HTML and image clipboard support has live validation reports on a Samsung Galaxy S23 with CachyOS/Wayland. Long-running reconnect, wake recovery, and active-session token refresh remain open. [Validation and limits](docs/research/validation.md).
+> Experimental. Clipboard sync and recovery after network loss or suspend have been tested on a Samsung Galaxy S23 with CachyOS/Wayland. Testing across token expiry and several hours of use is still open. [Test results](docs/research/validation.md).
 
 ## Try the current clipboard feature
 
@@ -54,7 +54,7 @@ Follow the device-code instructions printed in the terminal.
 
 > [!WARNING]
 >
-> New clipboard contents, including secrets, is sent through Microsoft's services. The client does not filter sensitive selections. Do not share `state.json`: it contains refresh credentials and private keys. [Privacy and local state](docs/operations/privacy-and-state.md).
+> Clipboard selections are sent through Microsoft's services, including any secrets you copy while sync is enabled. Keep `state.json` private: it contains refresh credentials and private keys. [Privacy and local state](docs/operations/privacy-and-state.md).
 
 ```bash
 ./linkmyphone feature create --enabled linkmyphone.clipboard
@@ -78,7 +78,7 @@ The [first-run guide](docs/getting-started/first-run.md) covers resuming a profi
 
 ## Current support and broader scope
 
-LinkMyPhone aims to provide broader Phone Link integration on Linux. The matrix below details what is working today, what is partially implemented in the codebase, and what remains in the broader project scope:
+The table tracks the current implementation. Clipboard is working; the other Phone Link features are listed below.
 
 | Feature / Area | Status | Current implementation details |
 | :--- | :---: | :--- |
@@ -91,7 +91,7 @@ LinkMyPhone aims to provide broader Phone Link integration on Linux. The matrix 
 | **Background daemon** | Supported | Per-user `systemd` unit (`linkmyphone.service`) tied to the graphical session. |
 | **Rich text & HTML clipboard** | Supported | Bidirectional HTML fragments; optional GTK4 provider also offers plain text. Rich formatting is supported through HTML, not a separate RTF codec. |
 | **Image clipboard** | Supported | Bidirectional PNG transfer with JPEG/GIF/BMP input normalization. Incoming dimensions are preserved; only outbound images are resized to fit 1 MiB. |
-| **Session recovery & refresh** | Partial | Long-running relay reconnect, sleep/wake recovery, and active-session token refresh remain open. |
+| **Session recovery & refresh** | Partial | Network-loss and suspend recovery tested. Token-expiry and extended operation still need [testing](docs/operations/session-recovery.md). |
 | **Notifications** | Not implemented | Push notification forwarding, dismissal synchronization, and inline quick-replies. |
 | **Messages (SMS / RCS)** | Not implemented | Reading SMS/RCS conversations, sending text messages, and MMS media attachments. |
 | **Calls & Audio** | Not implemented | Incoming/outgoing call notifications, dialer, and in-call Bluetooth/relay audio routing. |
@@ -99,9 +99,6 @@ LinkMyPhone aims to provide broader Phone Link integration on Linux. The matrix 
 | **File transfer & Sharing** | Not implemented | Drag-and-drop file sharing between Linux desktop and Android. |
 | **Screen mirroring & Apps** | Not implemented | Android screen streaming and individual app streaming. |
 | **Graphical pairing UI** | Not implemented | Initial setup is CLI-based (`linkmyphone bootstrap-probe`); no native GUI pairing wizard. |
-
-> [!NOTE]
-> Unimplemented features reflect the broader project scope and architecture targets. They do not constitute a commitment to a specific delivery schedule or a claim of feature parity with Microsoft's Windows Phone Link client.
 
 ## Run in the background
 

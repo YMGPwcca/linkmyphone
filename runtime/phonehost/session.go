@@ -25,15 +25,19 @@ const (
 )
 
 type Config struct {
-	StatePath      string
-	AppVersion     string
-	RingName       string
-	OSVersion      string
-	Target         string
-	SignalRTimeout time.Duration
-	WakeTimeout    time.Duration
-	WakeTTL        time.Duration
-	RequestTimeout time.Duration
+	StatePath          string
+	AppVersion         string
+	RingName           string
+	OSVersion          string
+	Target             string
+	SignalRTimeout     time.Duration
+	WakeTimeout        time.Duration
+	WakeTTL            time.Duration
+	RequestTimeout     time.Duration
+	ReconnectMinDelay  time.Duration
+	ReconnectMaxDelay  time.Duration
+	SessionOpenTimeout time.Duration
+	RefreshMargin      time.Duration
 }
 
 type Session struct {
@@ -99,18 +103,27 @@ func (s *Session) Close() error {
 
 func Open(ctx context.Context, cfg Config, reporter kernel.Reporter) (*Session, error) {
 	if err := normalizeConfig(&cfg); err != nil {
-		return nil, err
+		return nil, permanent(err)
 	}
 
 	snapshot, err := authstate.Load(cfg.StatePath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, errors.New("phonehost: no persisted enrollment found; run bootstrap-probe first")
+			return nil, permanent(errors.New("phonehost: no persisted enrollment found; run bootstrap-probe first"))
 		}
-		return nil, fmt.Errorf("phonehost: load state: %w", err)
+		return nil, permanent(fmt.Errorf("phonehost: load state: %w", err))
 	}
 	if snapshot.Enrollment.AccountCert == "" {
-		return nil, errors.New("phonehost: persisted enrollment has no account certificate")
+		return nil, permanent(errors.New("phonehost: persisted enrollment has no account certificate"))
+	}
+	if snapshot.MSARefreshToken == "" {
+		return nil, permanent(errors.New("phonehost: no refresh credential; run bootstrap-probe first"))
+	}
+	if _, err := snapshot.Identity.Identity(); err != nil {
+		return nil, permanent(err)
+	}
+	if _, err := snapshot.TrustIdentity.Trust(); err != nil {
+		return nil, permanent(err)
 	}
 
 	clientInfo, err := dcgheaders.NewCrossDeviceClientInfo(
@@ -120,7 +133,7 @@ func Open(ctx context.Context, cfg Config, reporter kernel.Reporter) (*Session, 
 		cfg.OSVersion,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("phonehost: build CrossDevice client info: %w", err)
+		return nil, permanent(fmt.Errorf("phonehost: build CrossDevice client info: %w", err))
 	}
 
 	msaClient := msa.NewDeviceCodeClient()
@@ -129,14 +142,12 @@ func Open(ctx context.Context, cfg Config, reporter kernel.Reporter) (*Session, 
 	configureDCGClients(authClient, serviceClient, clientInfo)
 
 	report(reporter, "resuming Microsoft and DCG identity", nil)
-	resumed, err := bootstrap.ResumeAuth(ctx, msaClient, authClient, snapshot)
+	issuedAt := time.Now()
+	resumed, err := bootstrap.ResumeAuthAndSave(ctx, msaClient, authClient, snapshot, cfg.StatePath)
 	if err != nil {
 		return nil, fmt.Errorf("phonehost: resume authentication: %w", err)
 	}
 	snapshot = resumed.State
-	if err := authstate.Save(cfg.StatePath, snapshot); err != nil {
-		return nil, fmt.Errorf("phonehost: persist refreshed authentication: %w", err)
-	}
 	report(reporter, "authentication ready", map[string]string{
 		"dcg_client_id": shortID(resumed.Identity.DeviceID),
 	})
@@ -156,12 +167,12 @@ func Open(ctx context.Context, cfg Config, reporter kernel.Reporter) (*Session, 
 	}
 	snapshot.TrustRelationships = append([]dcgauth.TrustRelationship(nil), trust.Relationships()...)
 	if err := authstate.Save(cfg.StatePath, snapshot); err != nil {
-		return nil, fmt.Errorf("phonehost: persist trust state: %w", err)
+		return nil, permanent(fmt.Errorf("phonehost: persist trust state: %w", err))
 	}
 
 	target, err := SelectPeer(trust.Devices, resumed.Identity.DeviceID, cfg.Target)
 	if err != nil {
-		return nil, err
+		return nil, permanent(err)
 	}
 	report(reporter, "target selected", map[string]string{
 		"name":          PeerDisplayName(target),
@@ -238,6 +249,11 @@ func Open(ctx context.Context, cfg Config, reporter kernel.Reporter) (*Session, 
 	// zero-module runtime (or disabling the final module) cannot backpressure
 	// relay ACK/completion processing.
 	session.ensureRouting()
+	partnerDisconnects := cloud.Relay.PartnerDisconnects(target.ID)
+	go session.monitorHealth(runCtx, refreshDeadline(issuedAt, resumed.MSAToken.ExpiresIn, resumed.ServicesToken.ExpiresAt, cfg.RefreshMargin),
+		DefaultHealthInterval, func() bool {
+			return cloud.Relay.PartnerConnected(target.ID) && cloud.Relay.PartnerDisconnects(target.ID) == partnerDisconnects
+		}, time.Now)
 
 	go func() {
 		select {
@@ -262,7 +278,7 @@ func (s *Session) reportRuntimeError(err error) {
 		return
 	}
 	select {
-	case s.errors <- err:
+	case s.errors <- &recoveryError{err: err}:
 	default:
 	}
 }
@@ -295,6 +311,21 @@ func normalizeConfig(cfg *Config) error {
 	}
 	if cfg.RequestTimeout <= 0 {
 		cfg.RequestTimeout = 10 * time.Second
+	}
+	if cfg.ReconnectMinDelay == 0 {
+		cfg.ReconnectMinDelay = DefaultReconnectMinDelay
+	}
+	if cfg.ReconnectMaxDelay == 0 {
+		cfg.ReconnectMaxDelay = DefaultReconnectMaxDelay
+	}
+	if cfg.SessionOpenTimeout == 0 {
+		cfg.SessionOpenTimeout = DefaultSessionOpenTimeout
+	}
+	if cfg.RefreshMargin == 0 {
+		cfg.RefreshMargin = DefaultRefreshMargin
+	}
+	if cfg.ReconnectMinDelay <= 0 || cfg.ReconnectMaxDelay < cfg.ReconnectMinDelay || cfg.SessionOpenTimeout <= 0 || cfg.RefreshMargin <= 0 {
+		return errors.New("phonehost: recovery durations must be positive and max reconnect delay must be >= min delay")
 	}
 	return nil
 }

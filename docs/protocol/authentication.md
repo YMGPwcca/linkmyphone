@@ -61,7 +61,7 @@ The production service base is `https://dcg.microsoft.com/`, with default Hub en
 | Relay and wake | Assigned SignalR shards use the `general` DCG services token; wake uses a trust-identity `DCG-CryptoWakeJwt`. |
 | Resume | Refresh the MSA token, obtain a fresh nonce, call `/Auth/SignIn`, and keep the same DCG client ID. |
 
-Cloud services are required for account tokens, identity, enrollment, trust discovery, relay, and wake. The repository makes no offline-operation claim. Long-running reconnect, peer wake recovery, and token-refresh resilience remain open; finite probes and startup paths do not establish indefinite availability.
+Microsoft services provide account tokens, enrollment, device trust, relay and wake. The runtime refreshes credentials and reopens the session after an interruption. See [session recovery](../operations/session-recovery.md) for retry behavior.
 
 ## Identity and token roles
 
@@ -222,4 +222,4 @@ The historical S23 probe observed versions 14 and 3 for persistent messaging and
 
 ## Current boundary
 
-Microsoft cloud services are required for account tokens, identity, enrollment, trust discovery, relay, and wake. The repository has no claim of offline operation. Long-running reconnect, peer wake recovery, and token-refresh resilience remain open. The probes and normal startup paths are finite workflows; they do not establish indefinite session availability.
+The authentication flow requires Microsoft services. A revoked refresh credential needs account reauthorization; reconnecting cannot repair it. [Session recovery](../operations/session-recovery.md#errors-that-need-intervention) covers runtime authentication failures, and [validation](../research/validation.md#session-resilience-2026-10-03) lists the completed recovery tests.

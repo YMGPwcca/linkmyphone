@@ -3,12 +3,30 @@ package msa
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestRefreshNonJSONThrottlePreservesRetryAfterAndRedactsBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "90")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte("private account data"))
+	}))
+	defer server.Close()
+	client := NewDeviceCodeClient()
+	client.Authority = server.URL
+	_, err := client.Refresh(context.Background(), "refresh", "scope")
+	var oauth *OAuthError
+	if !errors.As(err, &oauth) || oauth.StatusCode != 429 || oauth.RetryAfter != "90" || strings.Contains(err.Error(), "private") {
+		t.Fatalf("err=%v", err)
+	}
+}
 
 func TestDeviceCodeStartWireShape(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

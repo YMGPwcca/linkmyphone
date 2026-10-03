@@ -129,7 +129,7 @@ The catalog's only built-in feature has ID `linkmyphone.clipboard`, version `0.2
 | --- | --- | --- | --- |
 | `poll_interval_ms` | Integer, 50 through 60000 | `500` | MIME observation interval for rich backends; polling fallback for text-only providers. |
 | `request_timeout_ms` | Integer, 100 through 120000 | `10000` | Clipboard protocol request timeout. |
-| `publish_initial` | Boolean | `false` | Publish the current local clipboard once after module startup. |
+| `publish_initial` | Boolean | `false` | Publish the current local clipboard on each module start, including recovery. |
 
 The feature schema is [`features/clipboard/config.schema.json`](../../features/clipboard/config.schema.json). Empty or omitted config is decoded with defaults. `feature create --config JSON` validates the object before writing it. `feature update --config JSON` validates and replaces the entire object. It does not merge keys with the previous object.
 
@@ -145,11 +145,11 @@ The compatibility command's `--poll-interval` and `--publish-initial` flags cons
 
 ## Live and offline edits
 
-Feature commands first try the control socket derived from the selected feature-store path. A ready runtime handles list, get, create, update, and delete against its in-memory registry and persists successful desired-state changes. Enabling, disabling, or changing config reconciles the module without restarting the process. A config or enabled-state transition can stop and restart the module; the registry epoch increases when the same entry is restarted. Deleting and recreating an entry starts its epoch sequence again.
+Feature commands connect to the selected store's control socket. A ready runtime handles them through its registry and saves successful changes. Enabling, disabling or changing configuration can restart a module while the process keeps running. The entry's epoch increases on restart; deleting and recreating the entry starts its epoch sequence again.
 
-When the socket is absent, refused, or invalid, commands read or write the selected registry file without starting a runtime. This fallback is useful for preparing state before the first run. It does not authenticate, contact the phone, or confirm that a feature can start.
+If the socket is absent, refused or invalid, commands read or edit the registry file directly. Use this to configure features before starting the runtime.
 
-During runtime startup the socket exists before the live controller is installed. Commands receive `runtime is starting; retry the feature command` rather than silently changing offline state. During shutdown, the control plane rejects requests and the socket is closed as the runtime tears down modules.
+During startup or recovery, the socket stays reserved and feature commands ask you to retry: `runtime is starting; retry the feature command` or `runtime is recovering; retry the feature command`. Retry after readiness. Final shutdown rejects new requests and closes the socket. See [session recovery](../operations/session-recovery.md).
 
 The socket is a user-local Unix socket under `$XDG_RUNTIME_DIR/linkmyphone/` with a filename derived from a hash of the absolute feature-store path. If `XDG_RUNTIME_DIR` is unset or the candidate path reaches the 100-byte budget, the runtime uses `/tmp/linkmyphone-<uid>/`. The socket directory is mode `0700` and the socket is mode `0600`.
 

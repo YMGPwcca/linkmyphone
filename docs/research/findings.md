@@ -257,12 +257,14 @@ CachyOS/Wayland reports cover installation, empty-selection startup, restart, st
 
 ## Remaining gaps
 
-Long-running reconnect after relay or network failure, repeated peer wake/re-presence, and token refresh during an active session remain open. Live reports cover one linked S23 and a Wayland desktop; X11, other compositors, other phone models, and Windows WAM execution were not live validated in the tracked record.
+At `a1f53ff`, recovery passed after Linux network loss, phone network loss and suspend/resume on S23/Wayland. Clipboard worked in both directions afterwards, and saved feature state survived the interruption. [Session resilience](../architecture/session-resilience.md) describes the implementation.
 
-Protocol versions, tag 9, enum values, capability versions 14 and 3, and advertised compatibility metadata describe particular contracts or observations. They do not guarantee interoperability with arbitrary peers. The [validation record](validation.md) preserves reported checks and limits; [history](history.md) links corrective commits.
+Remaining tests cover token expiry, several hours of operation, authenticated X11 use and other phones or compositors. Linux authentication uses device-code login; Windows WAM execution remains outside the tested setup.
+
+Protocol versions, tag 9, enum values, capability versions 14 and 3, and client metadata come from the recorded exchanges. [Validation](validation.md) lists the tested setup and results; [history](history.md) links the fixes.
 
 ## Rich content and image direction (2026-10-03)
 
 The initial image implementation normalized received JPEG/BMP to PNG and then applied the outbound 1 MiB budget to that desktop PNG. This caused a second resize when the PNG expanded, even though Android had already prepared the transfer. Windows receive creates its clipboard bitmap without that extra resize. Commit `7f999f3` separates incoming normalization from outbound preparation and retains full native image bytes for echo suppression.
 
-The owner subsequently pasted the same phone image on Linux and Windows and reported **1572×2096** on both. For another same-source image sent from the PCs to Android, Linux produced **583×1036**, Windows **310×551**; the owner judged Linux better in that case. Windows uses high-quality bicubic while Linux retains independent area-average resampling and different size selection. These are sample observations, not a universal quality ranking. See [content evidence](clipboard-content.md) and [validation](validation.md#clipboard-validation-2026-10-03).
+The same phone image then pasted at **1572×2096** on both Linux and Windows. In the outbound comparison, Linux produced **583×1036** and Windows **310×551** from the same source image. Windows uses high-quality bicubic resizing; Linux uses area-average resampling and a different size-selection rule. See [clipboard content](clipboard-content.md) for the encoding rules and [validation](validation.md#clipboard-validation-2026-10-03) for the samples.
