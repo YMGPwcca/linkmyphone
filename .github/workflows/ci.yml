@@ -1,9 +1,8 @@
 name: ci
 
 on:
-  workflow_dispatch:
   push:
-    branches: [feature/clipboard-content]
+    branches: [main]
 
 jobs:
   test:
