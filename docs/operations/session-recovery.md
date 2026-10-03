@@ -4,7 +4,7 @@
 
 The long-running commands, `run` and `clipboard-sync`, now recover cloud sessions inside the same process. Recovery refreshes credentials and device trust, reconnects Hub Relay, wakes the original phone when needed, completes PLATFORM SessionValidation, and recreates enabled feature modules.
 
-**Status remains Partial:** the implementation and local fault tests exist, but loss/recovery against Microsoft's live services, real suspend/resume and multi-hour operation through token expiry have not been validated on the owner's phone.
+**Status remains Partial:** the owner reports successful recovery after Linux network loss, phone network loss and real suspend/resume on the S23/Wayland setup, including fresh bidirectional clipboard transfers afterwards. The full race suite also passed on the owner's machine. Scheduled renewal through actual token expiry and multi-hour reliability still need distinct evidence; see the dated [validation record](../research/validation.md#session-resilience-2026-10-03).
 
 ## What triggers recovery
 
@@ -54,4 +54,8 @@ Use the existing enrollment and feature store, one runtime, and harmless clipboa
 
 Inspect logs with `linkmyphone service logs --follow` for a service or use foreground `linkmyphone run`. A blocking systemd start can wait while offline; `systemctl --user --no-block start linkmyphone.service` returns immediately. The updated unit removes the outer startup timeout while retaining per-attempt deadlines.
 
-No live outcome for these scenarios is recorded yet. Add observations to [validation](../research/validation.md#session-resilience-2026-10-03) before promoting the support label.
+The 2026-10-03 owner report at `a1f53ff` covers Linux network loss, phone network loss and suspend/resume. The supplied foreground log shows three recovery cycles returning to PLATFORM and module readiness, unchanged displayed device IDs and control-socket path, and restoration of disabled feature state followed by a successful enable. The owner confirms the live checks and clipboard operation in both directions after recovery. These are owner-reported results; the agent did not repeat them against Microsoft services. The transcript does not label the order or timing of individual faults.
+
+A `FEATURE_OFF synchronization failed` warning with `endpoint is closed` can occur while retiring a failed session: the host closes its transport before stopping old modules. The replacement module synchronizes FEATURE_ON again. Evaluate the subsequent readiness and fresh clipboard transfer when checking recovery.
+
+The approximately 15-minute foreground transcript does not separately establish scheduled renewal through actual token expiry, a multi-hour soak, or recovery under the updated systemd unit. Record those outcomes in [validation](../research/validation.md#session-resilience-2026-10-03) before promoting the combined support label.
