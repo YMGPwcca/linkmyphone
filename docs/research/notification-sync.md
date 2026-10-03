@@ -4,13 +4,13 @@
 
 Research date: 2026-10-03. Repository baseline: `299248d87cc383e57ebce4b6c11048893d83ddb2`, the session-resilience merge on `main`. Work branch: `feature/notification-sync`.
 
-**Status: source investigation only.** No notification implementation, production-service probe, phone interaction, or Windows notification experiment was performed. Findings below describe the supplied source snapshots; they do not establish notification compatibility of LinkMyPhone's current enrollment.
+**Status: source investigation plus analysis of owner-supplied Android runtime logs.** No notification implementation has been added. The owner performed the two-post phone experiment; this work analyzes the resulting files. Source findings describe the supplied snapshots, and the runtime section records the observed delivery boundaries. LinkMyPhone's own notification compatibility remains unverified.
 
 ## Main findings
 
 The Android snapshot contains two separate notification contracts. Phone Link's full contract pushes changes and accepts dismissal, resync and notification actions. The CrossDevice contract returns a protobuf snapshot through DeviceResourceManager and defines only GET. Their shared `/notifications` spelling does not make their envelopes interchangeable.
 
-The main compatibility question is recipient selection. Full notification publication starts from Phone Link clients (`PL`). Connection sharing can redirect a paired PL client's traffic to a CrossDevice client (`WEA`) for the same `distinguishedDeviceId`. LinkMyPhone currently enrolls as WEA; neither standalone WEA push support nor a suitable shared PL association has been demonstrated.
+The main compatibility question is recipient selection. Full notification publication starts from Phone Link clients (`PL`). Connection sharing can redirect a paired PL client's traffic to a CrossDevice client (`WEA`) for the same `distinguishedDeviceId`. LinkMyPhone currently enrolls as WEA. The owner-supplied runtime capture now shows full notification APP delivery to a WEA peer in a sharing-enabled setup, with successful application responses. Standalone WEA push support and the identity of that peer as the Linux client remain unverified.
 
 The Windows archive supplies common transport/SDK code, but no notification feature assembly or UI implementation was found. Android-side behavior is much better evidenced than Windows toast creation, storage, suppression, or action handling.
 
@@ -112,7 +112,7 @@ An empty `keys` request takes the straightforward snapshot path and sorts items 
 
 This leaves two cases to distinguish experimentally: a genuine PL peer/session, and PL traffic carried through its associated WEA connection. WEA alone is not shown to be a full-notification recipient. Conversely, the source does not justify concluding that a second OAuth login or changing the app ID is always necessary. `RemoteAppUtil` reads `clientType` and device association from trusted-peer metadata; changing a request body is not proof of changed enrollment classification.
 
-LinkMyPhone's [first-run bootstrap](../../bootstrap/first_run.go) calls `MetadataForClipboardPC`, which currently supplies `ClientType=WEA` and only the `CLIPBOARD` capability. [Client headers](../../dcgheaders/profile.go) use `MicrosoftWindows.CrossDevice_cw5n1h2txyewy`. Both the trusted metadata/association and the APP `/connect` contract need investigation before assuming full push works through this session. No enrollment identity or persisted credentials were changed in this work.
+LinkMyPhone's [first-run bootstrap](../../bootstrap/first_run.go) calls `MetadataForClipboardPC`, which currently supplies `ClientType=WEA` and only the `CLIPBOARD` capability. [Client headers](../../dcgheaders/profile.go) use `MicrosoftWindows.CrossDevice_cw5n1h2txyewy`. Both the trusted metadata/association and the APP connection contract need investigation before assuming full push works through this session; the runtime capture observes `/connect/v1`. No enrollment identity or persisted credentials were changed in this work.
 
 ## Windows evidence and transport cautions
 
@@ -140,21 +140,56 @@ Microsoft's public support documentation describes enabling notification access,
 
 A future module should own notification state and use the shared Session subscription rather than reading the relay channel directly or adding notification rules to the kernel/clipboard feature. Scope keys by phone and Android notification key, use post time as reconciliation metadata, keep action indices unchanged, and distinguish existing-item refresh from a new-alert policy. Those are design recommendations; Windows's exact alert policy is not established here.
 
+## Runtime capture: 2026-10-04
+
+The owner supplied two Android file logs after posting `STEP1` and `STEP2` with the same shell notification tag, `ltw-research-001`, and title `LTW-TEST`. This analysis reads those supplied logs; it does not execute ADB or connect to the phone. Owner-provided device output identifies a rooted Samsung SM-S911B on Android 16, active LTW version `1.26082.130.0` (`8200516`, target SDK 36), and an enabled `PhoneNotificationsListenerService`. The active version matches the earlier Microsoft-Active source snapshot. A second version entry in package output is not treated as proof of two simultaneously running installations.
+
+| Capture | Bytes / lines | Timestamp range as logged | SHA-256 |
+| --- | --- | --- | --- |
+| `ltw-main.log` | 3,675,075 / 12,899 | 2026-10-03 23:03:35.37–2026-10-04 01:17:12.40 | `4082b1fec45f4909ea24c0876beb0838fe7c86c54b24fddb92f2433623bca970` |
+| `ltw-pnsvc.log` | 684,925 / 5,430 | 2026-10-03 18:34:27.89–2026-10-04 01:17:10.04 | `2f34d3f472be28335c285841e9e9de6b930b5728e94a774adb7ab48ccf211428` |
+
+Line references below refer to these exact files, which are not committed. Peer names, device identifiers, request IDs and trace IDs are omitted; `peer A` denotes the same observed remote client throughout.
+
+| Observation | First post | Second post |
+| --- | --- | --- |
+| Listener accepts `com.android.shell` | 01:17:06.33; pnsvc lines 5417–5420 | 01:17:10.04; pnsvc lines 5424–5427 |
+| Listener dispatches operations to main | 01:17:06.35; pnsvc lines 5421–5423 | 01:17:10.04; pnsvc lines 5428–5430 |
+| Selected recipient | One target, `WEA`, peer A; main lines 12619–12630 | One target, `WEA`, peer A; main lines 12702–12716 |
+| Notification publication | APP over SignalR, `/legacy/phonecontent`; main lines 12623, 12630, 12662–12663 | Same kind and route; main lines 12706, 12713, 12745–12746 |
+| Logged message payload / fragments | 1,422 bytes / 1; main line 12662 | 1,422 bytes / 1; main line 12745 |
+| Application response | `/internal/response`, `result=0`, matching `_originalRequestId`, from peer A; main lines 12671, 12675 | Same response correlation and result; main lines 12756, 12760 |
+| Sync completes | `result=0`, `hasResponse=true`, one content payload, 239 ms; main lines 12693–12696 | Same result, 237 ms; main lines 12776–12779 |
+
+The package and timing correlate these events with the supplied test commands. Neither log contains the title, tag, `STEP1` or `STEP2`, nor the notification JSON/key. The capture therefore does not independently decode equal Android keys, operation-array values, icons, actions or content changes. Equal message sizes do not imply equal notification content. Dispatch follows the two logged listener events within approximately 20 ms and the same timestamp respectively; a mandatory 500 ms delay is not established by this trace.
+
+The earlier connection setup is relevant to recipient selection. At 2026-10-03 23:03:39.37, peer A sends `/connect/v1` with a logged message payload of 2,174 bytes (main lines 1413–1416). The request handler classifies that peer as `WEA` (1432), `RemoteDeviceManager` records using connection sharing for it (1438), the connection handler reports Task Continuity enabled by PL (1454), and the device manager reports connection sharing status `true` (1558). Handling finishes with `result=0` (1899). This establishes an observed versioned connection route; the logs do not expose a minimal connection payload.
+
+**Runtime conclusion:** full notification APP publication can reach a WEA recipient and receive a successful application response in this sharing-enabled setup. That is stronger evidence than the earlier source-only prediction. It does not establish standalone WEA support or identify peer A as LinkMyPhone on Linux. A display name or `partnerType=WINDOWS_CLIENT` cannot by itself establish the recipient's operating system; compare the recipient DCG identity with the existing Linux session identity before claiming Linux receipt.
+
+The notification send records also contain `useConnectionSharing=false` (main lines 12626, 12695, 12709, 12778). That per-send value is not sufficient to negate the earlier sharing evidence: source A11 allows `getActiveRemoteApps(PL)` to substitute a WEA target before `RemoteAppClient` processes it. This can explain the apparently different values, but the private association identifiers were not independently decoded in this capture.
+
+The application response is distinct from fragment/hub acknowledgement. `SendMessageActivity` records `result=1, resultDetail=SUCCESS` for transport completion, whereas the correlated application response uses `result=0`; these are different result domains. Neither successful boundary verifies desktop rendering or user-visible action completion.
+
+The pnsvc capture ends at the second post. There is no subsequent removal event for the test in the supplied files. Removal, reconnect reconciliation, full-sync operation 3, permission-denied behavior, DRM notification GET, dismissal, reply and desktop display remain unverified by this experiment.
+
+The next check can read only `identity.id` from the existing Linux state file, whose schema and default path are defined in [auth/state/store.go](../../auth/state/store.go). Comparing that identity with peer A requires no service restart, login, token refresh or enrollment change. Use the running session's selected state path if it overrides the default; do not publish the full state file.
+
 ## Follow-up validation questions
 
 | Question | Evidence needed |
 | --- | --- |
 | Is snapshot GET available for the current WEA peer? | Capability advertisement, correlated DRM wrapper and notification status, with permission granted/denied |
-| Does the current client qualify for full push? | Trusted peer client type, redacted device association, sharing setting and an independently observed APP notification message |
-| What initializes the app notification session? | Capture or bytecode-confirmed minimal `/connect` contract and Agents registration prerequisites |
+| Does LinkMyPhone itself qualify for full push? | Runtime confirms a WEA peer receives APP publications in a sharing-enabled setup; compare that peer with the current Linux DCG identity and verify Linux receipt |
+| What initializes the app notification session? | Runtime observes `/connect/v1`; capture or bytecode-confirm the minimal payload and Agents registration prerequisites |
 | How are unchanged keys filtered? | Inspect the APK bytecode for the two empty JADX predicates; confirm with same-key/same-post-time and updated-post-time samples |
 | Which header-length convention arrives? | Redacted independent APP and PLATFORM frames from the exact builds |
-| How do state updates and reconnect behave? | Post/update/remove one harmless notification; reconcile after disconnect, then with the listener unavailable |
+| How do state updates and reconnect behave? | Two posts now correlate with successful publication; decode equal keys/operation values, capture subsequent removal, and reconcile after disconnect or unavailable listener |
 | Which app filters apply to GET and full sync? | Same app enabled/disabled in each path, plus group/progress/media examples |
 | Are dismiss and replies complete? | Correlate request response, subsequent removal or app reply result; distinguish cached-action, expired and canceled-intent cases |
 | What does Windows render? | Notification-specific assemblies or a direct Windows test of initial sync, updates, dismiss and actions |
 
-No new tests were run against devices or Microsoft services. Use the existing [research method](method.md) to record environment and acknowledgement boundaries when these experiments are authorized. Keep credentials, private notification contents and raw captures outside the repository.
+The owner performed the two-post experiment recorded above; no additional device or Microsoft-service probes were executed here. Use the existing [research method](method.md) for subsequent experiments and record their acknowledgement boundaries. Keep credentials, private notification contents and raw captures outside the repository.
 
 ## Provenance and source map
 
