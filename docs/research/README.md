@@ -2,46 +2,31 @@
 
 [Documentation index](../README.md)
 
-Use this directory according to the question you have:
-
-| If you need to… | Start with… |
-| --- | --- |
-| Follow one message from sign-in to clipboard | [Authentication and bootstrap](../protocol/authentication.md), then [Transport and framing](../protocol/transport.md), then [Clipboard protocol](../protocol/clipboard.md) |
-| Check an implementation contract | [Transport and framing](../protocol/transport.md) or [Clipboard protocol](../protocol/clipboard.md) |
-| Understand why a behavior changed | [Findings](findings.md), then the linked [development history](history.md) |
-| Reproduce a safe investigation | [Method and provenance](method.md), then [Validation](validation.md) |
-| Separate source, tests, commits, and live reports | [Method and provenance](method.md#what-the-repository-preserves) |
-| See what was actually reported on a phone and desktop | [Validation](validation.md#clipboard-validation-2026-10-03) |
-
-The [architecture overview](../architecture/overview.md) maps Linux packages to these layers. Use the [glossary](../reference/glossary.md) when an identifier or protocol term is unfamiliar.
-
 ## Follow a message
 
-### Wire path
+The protocol docs follow the connection from Microsoft sign-in to a clipboard transfer. Start with the layer you are working on:
 
-1. [Authentication and bootstrap](../protocol/authentication.md) covers account tokens, persistent identities, enrollment, trust, relay assignment, wake, and `/SessionValidation`.
-2. [Transport and framing](../protocol/transport.md) covers WebSocket messages, SignalR invocations, Hub Relay packets, DCG fragments, and PLATFORM requests.
-3. [Clipboard protocol](../protocol/clipboard.md) covers `/Context/Publish`, `/DeviceResourceManager`, `/internal/response`, clipboard payloads, and cross-device ordering.
+| Layer | Documentation |
+| --- | --- |
+| Account tokens, enrollment, device trust and wake | [Authentication and bootstrap](../protocol/authentication.md) |
+| WebSocket, SignalR, DCG fragments and PLATFORM messages | [Transport and framing](../protocol/transport.md) |
+| Clipboard publication, CONTENT requests and ordering | [Clipboard protocol](../protocol/clipboard.md) |
+| Reconnect, token renewal and module restart | [Session resilience](../architecture/session-resilience.md) |
 
-## Follow the evidence
+The [architecture overview](../architecture/overview.md) maps these layers to Go packages. The [glossary](../reference/glossary.md) explains protocol identifiers.
 
-1. [Method and provenance](method.md) explains what each evidence class establishes, how to choose the smallest probe, and what artifacts are absent.
-2. [Findings](findings.md) groups the assumptions that failed, the observed or inferred result, the implementation change, and its source evidence.
-3. [Development history](history.md) lists every dated commit in implementation order.
-4. [Validation](validation.md) records historical and current stage outcomes, commands, limits, safety boundaries, and open gaps.
+## Research notes
 
-## Evidence boundaries
+| File | Contents |
+| --- | --- |
+| [Findings](findings.md) | Problems found during implementation, what caused them and the fixes. |
+| [Validation](validation.md) | Test commands, device results and remaining checks. |
+| [Development history](history.md) | Commits in implementation order. |
+| [Method and provenance](method.md) | Source inspection, capture procedure and how results were recorded. |
 
-The repository contains the Go implementation, deterministic tests, commit history, and written reports of production checks. It does not contain the decompiled Windows source corpus, original protocol definitions, raw production capture logs, or a complete research-session transcript.
+The repository contains the Go client, tests and research notes. Decompiled Windows/Android source and raw production captures are kept outside it. Follow the [privacy guide](../operations/privacy-and-state.md) when preparing an issue or capture.
 
-A source reference proves what the Linux implementation does. A test proves behavior within its test setup. Historical live reports describe the recorded S23, Wayland, and systemd observations; they do not establish compatibility with every phone, compositor, or service deployment. Commit dates establish development order, not the time or success of a live experiment.
+## Recent tests
 
-For a new investigation, record the environment and evidence before drawing a compatibility conclusion. [Research method](method.md) gives the capture and redaction procedure. The [privacy guide](../operations/privacy-and-state.md) identifies material that must stay out of issues and pull requests.
-
-## Current rich clipboard evidence
-
-[Clipboard content implementation evidence](clipboard-content.md) records the supplied source observations, independent implementation, BMP dependency and image direction policy. The [2026-10-03 validation](validation.md#clipboard-validation-2026-10-03) records live HTML/image results, the incoming 1572×2096 comparison, and the outbound Linux/Windows test-image results. These support the current Supported status; they do not establish arbitrary rich-text formats, every device, or durable reconnect.
-
-## Session resilience evidence
-
-[Session resilience](../architecture/session-resilience.md) records the supplied Windows and Android source observations, Linux policy choices, recovery ownership and local fault tests. [Validation](validation.md#session-resilience-2026-10-03) also records the owner's full race-suite pass and live Linux/phone network-loss and suspend recovery at `a1f53ff`. [Session recovery](../operations/session-recovery.md) lists the checks and remaining token-expiry/soak evidence needed.
+- [Clipboard, 2026-10-03](validation.md#clipboard-validation-2026-10-03): text, HTML and images on S23/Wayland, including incoming dimensions and Linux/Windows outbound image comparisons. [Clipboard content](clipboard-content.md) explains the encoding and resize rules.
+- [Session recovery, 2026-10-03](validation.md#session-resilience-2026-10-03): full race suite, Linux and phone network loss, suspend/resume and saved feature state. The [recovery guide](../operations/session-recovery.md) covers the remaining token-expiry and extended-run checks.

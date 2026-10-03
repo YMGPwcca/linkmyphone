@@ -2,76 +2,84 @@
 
 [Documentation index](../README.md)
 
-The live results below were reported in the [baseline README at `e51728b`](https://github.com/YMGPwcca/phonelink-linux/blob/e51728b12a148061c8076c67200ee4a8f366e423/README.md), before this documentation restructure. Raw live logs, packet captures, systemd journals, and phone clipboard payloads were not committed. [Development history](history.md) establishes commit order; source and tests establish local contracts. Neither replaces missing production artifacts.
+This page records manual device tests and automated checks. Older results come from the [baseline README at `e51728b`](https://github.com/YMGPwcca/phonelink-linux/blob/e51728b12a148061c8076c67200ee4a8f366e423/README.md); the dated sections below add the later clipboard and recovery runs. Command examples use the current LinkMyPhone names.
 
-Command examples, feature IDs, paths, and expected log labels below use the current LinkMyPhone names, including in historical sequences. They are updated equivalents, not verbatim transcripts or evidence of a new live validation of the renamed client. Follow the linked baseline for the original names.
+## Current results
 
-The current rich clipboard results are recorded below separately from the baseline. The older stage sections retain their historical scope.
-
-## Read the result before running a probe
-
-| Stage | Recorded outcome | Boundary still open |
-| --- | --- | --- |
-| Microsoft device-code login | Migrated CrossDevice scope and public client reached the device-code endpoint; login succeeded. | Service and account availability are not guaranteed now. |
-| Identity, enrollment, trust, relay | Identity and trust enrollment succeeded; linked peers, assigned shard, and `relayhub/` reached `OnConnected`. | Reconnect and token refresh during an active relay remain unvalidated. |
-| Peer wake | S23 presence/wake path was reported, including pre-wake presence flush. | Repeated wake recovery after sleep or network loss remains open. |
-| SessionValidation | One S23 run accepted PLATFORM `/SessionValidation`; response included capability versions 14 and 3. | These versions are one observation, not a support matrix. |
-| Context Publish | Tag-9 publication reached the S23; STATUS then CONTENT was observed, and explicit non-sensitive text was pasteable. | Negotiation is not mandatory for every peer; raw exchange is absent. |
-| Continuous clipboard | Baseline text sync plus current HTML/image reports on CachyOS/Wayland with an S23; see the dated results below. | Live authenticated X11, other compositors, other phones, and durable reconnect are unvalidated. |
-| Modular CRUD and service | Live feature CRUD and systemd lifecycle were reported on the same Wayland/S23 setup. | Other session managers and init systems are unvalidated. |
-
-## Evidence classes and environment
-
-| Class | Meaning |
+| Area | Result |
 | --- | --- |
-| Current owner report | A new operator report establishes visible behavior on the reported devices; absent payload files do not permit pixel or byte comparison. |
-| Historical live report | The baseline README says a prior operator saw the result in a real environment. No raw artifact is tracked. |
-| Automated test report | The baseline README reports that a prior branch run completed a named command; this is historical evidence, not a fresh result. |
-| Current source contract | A source or focused test path provides a checkable local contract, independent of remote availability. |
-| Unvalidated | No tracked live report establishes the behavior for the stated environment or scenario. |
+| Sign-in, enrollment and device trust | Working with the linked S23. |
+| Relay, wake and SessionValidation | Passed on S23/Wayland. |
+| Text, HTML and image clipboard | Paste tested in both directions. |
+| Network loss and suspend | Recovery passed without restarting the process. |
+| Feature CRUD and systemd service | Lifecycle checks passed on CachyOS/Wayland. Recovery under the updated service unit still needs testing. |
+| Token renewal | Scheduling and persistence tests pass; a run across actual token expiry is still open. |
 
-The historical live environment was a Linux desktop running CachyOS with Wayland and a linked Samsung S23. The README does not identify a complete hardware, compositor, package, network, or service-version manifest. Windows WAM behavior came from source findings, not this Linux probe. X11 and other phone models were not live validated in the tracked record.
+Authenticated X11 runs, other phones and other desktop setups still need testing. The [research method](method.md) describes the capture procedure.
 
 ## Clipboard validation (2026-10-03)
 
-Environment reported by the owner: CachyOS/Wayland, `wl-clipboard`, a Samsung Galaxy S23 running Link to Windows, and Windows Phone Link for comparison. The new executable reused the old `~/.config/phonelink-linux/state.json` through an explicit state flag. HTML dual offers had GTK4/Python GI available. Exact Android, Windows, Link to Windows and compositor versions were not supplied. Dates here use the owner's Asia/Ho_Chi_Minh timezone.
+Setup: CachyOS/Wayland, `wl-clipboard`, Samsung Galaxy S23 with Link to Windows, and Windows Phone Link for the image comparison. HTML offers used GTK4/Python GI. The new executable reused `~/.config/phonelink-linux/state.json` through `--state`.
 
-| Check | Reported result | Evidence boundary |
-| --- | --- | --- |
-| Runtime and content negotiation | PLATFORM session ready, FEATURE_ON synchronized, module `0.2.0` ready; text/HTML/image read/write/bidirectional capabilities active. | Readiness establishes negotiated runtime state, not every paste target. |
-| Received HTML and text | Runtime applied `text/html` and `text/plain;charset=utf-8`; rich clipboard support accepted for this tested setup. | Received HTML is recorded; a controlled Windows-versus-Linux formatting comparison and arbitrary RTF support are not established. |
-| Image transfer in both directions | Phone → Linux and Linux → phone image pastes worked. JPEG/BMP normalization was added; the owner confirmed phone-image transfer after `2670f26`. | Automated tests establish codec variants and budgets; the live sample set does not cover every codec variant or app. |
-| Incoming resize regression | Before the fix, an earlier phone sample yielded 1523×2706 on Windows but 471×836 on Linux. After `7f999f3`, the same new phone copy pasted as **1572×2096 on both PCs**. | The before/after dimensions refer to different reported samples. The matching new sample verifies dimension preservation, not byte or pixel identity. |
-| Outbound same-source comparison | Linux → phone: **583×1036**, displayed **1.05 MB**. Windows → phone: **310×551**, displayed **330 KB**. Owner judged Linux better for this comparison card. | Linux retained about 3.54 times the pixels in this case. Sizes were rounded UI values; exact payload files and byte counts were not supplied. No universal quality ranking is inferred. |
-| Automated verification | [Run 37098891014](https://github.com/YMGPwcca/linkmyphone/actions/runs/37098891014) at `7f999f3` passed vet, build, full race suite and real X11 text/HTML/image MIME transfers. | Xvfb is local desktop integration, not a live authenticated Android/X11 check. |
+| Check | Result |
+| --- | --- |
+| Startup and content negotiation | PLATFORM ready, FEATURE_ON synchronized, module `0.2.0` ready with text/HTML/image capabilities. |
+| Received HTML and text | Runtime applied `text/html` and `text/plain;charset=utf-8`; HTML paste worked. |
+| Image transfer | Paste worked in both directions. Phone receive was checked after JPEG/BMP normalization was added at `2670f26`. |
+| Earlier resize bug | One phone image pasted at 1523×2706 on Windows but 471×836 on Linux. |
+| Receive after `7f999f3` | A new copy from the phone pasted at **1572×2096 on both PCs**. |
+| Same-source outbound comparison | Linux → phone: **583×1036**, displayed as **1.05 MB**. Windows → phone: **310×551**, displayed as **330 KB**. |
+| Automated checks | [Run 37098891014](https://github.com/YMGPwcca/linkmyphone/actions/runs/37098891014) at `7f999f3` passed vet, build, the full race suite and Xvfb text/HTML/image MIME transfers. |
 
-Rich text & HTML clipboard and Image clipboard are **Supported** within the documented provider, format and size limits. The receive conversion preserves dimensions; only outbound PNG preparation applies **1048576 bytes (1 MiB)**. A display rounded to 1.05 MB is not by itself evidence of exceeding that exact limit. Linux and Windows use different outbound resampling and size-selection policies.
+Rich text & HTML clipboard and Image clipboard are **Supported** within the [documented formats and limits](../user-guide/clipboard.md). Received images keep their dimensions. The **1048576-byte (1 MiB)** PNG limit applies to outgoing images; displayed file sizes are rounded. Linux and Windows use different resizing and size-selection rules.
 
-CI subsequently changed at `98a9e5c` to run only on main updates, including merges and direct pushes. Historical successful feature-branch runs remain valid evidence of those commits; future feature pushes or manual dispatch do not trigger the workflow.
-
-No original clipboard image files, pixel comparisons or full live transcripts are committed. Network-loss and suspend recovery now have an owner report; token-expiry/soak validation, other phones and live authenticated X11 remain open. Automatic recovery and token renewal are implemented; see [session resilience](#session-resilience-2026-10-03).
+CI has run on main pushes only since `98a9e5c`. The clipboard CI run above predates that change.
 
 ## Session resilience (2026-10-03)
 
-Implementation on `feature/session-resilience` adds in-process session supervision to `run` and `clipboard-sync`, relay keepalive/deadlines, peer-disconnect and wall-clock gap detection, scheduled token renewal, credential checkpoints and feature-generation handoff. [Source observations and ownership](../architecture/session-resilience.md) document the supplied Android/Windows evidence and Linux policy choices.
+Tested at `a1f53ff` on a Samsung Galaxy S23 and CachyOS/Wayland. The maintainer ran the full race suite and the live checks below. Clipboard used `wl-clipboard` with polling; the foreground session lasted 14m40s.
 
-| Check | Current result | Evidence boundary |
-| --- | --- | --- |
-| `go vet ./...` and CLI build | Passed with Go 1.24.4 on Linux. | Compilation/static checks, not authenticated operation. |
-| Auth/bootstrap/phonehost/transport/protocol fault tests with race detector | Passed. | Includes local HTTP/WebSocket faults, cancellation, silence timeout, retry/throttling, renewal scheduling and rotated-credential persistence. |
-| Controller handoff and reloading committed desired state | Passed with race detector. | In-memory handler tests; replacement respects disabled state/config and CRUD can enable it afterwards. |
-| Full `go test -race ./...` in the agent workspace | Blocked: 11 existing tests fail with `socket: operation not permitted` in this workspace. The same 11 fail on the untouched baseline. | Three feature-command tests, seven Unix control-socket tests and one systemd Unix-datagram test need a Linux environment that permits AF_UNIX. This workspace run did not pass the full suite. |
-| Full race run excluding exactly those 11 blocked tests | Passed across all packages. | Test code and CI were not changed to skip them; Unix-socket integration remains unverified in this run. |
-| Full `go test -race ./...` on the owner's Linux machine | Passed at `a1f53ff`, including the Unix-socket and systemd-notification packages. CLI build also completed. | Supplied terminal output shows all test packages passing without skips; the shell prompt reports Go 1.27.1-X:nodwarf5. This is owner-supplied evidence, not a new agent run. |
-| Live Linux network loss, phone network loss and suspend/resume | Owner reports all three recovery checks passed on the S23/Wayland setup, including clipboard use in both directions afterwards. | The foreground `run` log records three completed recoveries through authentication, peer wake, PLATFORM readiness and feature startup. Fault labels and successful paste observations come from the owner's follow-up; the log has no per-event timestamps. |
-| Live feature state across recovery | Disabled clipboard remains disabled in the replacement registry; it can then be enabled and started again. | The log shows `enabled=false state=validated`, followed by module startup and a later recovery with `enabled=true state=ready`. Displayed self/target IDs and the control-socket path remain unchanged. |
-| Scheduled token-expiry renewal, multi-hour soak and recovery under the updated systemd unit | Awaiting distinct evidence. | The supplied foreground session lasts 14m40s and ends at Ctrl+C. It does not separately identify scheduled expiry renewal or a systemd recovery run. Real X11 MIME integration is also outside this report. |
+| Check | Result |
+| --- | --- |
+| `go test -race ./...` | Passed across all packages, including Unix sockets and systemd notifications. The terminal prompt showed Go 1.27.1-X:nodwarf5. |
+| CLI build | Passed. |
+| Linux network loss and recovery | Passed. |
+| Phone network loss and recovery | Passed. |
+| Linux suspend/resume | Passed. |
+| Clipboard after recovery | Paste worked in both directions. |
+| Feature state | Clipboard stayed disabled across recovery, then could be enabled again. |
+| Device identity and control socket | Displayed device IDs and socket path stayed the same. |
 
-The skip list for this environment was `TestFeatureCommandCRUDForClipboard`, `TestFeatureCommandCanDisableAndDeleteStaleRecord`, `TestFeatureCommandDoesNotFallbackOfflineWhenRuntimeRejectsMutation`, `TestServerRoundTripAndSocketPermissions`, `TestCallUnavailable`, `TestListenReplacesStaleNonSocketPath`, `TestSwitchHandlerTransitionsWithoutReplacingSocket`, `TestServerCloseStopsServeWithoutContextCancellation`, `TestHandlerPanicReturnsFailureAndServerSurvives`, `TestSocketPathRemainsShortForDeepFeatureStore`, and `TestReadySendsSystemdDatagram`. Other tests in these packages, including the new handoff/controller tests, ran.
+The log shows three recoveries reaching PLATFORM readiness and module startup within one `run` invocation. The test scenarios and successful paste results were confirmed after the run. [Session recovery](../operations/session-recovery.md) explains the teardown warning about FEATURE_OFF on a closed endpoint.
 
-The owner supplied this transcript and confirmed the three live recovery scenarios on 2026-10-03. The clipboard backend is `wl-clipboard` with the observer in polling mode. The process remains in one foreground invocation across the recorded recoveries. Linux-to-phone publication is logged after the first recovery; bidirectional successful paste is owner-reported. The raw transcript is not committed. An advisory FEATURE_OFF warning occurs during teardown of an already closed endpoint; the following replacement synchronizes FEATURE_ON and reaches readiness.
+**Still to test:** scheduled renewal across token expiry, a run lasting several hours, and interruption tests under the updated systemd unit. Session recovery & refresh remains **Partial** until the token-expiry and extended-run checks are complete.
 
-**Session recovery & refresh remains Partial** because scheduled renewal through actual token expiry and multi-hour reliability still lack separate live evidence. Network-loss and suspend recovery are now owner-validated. Follow the remaining [live checks](../operations/session-recovery.md#live-checks) before promoting the combined label to Supported. CI remains limited to main pushes; this feature branch does not trigger it.
+### Local fault tests
+
+With Go 1.24.4, `go vet ./...`, the CLI build and the race tests passed for backoff, cancellation, transport timeouts, renewal scheduling, credential persistence and controller handoff. Test files are listed in the [implementation guide](../architecture/session-resilience.md#tests).
+
+The development workspace blocks Unix sockets with `socket: operation not permitted`. Eleven tests failed on both the unchanged baseline and this branch; the rest of the suite passed with those tests excluded. The full suite subsequently passed on the maintainer's Linux machine, as recorded above.
+
+<details>
+<summary>Tests blocked by the workspace</summary>
+
+```text
+TestFeatureCommandCRUDForClipboard
+TestFeatureCommandCanDisableAndDeleteStaleRecord
+TestFeatureCommandDoesNotFallbackOfflineWhenRuntimeRejectsMutation
+TestServerRoundTripAndSocketPermissions
+TestCallUnavailable
+TestListenReplacesStaleNonSocketPath
+TestSwitchHandlerTransitionsWithoutReplacingSocket
+TestServerCloseStopsServeWithoutContextCancellation
+TestHandlerPanicReturnsFailureAndServerSurvives
+TestSocketPathRemainsShortForDeepFeatureStore
+TestReadySendsSystemdDatagram
+```
+
+No test or CI configuration was changed to skip them. CI runs on main pushes.
+
+</details>
 
 ## Safety rules for every live probe
 
@@ -366,4 +374,4 @@ The checkable record is current source, focused tests, dated commits, PR #1 body
 
 ## Open limitations
 
-Microsoft cloud services remain required. Finite bootstrap, wake, SessionValidation, Context Publish, and clipboard probes do not establish a durable connection. Automatic recovery, wake/re-presence and token renewal have local regression coverage. Linux/phone network-loss and suspend recovery now have an owner-validated live report; scheduled token-expiry renewal and multi-hour reliability remain open. Protocol constants such as MSAEP version 1.1, clipboard tag 9, enum values, and observed capability versions 14 and 3 must not be read as a general compatibility or phone-support matrix.
+Microsoft services provide account tokens, trust discovery, relay and wake. Recovery has been tested with one S23 on Wayland; token expiry, extended operation, other phones and authenticated X11 runs still need testing. MSAEP version 1.1, clipboard tag 9 and capability versions 14 and 3 describe the recorded protocol exchanges. See the dated results above for the tested setup.
