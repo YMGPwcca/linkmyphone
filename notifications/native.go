@@ -81,7 +81,9 @@ func NewDesktop(ctx context.Context) (NativeBackend, error) {
 		return fail(fmt.Errorf("notifications: query capabilities: %w", err))
 	}
 
-	backendCtx, cancel := context.WithCancel(ctx)
+	// The feature closes its rendered IDs before Close tears down this bus.
+	// Constructor cancellation bounds startup, not the backend lifetime.
+	backendCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	b := &desktopBackend{
 		conn:           conn,
 		object:         conn.Object(notificationService, notificationPath),

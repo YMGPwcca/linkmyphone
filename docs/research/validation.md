@@ -28,6 +28,7 @@ Implementation on `feature/notification-sync`; source corpus: Phone Link 1.26072
 | Real native desktop | A synthetic local peer drove real Quickshell D-Bus Notify/replacement/removal on CachyOS/Wayland; replacement retained its native ID, phone removal did not echo a mutation and teardown completed. No Microsoft/phone network was involved. |
 | Actual GTK reply UI | Own native window inspected with cropped screenshots and AT-SPI. Confirmed `Xin chào 👋\\nSecond line` through its editor and Reply button; the synthetic peer received exact text and Android action index 4. |
 | Linux verification | Full tests, full race suite, vet and CLI build passed on the isolated staging checkout. Working clipboard state/service were not replaced. |
+| Native Stop ordering | Constructor cancellation initially closed D-Bus before local teardown. Reproduced on the real desktop; explicit backend lifetime now allows local notification close after feature cancellation, before backend Close. |
 | Genuine PL enrollment | Correct-profile device-code authorization started; sign-in expired before account authentication. No PL identity/state was created in that attempt. |
 | S23 live push/reconcile and mutations | **Not exercised.** Requires completing isolated PL sign-in. Live dismiss/action/reply were explicitly excluded; their validation used local fixtures/synthetic desktop only. |
 
