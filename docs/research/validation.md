@@ -29,6 +29,12 @@ Bidirectional plain-text delivery also passed while **both modules were Ready on
 
 The old WEA service was restored to Active/Running. The desktop's original PNG selection was restored byte-for-byte (matching SHA-256) before removing the private backup. The Android fixture was uninstalled and its test clipboard was cleared; **its first backup read ran before the fixture gained foreground focus and reported an empty clip, so it cannot prove the phone's pre-test clipboard was empty**. Any prior phone clipboard value may need to be recopied. No phone network, account, notification permission or enrollment was changed.
 
+## APP route decoding after fresh login (2026-10-05)
+
+The user's first fresh PL login and one-host runtime reached notification APP ready/reconcile and clipboard transfers. After a ninth notification item, the runtime printed one `malformed APP envelope`. That output proves an APP payload failed the old universal PBValueSet decoder; **no raw envelope or route was captured**, so its exact cause cannot be assigned.
+
+APP is multiplexed by `_route`. The supplied Windows `DeviceProxyMessageReceiver` handles `/DeviceProxyClient/TransportMiddleware` with a JSON body, whereas notification `/legacy/phonecontent` uses PBValueSet. The old notification receive loop decoded PBValueSet before inspecting `_route`, misreporting an unrelated valid JSON APP frame as malformed. An offline test reproduced that false warning before the change and passed after route-first decoding. The notification client now validates framing, ignores routes and response IDs it does not own, then decodes typed values only for its own routes. Malformed frames or typed bodies on a claimed route still report a non-content `stage` and decoder `reason`. This prevents the established false-positive shape; the user's exact live frame has **not** been re-captured or asserted fixed.
+
 ## Notification validation (2026-10-04)
 
 Implementation on `feature/notification-sync`; source corpus: Phone Link 1.26072.257.0 and active Link to Windows 1.26082.130.0. No Microsoft source, application assemblies or captured personal notification payloads are tracked in the repository.

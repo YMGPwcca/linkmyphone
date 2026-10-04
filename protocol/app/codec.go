@@ -89,21 +89,32 @@ func MarshalMessage(m Message) ([]byte, error) {
 	return platform.MarshalWithHeaderCount(platform.Message{Version: platform.Version1, Headers: m.Headers, Payload: payload})
 }
 
-func UnmarshalMessage(wire []byte) (Message, error) {
+// UnmarshalEnvelope validates APP framing and headers without assuming that
+// every APP route carries PBValueSet. The returned payload belongs to the
+// decoded frame; callers select a route before decoding its body.
+func UnmarshalEnvelope(wire []byte) (platform.Message, error) {
 	if len(wire) > maxWire+maxHeader*2*maxHeaderText+maxHeader*8+17 {
-		return Message{}, fmt.Errorf("%w: envelope too large", ErrMalformed)
+		return platform.Message{}, fmt.Errorf("%w: envelope too large", ErrMalformed)
 	}
 	outer, err := platform.Unmarshal(wire)
 	if err != nil {
-		return Message{}, fmt.Errorf("%w: envelope: %v", ErrMalformed, err)
+		return platform.Message{}, fmt.Errorf("%w: envelope: %v", ErrMalformed, err)
 	}
 	if len(outer.Headers) > maxHeader {
-		return Message{}, fmt.Errorf("%w: too many headers", ErrMalformed)
+		return platform.Message{}, fmt.Errorf("%w: too many headers", ErrMalformed)
 	}
 	for _, h := range outer.Headers {
 		if len(h.Key) > maxHeaderText || len(h.Value) > maxHeaderText {
-			return Message{}, fmt.Errorf("%w: header too large", ErrMalformed)
+			return platform.Message{}, fmt.Errorf("%w: header too large", ErrMalformed)
 		}
+	}
+	return outer, nil
+}
+
+func UnmarshalMessage(wire []byte) (Message, error) {
+	outer, err := UnmarshalEnvelope(wire)
+	if err != nil {
+		return Message{}, err
 	}
 	values, err := Unmarshal(outer.Payload)
 	if err != nil {

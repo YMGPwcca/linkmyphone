@@ -285,6 +285,85 @@ func TestReceiveOnlyAndOngoingCannotSendPhoneMutations(t *testing.T) {
 	}
 }
 
+func TestOtherAPPRouteDoesNotMasqueradeAsMalformedNotification(t *testing.T) {
+	c, native, transport := newFixtureClient(t)
+	events := make(chan string, 8)
+	c.cfg.OnEvent = func(message string, _ map[string]string) { events <- message }
+	cancel, done := startClient(t, c)
+	defer stopClient(t, cancel, done)
+
+	// DeviceProxyMessageReceiver accepts JSON on this APP route, not PBValueSet.
+	other, err := platform.MarshalWithHeaderCount(platform.Message{
+		Headers: []platform.Header{{Key: platform.HeaderRoute, Value: "/DeviceProxyClient/TransportMiddleware"}},
+		Payload: []byte(`{"parameters":{"commandContent":"open"}}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport.received <- relay.Received{Source: "phone", TransportMessageType: dcg.TransportMessageTypeApp, Payload: other}
+
+	value := item("one", "text", 10)
+	body, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := app.MarshalMessage(app.NewRequest(wire.RoutePhoneContent, "push", app.ValueSet{
+		"contentType": "notifications", "notificationKeys": []string{"one"},
+		"operations": []int32{wire.OperationNew}, "notifications": []string{string(body)},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport.received <- relay.Received{Source: "phone", TransportMessageType: dcg.TransportMessageTypeApp, Payload: payload}
+	if response := sentWithin(t, transport); response.message.Values["result"] != int32(0) {
+		t.Fatalf("notification after unrelated APP message rejected: %#v", response)
+	}
+	native.mu.Lock()
+	rendered := native.renderCount
+	native.mu.Unlock()
+	if rendered != 1 {
+		t.Fatalf("following notification rendered %d times", rendered)
+	}
+	for {
+		select {
+		case event := <-events:
+			if event == "malformed APP envelope" {
+				t.Fatal("non-notification APP route logged as malformed notification")
+			}
+		default:
+			return
+		}
+	}
+}
+
+func TestMalformedNotificationAPPReportsDecodeStage(t *testing.T) {
+	c, _, transport := newFixtureClient(t)
+	events := make(chan map[string]string, 1)
+	c.cfg.OnEvent = func(message string, fields map[string]string) {
+		if message == "malformed APP envelope" {
+			events <- fields
+		}
+	}
+	cancel, done := startClient(t, c)
+	defer stopClient(t, cancel, done)
+	payload, err := platform.MarshalWithHeaderCount(platform.Message{
+		Headers: []platform.Header{{Key: platform.HeaderRoute, Value: wire.RoutePhoneContent}},
+		Payload: []byte(`{"invalid":"PBValueSet"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport.received <- relay.Received{Source: "phone", TransportMessageType: dcg.TransportMessageTypeApp, Payload: payload}
+	select {
+	case fields := <-events:
+		if fields["stage"] != "values" || fields["reason"] == "" {
+			t.Fatalf("malformed notification lacks diagnostic stage: %#v", fields)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("malformed notification payload was silently ignored")
+	}
+}
+
 func TestAPPResultAcknowledgementDuplicateAndMalformedBatch(t *testing.T) {
 	c, native, transport := newFixtureClient(t)
 	ctx, cancel := context.WithCancel(context.Background())
