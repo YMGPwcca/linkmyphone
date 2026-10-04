@@ -212,6 +212,15 @@ Routes modeled in [`protocol/platform/message.go`](../../protocol/platform/messa
 
 A successful response is matched by route and `_originalRequestId`; neither the DCG ACK nor SignalR Completion replaces this application-level correlation.
 
+### Typed APP payloads
+
+[`protocol/app`](../../protocol/app/) independently implements the PBValueSet typed protobuf payload: `Int32` operations/results, `Int64` post times, `Double` contract versions, position-preserving string arrays, and nested ValueSets. It bounds payloads, recursion, map entries and arrays; protobuf default-valued scalars and packed/unpacked numeric arrays are accepted. APP uses Hub Relay transport type **0**, not the protobuf transport enum.
+
+[`protocol/notifications`](../../protocol/notifications/) builds `/connect/v1` (`contentType=connect`) and `/notifications` requests, and decodes `/legacy/phonecontent` batches (`contentType=notifications`). Keys, operations and JSON bodies are parallel arrays; removal bodies may be empty. Action indices are Android's original indices. Empty clear requests are rejected because Android interprets them as clearing every notification.
+
+Synthetic Go payloads were decoded by the supplied Windows 1.26072.257.0 PBValueSet assembly, and its independently serialized response was decoded by Go. The retained synthetic fixture verifies typed zero results, nested permissions, signed arrays and empty string positions. This is codec interoperability evidence, not evidence of a live notification subscription.
+
+
 ## MSAEP PubSub envelope
 
 The MSAEP protobuf envelope has these fields:
