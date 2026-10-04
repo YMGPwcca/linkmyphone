@@ -184,9 +184,9 @@ Reassembly keys on source DCG ID, DCG `SessionId`, `MessageId`, and transport me
 
 When a complete incoming fragment arrives, the relay sends a successful DCG ACK before delivering the reassembled payload to the bounded application queue. The receive event contains source, DCG session ID, message ID, transport type, and payload. The relay read loop must run while sends wait for ACKs. A closed or malformed Hub read loop fails the relay; a full application queue fails fast rather than silently dropping traffic. See [`transport/relay/client.go`](../../transport/relay/client.go#L107-L196) and [`transport/relay/client.go`](../../transport/relay/client.go#L422-L475).
 
-## PLATFORM framing
+## Shared APP/PLATFORM framing
 
-PLATFORM is a binary envelope with version byte `1`:
+APP and PLATFORM share a binary envelope with version byte `1`; their payload contracts and transport message types remain distinct:
 
 ```text
 byte 0: version
@@ -197,7 +197,7 @@ uint64 little-endian: payload length
 payload bytes
 ```
 
-The parser requires the version, exact header byte length/count agreement, a bounded payload length, and no trailing bytes.
+The parser bounds header count by actual input, validates payload length, and rejects trailing bytes. Android advertises the key/value byte length without the four-byte header count; Windows includes that count. Exactly those two verified conventions are accepted. `platform.Marshal` preserves the Android convention used by existing PLATFORM callers; `platform.MarshalWithHeaderCount` emits the Windows convention for APP producers.
 
 | Header               | Purpose                                     |
 | -------------------- | ------------------------------------------- |

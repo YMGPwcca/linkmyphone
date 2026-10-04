@@ -1,5 +1,5 @@
-// Package platform implements the binary platform-message framing used below
-// Phone Link's DeviceResourceManager route.
+// Package platform implements the shared binary APP/PLATFORM message framing
+// and the PLATFORM request routes used by Phone Link.
 package platform
 
 import (
@@ -96,6 +96,16 @@ func NewInternalResponse(payload []byte, originalRequestID string) Message {
 }
 
 func Marshal(m Message) ([]byte, error) {
+	return marshal(m, false)
+}
+
+// MarshalWithHeaderCount uses Windows's length convention, where the header
+// count is included in the advertised header section length.
+func MarshalWithHeaderCount(m Message) ([]byte, error) {
+	return marshal(m, true)
+}
+
+func marshal(m Message, includeHeaderCount bool) ([]byte, error) {
 	version := m.Version
 	if version == 0 {
 		version = Version1
@@ -116,14 +126,18 @@ func Marshal(m Message) ([]byte, error) {
 			return nil, err
 		}
 	}
-	if headerBytes.Len() > math.MaxUint32 {
+	headerLength := uint64(headerBytes.Len())
+	if includeHeaderCount {
+		headerLength += 4
+	}
+	if headerLength > math.MaxUint32 {
 		return nil, errors.New("platform: headers too large")
 	}
 
 	var out bytes.Buffer
 	out.Grow(1 + 4 + 4 + headerBytes.Len() + 8 + len(m.Payload))
 	out.WriteByte(version)
-	_ = binary.Write(&out, binary.LittleEndian, uint32(headerBytes.Len()))
+	_ = binary.Write(&out, binary.LittleEndian, uint32(headerLength))
 	_ = binary.Write(&out, binary.LittleEndian, uint32(len(m.Headers)))
 	out.Write(headerBytes.Bytes())
 	_ = binary.Write(&out, binary.LittleEndian, uint64(len(m.Payload)))
@@ -132,63 +146,50 @@ func Marshal(m Message) ([]byte, error) {
 }
 
 func Unmarshal(b []byte) (Message, error) {
-	var m Message
-	r := bytes.NewReader(b)
-
-	version, err := r.ReadByte()
-	if err != nil {
-		return m, ErrMalformed
-	}
-	if version != Version1 {
-		return m, fmt.Errorf("%w: unsupported version %d", ErrMalformed, version)
-	}
-	m.Version = version
-
-	var headerBytesLen uint32
-	var headerCount uint32
-	if binary.Read(r, binary.LittleEndian, &headerBytesLen) != nil ||
-		binary.Read(r, binary.LittleEndian, &headerCount) != nil {
+	if len(b) < 17 {
 		return Message{}, ErrMalformed
 	}
-	if uint64(headerBytesLen) > uint64(r.Len()) {
+	if b[0] != Version1 {
+		return Message{}, fmt.Errorf("%w: unsupported version %d", ErrMalformed, b[0])
+	}
+	headerLength := binary.LittleEndian.Uint32(b[1:5])
+	headerCount := binary.LittleEndian.Uint32(b[5:9])
+	// Even an empty key/value pair consumes two four-byte length fields.
+	// Bound the allocation by actual input, not an untrusted header count.
+	if uint64(headerCount) > uint64((len(b)-17)/8) {
 		return Message{}, ErrMalformed
 	}
-
-	headerSection := make([]byte, int(headerBytesLen))
-	if _, err := io.ReadFull(r, headerSection); err != nil {
-		return Message{}, ErrMalformed
-	}
-	hr := bytes.NewReader(headerSection)
-	m.Headers = make([]Header, 0, int(headerCount))
-	for i := uint32(0); i < headerCount; i++ {
-		key, err := readU32String(hr)
+	m := Message{Version: Version1, Headers: make([]Header, 0, int(headerCount))}
+	offset := 9
+	for range headerCount {
+		key, err := readStringAt(b, &offset)
 		if err != nil {
 			return Message{}, err
 		}
-		value, err := readU32String(hr)
+		value, err := readStringAt(b, &offset)
 		if err != nil {
 			return Message{}, err
 		}
 		m.Headers = append(m.Headers, Header{Key: key, Value: value})
 	}
-	if hr.Len() != 0 {
+	actualHeaderLength := uint64(offset - 9)
+	// Android excludes the count; Windows includes it. No other mismatch is
+	// accepted, and payload bounds remain independent of either convention.
+	if uint64(headerLength) != actualHeaderLength && uint64(headerLength) != actualHeaderLength+4 {
 		return Message{}, fmt.Errorf("%w: header byte length/count mismatch", ErrMalformed)
 	}
-
-	var payloadLen uint64
-	if binary.Read(r, binary.LittleEndian, &payloadLen) != nil {
+	if len(b)-offset < 8 {
 		return Message{}, ErrMalformed
 	}
-	if payloadLen > uint64(r.Len()) || payloadLen > uint64(math.MaxInt) {
+	payloadLength := binary.LittleEndian.Uint64(b[offset : offset+8])
+	offset += 8
+	if payloadLength > uint64(len(b)-offset) {
 		return Message{}, ErrMalformed
 	}
-	m.Payload = make([]byte, int(payloadLen))
-	if _, err := io.ReadFull(r, m.Payload); err != nil {
-		return Message{}, ErrMalformed
-	}
-	if r.Len() != 0 {
+	if payloadLength != uint64(len(b)-offset) {
 		return Message{}, fmt.Errorf("%w: trailing bytes", ErrMalformed)
 	}
+	m.Payload = append([]byte(nil), b[offset:]...)
 	return m, nil
 }
 
@@ -212,17 +213,17 @@ func writeU32String(w io.Writer, s string) error {
 	return err
 }
 
-func readU32String(r *bytes.Reader) (string, error) {
-	var n uint32
-	if binary.Read(r, binary.LittleEndian, &n) != nil {
+func readStringAt(b []byte, offset *int) (string, error) {
+	if len(b)-*offset < 4 {
 		return "", ErrMalformed
 	}
-	if uint64(n) > uint64(r.Len()) {
+	length := binary.LittleEndian.Uint32(b[*offset : *offset+4])
+	*offset += 4
+	if uint64(length) > uint64(len(b)-*offset) {
 		return "", ErrMalformed
 	}
-	v := make([]byte, int(n))
-	if _, err := io.ReadFull(r, v); err != nil {
-		return "", ErrMalformed
-	}
-	return string(v), nil
+	end := *offset + int(length)
+	value := string(b[*offset:end])
+	*offset = end
+	return value, nil
 }
