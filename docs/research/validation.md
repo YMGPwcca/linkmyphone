@@ -29,10 +29,12 @@ Implementation on `feature/notification-sync`; source corpus: Phone Link 1.26072
 | Actual GTK reply UI | Own native window inspected with cropped screenshots and AT-SPI. Confirmed `Xin chào 👋\\nSecond line` through its editor and Reply button; the synthetic peer received exact text and Android action index 4. |
 | Linux verification | Full tests, full race suite, vet and CLI build passed on the isolated staging checkout. Working clipboard state/service were not replaced. |
 | Native Stop ordering | Constructor cancellation initially closed D-Bus before local teardown. Reproduced on the real desktop; explicit backend lifetime now allows local notification close after feature cancellation, before backend Close. |
-| Genuine PL enrollment | Correct-profile device-code authorization started; sign-in expired before account authentication. No PL identity/state was created in that attempt. |
-| S23 live push/reconcile and mutations | **Not exercised.** Requires completing isolated PL sign-in. Live dismiss/action/reply were explicitly excluded; their validation used local fixtures/synthetic desktop only. |
+| Genuine PL enrollment | Separate PL device-code sign-in, identity enrollment, trust and Hub Relay succeeded. Existing WEA clipboard state/service remained separate. |
+| S23 live receive/reconcile | APP connect succeeded with `ecr=true`; one real notification was synchronized. Module Ready exposed only `notifications.receive`, with `remote_actions=false`. |
+| Android parser compatibility | Initial connect failed in Java lite `readInt64List` on an explicitly encoded zero-length packed array. Reproduced offline using the active Android schema and Java lite stream parser. Omitting empty repeated fields while preserving variant types fixed the offline parser and live S23 connect. |
+| Live phone mutations | Dismiss/action/reply were explicitly excluded; their validation used local fixtures and synthetic desktop UI only. |
 
-Automation limits: Hyprland `focuswindow` dispatch failed and `ydotoold` was unavailable, so submission was exercised through the actual accessible Reply button, not synthetic Ctrl+Enter. Keyboard bindings exist in the helper but were not runtime-verified here. Notification module status remains **Experimental** until genuine PL eligibility and S23 push/reconcile are observed.
+Automation limits: Hyprland `focuswindow` dispatch failed and `ydotoold` was unavailable, so submission was exercised through the actual accessible Reply button, not synthetic Ctrl+Enter. Keyboard bindings exist in the helper but were not runtime-verified here. Notification status remains **Experimental**: live phone mutations, long-running recovery and broader device coverage remain untested.
 
 
 ## Clipboard validation (2026-10-03)

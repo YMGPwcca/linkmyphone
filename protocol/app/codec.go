@@ -455,7 +455,9 @@ func marshalVariant(value any, depth int) ([]byte, error) {
 				p = appendUvarint(p, 0)
 			}
 		}
-		out = appendBytesField(out, 31, p)
+		if len(p) != 0 {
+			out = appendBytesField(out, 31, p)
+		}
 	case []string:
 		typ = tStringArray
 		if len(v) > maxArray {
@@ -982,7 +984,7 @@ func appendStringField(dst []byte, field int, s string) []byte {
 	return appendBytesField(dst, field, []byte(s))
 }
 func appendPackedInts[T ~int16 | ~uint16 | ~int32 | ~int64](dst []byte, field int, values []T, limit int) []byte {
-	if len(values) > limit {
+	if len(values) == 0 || len(values) > limit {
 		return dst
 	}
 	var p []byte
@@ -992,7 +994,7 @@ func appendPackedInts[T ~int16 | ~uint16 | ~int32 | ~int64](dst []byte, field in
 	return appendBytesField(dst, field, p)
 }
 func appendPackedUints[T ~uint16 | ~uint32 | ~uint64](dst []byte, field int, values []T, limit int) []byte {
-	if len(values) > limit {
+	if len(values) == 0 || len(values) > limit {
 		return dst
 	}
 	var p []byte
@@ -1002,6 +1004,9 @@ func appendPackedUints[T ~uint16 | ~uint32 | ~uint64](dst []byte, field int, val
 	return appendBytesField(dst, field, p)
 }
 func appendPackedFloat32(dst []byte, field int, values []float32, limit int) []byte {
+	if len(values) == 0 {
+		return dst
+	}
 	var p []byte
 	for _, v := range values {
 		var b [4]byte
@@ -1011,6 +1016,9 @@ func appendPackedFloat32(dst []byte, field int, values []float32, limit int) []b
 	return appendBytesField(dst, field, p)
 }
 func appendPackedFloat64(dst []byte, field int, values []float64, limit int) []byte {
+	if len(values) == 0 {
+		return dst
+	}
 	var p []byte
 	for _, v := range values {
 		var b [8]byte

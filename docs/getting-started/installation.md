@@ -85,7 +85,7 @@ sudo pacman -S --needed wl-clipboard gtk4 python-gobject
 
 Notification reception additionally needs a desktop session bus and a running `org.freedesktop.Notifications` service. Android actions require native action support; replies use the same Python GI/GTK4 packages. Missing GTK disables reply controls/capability without substituting a fake reply backend.
 
-Full notification push requires a separate PL enrollment. Do not reuse or change a working WEA profile for that trial; use separate authentication and feature paths as shown in [first run](first-run.md#separate-phone-link-enrollment). Live PL enrollment/push remains unvalidated; see [current evidence](../research/validation.md#notification-validation-2026-10-04).
+Full notification push requires a separate PL enrollment. Do not reuse or change a working WEA profile for that trial; use separate authentication and feature paths as shown in [first run](first-run.md#separate-phone-link-enrollment). Isolated PL enrollment and S23 receive/reconcile have passed; see [current evidence and limits](../research/validation.md#notification-validation-2026-10-04).
 
 
 Existing `phonelink-linux` installations can reuse their enrollment through `--state "$HOME/.config/phonelink-linux/state.json"`. Stop `phonelink-linux.service` before starting a test binary, and invoke the newly built executable explicitly; running the old installed command does not test the new code. See [clipboard behavior](../user-guide/clipboard.md) for supported image codecs and limits.
