@@ -17,6 +17,38 @@ This page records manual device tests and automated checks. Older results come f
 
 Authenticated X11 runs, other phones and other desktop setups still need testing. The [research method](method.md) describes the capture procedure.
 
+## Notification validation (2026-10-04)
+
+Implementation on `feature/notification-sync`; source corpus: Phone Link 1.26072.257.0 and active Link to Windows 1.26082.130.0. No Microsoft source, application assemblies or captured personal notification payloads are tracked in the repository.
+
+| Check | Observed result |
+| --- | --- |
+| Independent PBValueSet interoperability | Original Windows protocol assembly decoded synthetic Go Double, Int32/Int64 arrays, empty string-array elements and nested Bool; Go decoded its serialized response. |
+| APP/state regressions | Typed correlated responses, malformed aligned arrays, duplicate pushes, silent existing state, key/post-time pairing, session reset, failed-render retry, stale actions/replies and non-user close reasons covered. |
+| Real native desktop | A synthetic local peer drove real Quickshell D-Bus Notify/replacement/removal on CachyOS/Wayland; replacement retained its native ID, phone removal did not echo a mutation and teardown completed. No Microsoft/phone network was involved. |
+| Actual GTK reply UI | Own native window inspected with cropped screenshots and AT-SPI. Confirmed `Xin chào 👋\\nSecond line` through its editor and Reply button; the synthetic peer received exact text and Android action index 4. |
+| Linux verification | Full tests, full race suite, vet and CLI build passed on the isolated staging checkout. Working clipboard state/service were not replaced. |
+| Native Stop ordering | Constructor cancellation initially closed D-Bus before local teardown. Reproduced on the real desktop; explicit backend lifetime now allows local notification close after feature cancellation, before backend Close. |
+| Genuine PL enrollment | Separate PL device-code sign-in, identity enrollment, trust and Hub Relay succeeded. Existing WEA clipboard state/service remained separate. |
+| S23 live receive/reconcile | APP connect succeeded with `ecr=true`; one real notification was synchronized. Module Ready exposed only `notifications.receive`, with `remote_actions=false`. |
+| Android parser compatibility | Initial connect failed in Java lite `readInt64List` on an explicitly encoded zero-length packed array. Reproduced offline using the active Android schema and Java lite stream parser. Omitting empty repeated fields while preserving variant types fixed the offline parser and live S23 connect. |
+| Live Android fixture mutations | Subsequently authorized and exercised on S23: explicit dismiss, explicit-key clear, launch, non-reply action and Unicode/multiline inline reply. A temporary fixture recorded actual Android receiver/activity effects; no personal notification was targeted. |
+| Android action contract | Live fixture revealed that actions are serialized as `notificationActions`, not `actions`. Corrected the decoder and independent JSON fixture; action/reply then executed on the phone. |
+| Live update/remove/restart | Fixture update retained the Android key with latest text; phone-originated removal disappeared after reconcile. Restarted the PL client after creating/updating notifications offline; both arrived as Existing with current text. |
+| Ongoing notification | Android/LTW did not sync the fixture's ongoing notification. Local ongoing-dismiss protection is covered by automated tests, not claimed as a live mutation pass. |
+| Expanded lifecycle regressions | User-dismiss reason 2, invalid explicit clear, original action indices, whitespace-preserving replies, concurrent prompt/action, request cancellation, permission result 7, queued stale mutations, retry after failed batch and teardown passed under Linux race detection. |
+| Decoder fuzz | Bounded APP decoder fuzz ran for 15 seconds: 4,396,193 executions, no crash. Malformed nested values, variant type mismatches, array/recursion bounds and typed empty defaults have regressions. |
+| D-Bus lifecycle/security | Actual isolated session bus with an independent notification service: literal markup escaping, authentic action/close events, spoofed-sender rejection, owner loss/rebind and local teardown after context cancellation passed. The user's Quickshell process was not restarted. |
+| GTK cancellation | Actual native Cancel button exposed name/role through AT-SPI and returned no submitted text. Context cancellation terminated a second real GTK dialog without submitting. |
+| WhatsApp self-chat | User selected Message yourself and confirmed sending did not generate a phone notification. Notification-key inspection found no WhatsApp notification; real-app inline reply could not be exercised. No other recipient was substituted. |
+| Messenger real recipient | User authorized a conversation between their two Facebook accounts. A real Messenger notification was expanded in Quickshell using a virtual mouse; its horizontal action row was dragged to reveal Reply. The native reply editor received the approved Unicode test text and the actual confirmation button was clicked. The user confirmed the second account received the exact message. |
+| Keyboard shortcuts | A temporary user-owned virtual input daemon delivered real keyboard events. Escape/Ctrl+Enter initially failed while the text editor held focus; moving the window key controller to capture phase fixed both. Actual GTK dialogs then canceled on Escape and submitted exact numeric test text on Ctrl+Enter. Initial alphabetic test text was transformed by the desktop Vietnamese IME, so the shortcut smoke used IME-neutral digits without changing user input settings. |
+| Preserved device settings | Only the authorized fixture app/notification state was changed through ADB. Link to Windows notification-listener permission, phone network, account, Knox and bootloader were not modified. Permission loss remains an automated-test result. |
+| Cleanup | Temporary Android fixture was uninstalled after clearing only its own notifications. Test runtimes exited cleanly; diagnostic scripts/APK/key material were removed. Existing clipboard service remained active with its original identity digest. |
+
+Automation limits: the initial virtual-input prerequisite was resolved by starting a temporary daemon on a private user socket. Messenger reply mouse interaction and GTK Escape/Ctrl+Enter are now verified. Pointer-driven Quickshell dismissal remains distinct from the verified reply flow; global clear was not invoked because it would affect personal notifications. Notification status remains **Experimental**: live permission revocation, forced network loss, long-running recovery and broader device coverage remain unverified. Phone Wi-Fi was never disabled; ADB itself uses that connection.
+
+
 ## Clipboard validation (2026-10-03)
 
 Setup: CachyOS/Wayland, `wl-clipboard`, Samsung Galaxy S23 with Link to Windows, and Windows Phone Link for the image comparison. HTML offers used GTK4/Python GI. The new executable reused `~/.config/phonelink-linux/state.json` through `--state`.

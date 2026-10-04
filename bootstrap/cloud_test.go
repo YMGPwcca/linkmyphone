@@ -11,9 +11,9 @@ import (
 
 	"github.com/YMGPwcca/linkmyphone/dcgheaders"
 	psignalr "github.com/YMGPwcca/linkmyphone/protocol/signalr"
+	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
 	"github.com/YMGPwcca/linkmyphone/transport/relay"
 	signalrtransport "github.com/YMGPwcca/linkmyphone/transport/signalr"
-	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
 )
 
 type cloudFakeHub struct {
@@ -67,7 +67,8 @@ func TestOpenCloudRelayRetriesMismatchedRegion(t *testing.T) {
 	}))
 	defer server.Close()
 
-	info, err := dcgheaders.NewCrossDeviceClientInfo(
+	info, err := dcgheaders.NewClientInfo(
+		dcgheaders.ProfileCrossDevice,
 		"logical",
 		"1.26072.116.0",
 		"Public",
@@ -110,11 +111,11 @@ func TestOpenCloudRelayRetriesMismatchedRegion(t *testing.T) {
 
 	service := servicedcg.NewClient(server.URL)
 	cloud, err := OpenCloudRelay(context.Background(), CloudConfig{
-		Services:       service,
-		MSAAccessToken: "msa-token",
-		DCGAccessToken: "dcg-general",
-		ClientInfo:     info,
-		DialHub:        dial,
+		Services:           service,
+		MSAAccessToken:     "msa-token",
+		DCGAccessToken:     "dcg-general",
+		ClientInfo:         info,
+		DialHub:            dial,
 		OnConnectedTimeout: time.Second,
 	})
 	if err != nil {
@@ -132,7 +133,7 @@ func TestOpenCloudRelayRejectsNoShards(t *testing.T) {
 		_, _ = w.Write([]byte(`{"assignedShards":[]}`))
 	}))
 	defer server.Close()
-	info, err := dcgheaders.NewCrossDeviceClientInfo("logical", "1", "Public", "10")
+	info, err := dcgheaders.NewClientInfo(dcgheaders.ProfileCrossDevice, "logical", "1", "Public", "10")
 	if err != nil {
 		t.Fatal(err)
 	}

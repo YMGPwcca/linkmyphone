@@ -6,6 +6,7 @@ import (
 
 	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
 	"github.com/YMGPwcca/linkmyphone/auth/msa"
+	"github.com/YMGPwcca/linkmyphone/dcgheaders"
 	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
 )
 
@@ -29,8 +30,8 @@ func TestBuildStateSnapshot(t *testing.T) {
 			EpochExpirationTime: &expires,
 		},
 		EnrollResponse: servicedcg.EnrollResponse{
-			AccountCert: "account-cert",
-			AccountInfo: &servicedcg.AccountInfo{AccountKey: "account"},
+			AccountCert:          "account-cert",
+			AccountInfo:          &servicedcg.AccountInfo{AccountKey: "account"},
 			RootCertificateChain: []string{"root"},
 		},
 	}
@@ -46,6 +47,7 @@ func TestBuildStateSnapshot(t *testing.T) {
 		result,
 		trustSync,
 		"logical",
+		dcgheaders.ProfileCrossDevice,
 	)
 	if err != nil {
 		t.Fatal(err)

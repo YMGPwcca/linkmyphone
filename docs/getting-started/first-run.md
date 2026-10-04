@@ -61,6 +61,35 @@ linkmyphone bootstrap-probe --state "$HOME/.config/linkmyphone-test/state.json"
 
 The other bootstrap flags are documented in the [CLI reference](../reference/cli.md). They change compatibility metadata sent to Microsoft's service. Keep their defaults unless a deployment-specific requirement gives you a reason to change them.
 
+### Separate Phone Link enrollment
+
+The default `crossdevice` profile preserves the existing WEA/clipboard identity. Full notification push uses a genuine `phonelink` (PL) enrollment, not a changed request body on an unrelated WEA identity:
+
+```bash
+linkmyphone bootstrap-probe --profile phonelink \
+  --state "$HOME/.config/linkmyphone-notifications/state.json"
+```
+
+Use a **new state path**. The CLI refuses to change the profile of an existing enrollment and requires an explicit state path for a new PL enrollment. The chosen profile is saved with its identity and determines the Microsoft OAuth client ID, DCG app ID and enrollment client type on every resume. Old state without `clientProfile` remains CrossDevice. Keep any working clipboard service and state separate during a notification trial; a new enrollment changes the account's device/trust list.
+
+After enrollment, create a **separate** feature store and run the notification module with that PL state:
+
+```bash
+linkmyphone feature create \
+  --state "$HOME/.config/linkmyphone-notifications/features.json" \
+  --enabled --config '{"remote_actions":false}' linkmyphone.notifications
+linkmyphone run \
+  --state "$HOME/.config/linkmyphone-notifications/state.json" \
+  --features-state "$HOME/.config/linkmyphone-notifications/features.json"
+```
+
+The initial trial is receive-only. The module requires a session D-Bus notification service and notification access granted to Link to Windows on the phone. Start fails rather than claiming Ready when the PL profile, permissions, typed APP connect or reconcile is unavailable. New items replace their desktop counterpart; phone removals close it. Existing/reconciled items are cached without startup alerts by default.
+
+Enable `remote_actions` only when you want desktop user dismissals and Android buttons/replies to affect the phone. Desktop expiry and programmatic close never dismiss the phone. Replies require Python GI/GTK4; the module exposes them only when available and submits only explicitly confirmed text. APP success for a launch/reply means Android accepted dispatch, not delivery to the recipient. See [notification configuration](../reference/configuration.md#notification-configuration) and [privacy](../operations/privacy-and-state.md#notifications).
+
+**Verification limit:** isolated PL enrollment, APP connect and S23 receive/reconcile passed. An authorized Android fixture verified phone dismissal, explicit-key clear, launch, action and Unicode/multiline reply. Real Messenger reply from the Quickshell/native GTK UI reached the user's second account with exact text. Restart recovered notifications created/updated while disconnected. Live permission revocation, forced network loss and prolonged recovery remain unverified.
+
+
 ## 2. Resume an existing enrollment
 
 Run `bootstrap-probe` again, or start `run`, `peer-probe`, or `session-probe` with the same state path. An existing state file is loaded and the program refreshes the Microsoft token, signs the existing DCG identity in, refreshes linked-device trust, and reconnects SignalR. Normal resume calls DCG `SignIn`; it does not create a second identity.

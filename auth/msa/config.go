@@ -1,11 +1,15 @@
 package msa
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/YMGPwcca/linkmyphone/dcgheaders"
+)
 
 const (
 	// CrossDevice PlatformConfigureOptions hard-codes the same first-party
 	// application identifier for both the WAM client ID and MSA app ID.
-	ClientID = "ca3b40e4-3001-4842-8f21-49c0045404f8"
+	ClientID = dcgheaders.CrossDeviceMSAClientID
 	AppID    = ClientID
 
 	AccountProvider = "https://login.microsoft.com"

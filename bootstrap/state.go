@@ -6,6 +6,7 @@ import (
 	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
 	"github.com/YMGPwcca/linkmyphone/auth/msa"
 	authstate "github.com/YMGPwcca/linkmyphone/auth/state"
+	"github.com/YMGPwcca/linkmyphone/dcgheaders"
 )
 
 // BuildStateSnapshot converts a completed enrollment/trust bootstrap into the
@@ -15,8 +16,12 @@ func BuildStateSnapshot(
 	enroll *EnrollResult,
 	trust TrustSyncResult,
 	logicalDeviceID string,
+	profile dcgheaders.Profile,
 ) (authstate.Snapshot, error) {
 	var out authstate.Snapshot
+	if err := profile.Validate(); err != nil {
+		return out, err
+	}
 	if enroll == nil || enroll.Identity == nil || enroll.TrustIdentity == nil {
 		return out, errors.New("bootstrap: complete enrollment result is required")
 	}
@@ -52,6 +57,7 @@ func BuildStateSnapshot(
 
 	out = authstate.Snapshot{
 		Version:         authstate.CurrentVersion,
+		ClientProfile:   profile.Canonical(),
 		LogicalDeviceID: logicalDeviceID,
 		MSARefreshToken: msaToken.RefreshToken,
 		Identity:        identityPair,

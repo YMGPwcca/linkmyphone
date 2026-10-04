@@ -13,25 +13,27 @@ import (
 	"time"
 
 	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
+	"github.com/YMGPwcca/linkmyphone/dcgheaders"
 )
 
 const CurrentVersion = 1
 
 type Snapshot struct {
-	Version         int                    `json:"version"`
-	LogicalDeviceID string                 `json:"logicalDeviceId"`
-	MSARefreshToken string                 `json:"msaRefreshToken,omitempty"`
-	Identity        KeyPair                `json:"identity"`
-	TrustIdentity   KeyPair                `json:"trustIdentity"`
-	ServicesToken   ServicesToken          `json:"servicesToken"`
-	Enrollment      Enrollment             `json:"enrollment"`
+	Version            int                         `json:"version"`
+	ClientProfile      dcgheaders.Profile          `json:"clientProfile"`
+	LogicalDeviceID    string                      `json:"logicalDeviceId"`
+	MSARefreshToken    string                      `json:"msaRefreshToken,omitempty"`
+	Identity           KeyPair                     `json:"identity"`
+	TrustIdentity      KeyPair                     `json:"trustIdentity"`
+	ServicesToken      ServicesToken               `json:"servicesToken"`
+	Enrollment         Enrollment                  `json:"enrollment"`
 	TrustRelationships []dcgauth.TrustRelationship `json:"trustRelationships,omitempty"`
 }
 
 type KeyPair struct {
-	ID               string `json:"id"`
-	PrivateKeyPKCS8   string `json:"privateKeyPkcs8"`
-	CertificateDER   string `json:"certificateDer"`
+	ID              string `json:"id"`
+	PrivateKeyPKCS8 string `json:"privateKeyPkcs8"`
+	CertificateDER  string `json:"certificateDer"`
 }
 
 type ServicesToken struct {
@@ -44,9 +46,9 @@ type ServicesToken struct {
 }
 
 type Enrollment struct {
-	AccountCert          string                       `json:"accountCert,omitempty"`
+	AccountCert          string                        `json:"accountCert,omitempty"`
 	AccountInfo          dcgauth.EnrollmentAccountInfo `json:"accountInfo,omitempty"`
-	RootCertificateChain []string                     `json:"rootCertificateChain,omitempty"`
+	RootCertificateChain []string                      `json:"rootCertificateChain,omitempty"`
 }
 
 func DefaultPath() (string, error) {
@@ -145,6 +147,10 @@ func Save(path string, snapshot Snapshot) error {
 	if snapshot.Version != CurrentVersion {
 		return fmt.Errorf("state: unsupported version %d", snapshot.Version)
 	}
+	snapshot.ClientProfile = snapshot.ClientProfile.Canonical()
+	if err := snapshot.ClientProfile.Validate(); err != nil {
+		return fmt.Errorf("state: client profile: %w", err)
+	}
 	data, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
 		return err
@@ -204,6 +210,10 @@ func Load(path string) (Snapshot, error) {
 	if out.Version != CurrentVersion {
 		return Snapshot{}, fmt.Errorf("state: unsupported version %d", out.Version)
 	}
+	out.ClientProfile = out.ClientProfile.Canonical()
+	if err := out.ClientProfile.Validate(); err != nil {
+		return Snapshot{}, fmt.Errorf("state: client profile: %w", err)
+	}
 	return out, nil
 }
 
@@ -216,9 +226,9 @@ func encodeKeyPair(id string, key *ecdsa.PrivateKey, certDER []byte) (KeyPair, e
 		return KeyPair{}, err
 	}
 	return KeyPair{
-		ID:             id,
+		ID:              id,
 		PrivateKeyPKCS8: base64.StdEncoding.EncodeToString(keyDER),
-		CertificateDER: base64.StdEncoding.EncodeToString(certDER),
+		CertificateDER:  base64.StdEncoding.EncodeToString(certDER),
 	}, nil
 }
 

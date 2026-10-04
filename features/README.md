@@ -8,12 +8,16 @@ Feature modules serve LinkMyPhone's broader goal of bringing the Phone Link expe
 
 ## Current catalog
 
-Each directory under `features/` is a bounded business module. The kernel and phone host expose generic contracts; [`features/catalog.go`](catalog.go) is the build-composition layer that registers builtin implementations. The current catalog contains one module:
+Each directory under `features/` is a bounded business module. The kernel and phone host expose generic contracts; [`features/catalog.go`](catalog.go) registers these builtin implementations:
 
 ```text
 linkmyphone.clipboard
     features/clipboard
     bidirectional text, HTML and image clipboard synchronization
+
+linkmyphone.notifications
+    features/notifications
+    APP push/reconcile, native desktop notifications, dismissal and confirmed replies
 ```
 
 The module directory contains a strict [`manifest.json`](clipboard/manifest.json), [`config.schema.json`](clipboard/config.schema.json), Go configuration validation, lifecycle code, protocol and native ownership, and tests. The manifest declares potential capabilities and requested permissions. Permissions are metadata only. The runtime does not sandbox an in-process builtin or treat a declaration as authorization.
@@ -63,6 +67,15 @@ The origin barrier suppresses both the previous and incoming format-aware conten
 
 The compatibility command `clipboard-sync` starts this same module through the modular lifecycle. It is an alias, not a second implementation.
 
+## Notification module ownership
+
+`features/notifications/module.go` requires a persisted PL profile, a real session D-Bus notification service and a successful APP connect/reconcile with granted phone notification access before returning an instance. `notifications.Client` owns typed application responses, bounded in-memory key/post-time reconciliation, deduplication, desktop ID mapping and generation-checked actions. The module consumes selected-peer APP traffic through a scoped endpoint; it does not read the shared relay directly or add business rules to the kernel.
+
+`notifications/native.go` implements the freedesktop notification service, checks signal ownership, invalidates IDs on owner loss and replays visible/pending items silently after rebind. The optional GTK4 reply helper has a labelled multiline editor, Cancel/confirmation controls and exact Unicode/newline transport. Replies are cancellable, limited to four simultaneous windows and kept off the desktop event worker. Update, removal, service reset or Stop cancels stale prompts; queued mutations are checked again before sending. No pending mutation is replayed after a host generation change.
+
+The feature defaults to avoiding alerts for existing items; its `remote_actions=false` mode permits receive/reconcile without phone dismissal/action/reply. Disable/Stop closes only local notifications. See [setup](../docs/getting-started/first-run.md#separate-phone-link-enrollment), [configuration](../docs/reference/configuration.md#notification-configuration) and [verification limits](../docs/research/validation.md#notification-validation-2026-10-04).
+
+
 ## Adding or removing a builtin
 
 Use `features/clipboard` as the complete example. A new builtin supplies its manifest, configuration validator, module implementation, endpoint matcher, resource ownership, and invariant tests before it is added to the catalog.
@@ -82,9 +95,9 @@ The start and stop boundaries are:
 
 | Phase | Ordering |
 | --- | --- |
-| Start | Validate and open resources, attempt advisory `FEATURE_ON`, then return the instance. |
+| Start | Validate/open resources and negotiate the feature's readiness. Clipboard attempts advisory `FEATURE_ON`; notifications requires granted APP connect/reconcile. |
 | Ready | The kernel registers capabilities before marking Ready; these are separately synchronized. |
-| Stop | The kernel revokes capabilities before calling `Module.Stop`. The module attempts advisory `FEATURE_OFF`, then cancels workers and closes its endpoint. |
+| Stop | The kernel revokes capabilities before calling `Module.Stop`. Clipboard attempts advisory `FEATURE_OFF`; every module cancels its workers and closes its endpoint/native resources. |
 
 Neither advisory feature-state exchange can make capability revocation wait for an unresponsive phone.
 

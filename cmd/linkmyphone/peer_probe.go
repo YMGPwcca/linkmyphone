@@ -37,8 +37,8 @@ func runPeerProbe(ctx context.Context, args []string) error {
 	fs.SetOutput(os.Stderr)
 	opts := peerProbeOptions{}
 	fs.StringVar(&opts.statePath, "state", defaultStatePath, "persistent bootstrap state path")
-	fs.StringVar(&opts.appVersion, "app-version", defaultAppVersion, "CrossDevice app version advertised to DCG")
-	fs.StringVar(&opts.ringName, "ring", defaultRingName, "CrossDevice ring name")
+	fs.StringVar(&opts.appVersion, "app-version", defaultAppVersion, "compatibility app version advertised to DCG")
+	fs.StringVar(&opts.ringName, "ring", defaultRingName, "compatibility ring name")
 	fs.StringVar(&opts.osVersion, "os-version", defaultOSVersion, "Windows-compatible OS version advertised to DCG")
 	fs.StringVar(&opts.target, "target", "", "target linked peer id/name; defaults to the sole linked Android device")
 	fs.DurationVar(&opts.signalrTimeout, "signalr-timeout", bootstrap.DefaultOnConnectedTimeout, "time to wait for SignalR OnConnected")
@@ -71,6 +71,7 @@ func runPeerProbe(ctx context.Context, args []string) error {
 	}
 
 	clientInfo, err := buildClientInfo(probeOptions{
+		profile:    snapshot.ClientProfile,
 		appVersion: opts.appVersion,
 		ringName:   opts.ringName,
 		osVersion:  opts.osVersion,

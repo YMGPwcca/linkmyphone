@@ -4,7 +4,7 @@
 
 LinkMyPhone is an independent, unofficial Phone Link client for Linux, written in Go. It aims to bring the Phone Link experience to Linux through interoperability with Microsoft's Phone Link and Link to Windows ecosystem, rather than remain a clipboard-only tool.
 
-The current implementation is command-line based and uses Microsoft's cloud services. Its first and currently only built-in feature is bidirectional text, HTML and image clipboard synchronization. This guide installs the client and the desktop tools needed for that feature; it does not imply full Phone Link feature parity. See [current support and broader scope](../../README.md#current-support-and-broader-scope).
+The current implementation is command-line based and uses Microsoft's cloud services. It includes bidirectional text, HTML and image clipboard synchronization and an experimental notification module. This guide installs their desktop prerequisites; it does not imply full Phone Link feature parity. See [current support and broader scope](../../README.md#current-support-and-broader-scope).
 
 LinkMyPhone is independent and unofficial, with no Microsoft affiliation, endorsement, or sponsorship. Microsoft, Phone Link, and Link to Windows are trademarks of the Microsoft group of companies.
 
@@ -82,5 +82,10 @@ For received HTML to offer both rich formatting and plain text to applications, 
 ```bash
 sudo pacman -S --needed wl-clipboard gtk4 python-gobject
 ```
+
+Notification reception additionally needs a desktop session bus and a running `org.freedesktop.Notifications` service. Android actions require native action support; replies use the same Python GI/GTK4 packages. Missing GTK disables reply controls/capability without substituting a fake reply backend.
+
+Full notification push requires a separate PL enrollment. Do not reuse or change a working WEA profile for that trial; use separate authentication and feature paths as shown in [first run](first-run.md#separate-phone-link-enrollment). Isolated PL enrollment and S23 receive/reconcile have passed; see [current evidence and limits](../research/validation.md#notification-validation-2026-10-04).
+
 
 Existing `phonelink-linux` installations can reuse their enrollment through `--state "$HOME/.config/phonelink-linux/state.json"`. Stop `phonelink-linux.service` before starting a test binary, and invoke the newly built executable explicitly; running the old installed command does not test the new code. See [clipboard behavior](../user-guide/clipboard.md) for supported image codecs and limits.

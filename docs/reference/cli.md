@@ -25,8 +25,9 @@ Run `linkmyphone help` for the top-level list. Commands return a non-zero status
 | Flag | Default | Effect |
 | --- | --- | --- |
 | `--state PATH` | Platform user config plus `linkmyphone/state.json`, normally `~/.config/linkmyphone/state.json` | Persistent enrollment, token, key, certificate, and trust state path. |
-| `--app-version VERSION` | `1.26072.116.0` | CrossDevice app version sent in DCG metadata. |
-| `--ring NAME` | `Public` | CrossDevice ring metadata. |
+| `--profile PROFILE` | Existing state's profile, otherwise `crossdevice` | First enrollment only: `crossdevice` (WEA) or `phonelink` (PL). PL requires explicit `--state`; a mismatched existing profile is refused. |
+| `--app-version VERSION` | `1.26072.116.0` | Compatibility app version sent in DCG metadata. |
+| `--ring NAME` | `Public` | Compatibility ring metadata. |
 | `--os-version VERSION` | `10.0.26100` | Windows-compatible OS version metadata. |
 | `--display-name NAME` | Local hostname, or `linkmyphone` if unavailable | Display name used when enrolling the Linux device. |
 | `--signalr-timeout DURATION` | `10s` | Time to wait for SignalR `OnConnected`. |

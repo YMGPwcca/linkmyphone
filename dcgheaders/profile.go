@@ -6,12 +6,60 @@ import (
 	"fmt"
 )
 
-const CrossDeviceAppID = "MicrosoftWindows.CrossDevice_cw5n1h2txyewy"
+type Profile string
 
-// NewCrossDeviceClientInfo builds the header identity used by the Windows
-// CrossDevice package. App version, ring and OS version stay explicit because
-// they are deployment/runtime values rather than protocol constants.
-func NewCrossDeviceClientInfo(logicalDeviceID, appVersion, ringName, osVersion string) (ClientInfo, error) {
+const (
+	ProfileCrossDevice     Profile = "crossdevice"
+	ProfilePhoneLink       Profile = "phonelink"
+	CrossDeviceAppID               = "MicrosoftWindows.CrossDevice_cw5n1h2txyewy"
+	PhoneLinkAppID                 = "Microsoft.YourPhone_8wekyb3d8bbwe"
+	CrossDeviceMSAClientID         = "ca3b40e4-3001-4842-8f21-49c0045404f8"
+	PhoneLinkMSAClientID           = "8CF55838-E496-42C5-829B-F8D6945288F3"
+)
+
+func (p Profile) Canonical() Profile {
+	if p == "" {
+		return ProfileCrossDevice
+	}
+	return p
+}
+
+func (p Profile) Validate() error {
+	switch p.Canonical() {
+	case ProfileCrossDevice, ProfilePhoneLink:
+		return nil
+	default:
+		return fmt.Errorf("dcgheaders: unknown client profile %q", p)
+	}
+}
+
+func (p Profile) ClientType() string {
+	if p.Canonical() == ProfilePhoneLink {
+		return "PL"
+	}
+	return "WEA"
+}
+
+func (p Profile) MSAClientID() string {
+	if p.Canonical() == ProfilePhoneLink {
+		return PhoneLinkMSAClientID
+	}
+	return CrossDeviceMSAClientID
+}
+
+func (p Profile) AppID() string {
+	if p.Canonical() == ProfilePhoneLink {
+		return PhoneLinkAppID
+	}
+	return CrossDeviceAppID
+}
+
+// NewClientInfo selects the enrolled app identity without changing its keys.
+// A profile is persisted at enrollment; it must not be switched on resume.
+func NewClientInfo(profile Profile, logicalDeviceID, appVersion, ringName, osVersion string) (ClientInfo, error) {
+	if err := profile.Validate(); err != nil {
+		return ClientInfo{}, err
+	}
 	if logicalDeviceID == "" {
 		return ClientInfo{}, errors.New("dcgheaders: logical device id is required")
 	}
@@ -31,7 +79,7 @@ func NewCrossDeviceClientInfo(logicalDeviceID, appVersion, ringName, osVersion s
 	return ClientInfo{
 		LogicalDeviceID: logicalDeviceID,
 		AppVersion:      appVersion,
-		AppID:           CrossDeviceAppID,
+		AppID:           profile.AppID(),
 		SessionID:       sessionID,
 		RingName:        ringName,
 		OS:              "Windows",

@@ -54,7 +54,7 @@ func TestEnsurePeerOnlineWakesAndWaitsForPresence(t *testing.T) {
 	}))
 	defer server.Close()
 
-	info, err := dcgheaders.NewCrossDeviceClientInfo("logical", "1", "Public", "10")
+	info, err := dcgheaders.NewClientInfo(dcgheaders.ProfileCrossDevice, "logical", "1", "Public", "10")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestEnsurePeerOnlineSkipsWakeWhenAlreadyPresent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	info, err := dcgheaders.NewCrossDeviceClientInfo("logical", "1", "Public", "10")
+	info, err := dcgheaders.NewClientInfo(dcgheaders.ProfileCrossDevice, "logical", "1", "Public", "10")
 	if err != nil {
 		t.Fatal(err)
 	}

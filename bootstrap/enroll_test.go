@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/YMGPwcca/linkmyphone/auth/dcgauth"
+	"github.com/YMGPwcca/linkmyphone/dcgheaders"
 	"github.com/YMGPwcca/linkmyphone/services/dcg"
 )
 
@@ -69,7 +70,7 @@ func TestEnrollWithMSATokenSequence(t *testing.T) {
 	result, err := enroller.EnrollWithMSAToken(
 		context.Background(),
 		"msa-token",
-		dcg.MetadataForClipboardPC("1.0.0", "linux", "1.0"),
+		dcg.MetadataForPC(dcgheaders.ProfileCrossDevice, "1.0.0", "linux", "1.0"),
 	)
 	if err != nil {
 		t.Fatal(err)

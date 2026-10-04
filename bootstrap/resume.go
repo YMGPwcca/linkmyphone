@@ -55,6 +55,11 @@ func resumeAuth(ctx context.Context, msaClient *msa.DeviceCodeClient, dcgClient 
 	if msaClient == nil || dcgClient == nil {
 		return out, errors.New("bootstrap: MSA and DCG auth clients are required")
 	}
+	snapshot.ClientProfile = snapshot.ClientProfile.Canonical()
+	if err := snapshot.ClientProfile.Validate(); err != nil {
+		return out, err
+	}
+	msaClient.ClientID = snapshot.ClientProfile.MSAClientID()
 	if snapshot.MSARefreshToken == "" {
 		return out, errors.New("bootstrap: persisted MSA refresh token is required")
 	}

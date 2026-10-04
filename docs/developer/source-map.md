@@ -24,7 +24,7 @@ Start here when you know the behavior but not the package. The repository is org
 | --- | --- |
 | [`cmd/linkmyphone`](../../cmd/linkmyphone) | User-facing command dispatch and orchestration. `main.go` selects probes, `feature`, `run`, `service`, and `clipboard-sync`, and also hosts the hidden native watch helper. `runtime_run.go` opens the host and managed registry. `runtime_control.go` applies live CRUD transactions and rollback. `feature.go` implements offline or socket-routed feature commands. `service.go` installs and manages the systemd user unit. `session_probe.go`, `peer_probe.go`, and `main.go` contain opt-in Microsoft probes. |
 | [`features/catalog.go`](../../features/catalog.go) | Builtin composition. It returns each manifest, default configuration, validator, and module factory. `Find` resolves IDs compiled into the executable. |
-| [`features`](../../features) | Feature packages. The only current package is [`features/clipboard`](../../features/clipboard), which owns clipboard business behavior. |
+| [`features`](../../features) | [`features/clipboard`](../../features/clipboard) owns clipboard behavior; [`features/notifications`](../../features/notifications) owns notification lifecycle/configuration through the shared host. |
 | [`contracts/manifests`](../../contracts/manifests) | Versioned JSON Schema for feature manifests. It is a contract artifact, not a loader or runtime sandbox. |
 
 ## Authentication, trust, and bootstrap
@@ -67,6 +67,8 @@ flowchart TD
 | [`protocol/dcg`](../../protocol/dcg) | DCG fragment encoding, reassembly, acknowledgements, message type values, and packet constants. |
 | [`protocol/sessionvalidation`](../../protocol/sessionvalidation) | PLATFORM `/SessionValidation` request and response codec. |
 | [`protocol/signalr`](../../protocol/signalr) | MessagePack Hub Protocol values, invocation and completion messages, trace context, record framing, and decode logic. |
+| [`protocol/app`](../../protocol/app), [`protocol/notifications`](../../protocol/notifications) | Typed PBValueSet APP envelopes and notification connect/reconcile/action contracts. |
+| [`notifications`](../../notifications) | Phone notification state/application responses, native D-Bus service and optional GTK4 reply windows. |
 
 | Direction | Clipboard behavior |
 | --- | --- |

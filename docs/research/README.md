@@ -19,6 +19,7 @@ The [architecture overview](../architecture/overview.md) maps these layers to Go
 
 | File | Contents |
 | --- | --- |
+| [Notification sync](notification-sync.md) | Source investigation of Phone Link APP push/actions, CrossDevice GET and unresolved session prerequisites. No notification implementation. |
 | [Findings](findings.md) | Problems found during implementation, what caused them and the fixes. |
 | [Validation](validation.md) | Test commands, device results and remaining checks. |
 | [Development history](history.md) | Commits in implementation order. |

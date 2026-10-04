@@ -184,9 +184,9 @@ Reassembly keys on source DCG ID, DCG `SessionId`, `MessageId`, and transport me
 
 When a complete incoming fragment arrives, the relay sends a successful DCG ACK before delivering the reassembled payload to the bounded application queue. The receive event contains source, DCG session ID, message ID, transport type, and payload. The relay read loop must run while sends wait for ACKs. A closed or malformed Hub read loop fails the relay; a full application queue fails fast rather than silently dropping traffic. See [`transport/relay/client.go`](../../transport/relay/client.go#L107-L196) and [`transport/relay/client.go`](../../transport/relay/client.go#L422-L475).
 
-## PLATFORM framing
+## Shared APP/PLATFORM framing
 
-PLATFORM is a binary envelope with version byte `1`:
+APP and PLATFORM share a binary envelope with version byte `1`; their payload contracts and transport message types remain distinct:
 
 ```text
 byte 0: version
@@ -197,7 +197,7 @@ uint64 little-endian: payload length
 payload bytes
 ```
 
-The parser requires the version, exact header byte length/count agreement, a bounded payload length, and no trailing bytes.
+The parser bounds header count by actual input, validates payload length, and rejects trailing bytes. Android advertises the key/value byte length without the four-byte header count; Windows includes that count. Exactly those two verified conventions are accepted. `platform.Marshal` preserves the Android convention used by existing PLATFORM callers; `platform.MarshalWithHeaderCount` emits the Windows convention for APP producers.
 
 | Header               | Purpose                                     |
 | -------------------- | ------------------------------------------- |
@@ -211,6 +211,17 @@ The parser requires the version, exact header byte length/count agreement, a bou
 Routes modeled in [`protocol/platform/message.go`](../../protocol/platform/message.go#L14-L29) are `/DeviceResourceManager`, `/internal/response`, `/Context/Publish`, and `/SessionValidation`. Constructors and exact layout are in [`protocol/platform/message.go`](../../protocol/platform/message.go#L33-L192), with layout, route, and rejection tests in [`protocol/platform/message_test.go`](../../protocol/platform/message_test.go#L9-L108).
 
 A successful response is matched by route and `_originalRequestId`; neither the DCG ACK nor SignalR Completion replaces this application-level correlation.
+
+### Typed APP payloads
+
+[`protocol/app`](../../protocol/app/) independently implements the PBValueSet typed protobuf payload: `Int32` operations/results, `Int64` post times, `Double` contract versions, position-preserving string arrays, and nested ValueSets. It bounds payloads, recursion, map entries and arrays; protobuf default-valued scalars and packed/unpacked numeric arrays are accepted. APP uses Hub Relay transport type **0**, not the protobuf transport enum.
+
+[`protocol/notifications`](../../protocol/notifications/) builds `/connect/v1` (`contentType=connect`) and `/notifications` requests, and decodes `/legacy/phonecontent` batches (`contentType=notifications`). Keys, operations and JSON bodies are parallel arrays; removal bodies may be empty. Action indices are Android's original indices. Empty clear requests are rejected because Android interprets them as clearing every notification.
+
+Synthetic Go payloads were decoded by the supplied Windows 1.26072.257.0 PBValueSet assembly, and its independently serialized response was decoded by Go. The retained synthetic fixture verifies typed zero results, nested permissions, signed arrays and empty string positions. This is codec interoperability evidence, not evidence of a live notification subscription.
+
+Proto3 zero-valued Point/Size objects may have empty nested messages; these decode to zero geometry instead of being rejected. The original Windows serializer emitted the retained zero-Point fixture.
+
 
 ## MSAEP PubSub envelope
 

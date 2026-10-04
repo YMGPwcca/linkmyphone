@@ -2,7 +2,7 @@
 
 An independent, unofficial Phone Link client for Linux.
 
-LinkMyPhone connects Linux to an Android phone through Microsoft's Phone Link services. The first working feature is clipboard sync for text, HTML and images.
+LinkMyPhone connects Linux to an Android phone through Microsoft's Phone Link services. It implements clipboard sync for text, HTML and images, and an experimental notification module with desktop forwarding, dismissal, Android actions and native replies.
 
 [Get started](docs/getting-started/installation.md) · [Documentation](docs/README.md) · [Protocol and research](docs/research/README.md)
 
@@ -92,7 +92,7 @@ The table tracks the current implementation. Clipboard is working; the other Pho
 | **Rich text & HTML clipboard** | Supported | Bidirectional HTML fragments; optional GTK4 provider also offers plain text. Rich formatting is supported through HTML, not a separate RTF codec. |
 | **Image clipboard** | Supported | Bidirectional PNG transfer with JPEG/GIF/BMP input normalization. Incoming dimensions are preserved; only outbound images are resized to fit 1 MiB. |
 | **Session recovery & refresh** | Partial | Network-loss and suspend recovery tested. Token-expiry and extended operation still need [testing](docs/operations/session-recovery.md). |
-| **Notifications** | Not implemented | Push notification forwarding, dismissal synchronization, and inline quick-replies. |
+| **Notifications** | Experimental | APP push/reconcile, native D-Bus notifications, dismissal, Android actions and GTK4 replies. S23 fixture mutations and real Messenger reply delivery verified, including desktop mouse interaction and GTK keyboard shortcuts. [Setup](docs/getting-started/first-run.md#separate-phone-link-enrollment). |
 | **Messages (SMS / RCS)** | Not implemented | Reading SMS/RCS conversations, sending text messages, and MMS media attachments. |
 | **Calls & Audio** | Not implemented | Incoming/outgoing call notifications, dialer, and in-call Bluetooth/relay audio routing. |
 | **Photos & Media** | Not implemented | Android camera roll browsing, photo synchronization, and media caching. |
