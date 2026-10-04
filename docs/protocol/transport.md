@@ -220,6 +220,8 @@ A successful response is matched by route and `_originalRequestId`; neither the 
 
 Synthetic Go payloads were decoded by the supplied Windows 1.26072.257.0 PBValueSet assembly, and its independently serialized response was decoded by Go. The retained synthetic fixture verifies typed zero results, nested permissions, signed arrays and empty string positions. This is codec interoperability evidence, not evidence of a live notification subscription.
 
+Proto3 zero-valued Point/Size objects may have empty nested messages; these decode to zero geometry instead of being rejected. The original Windows serializer emitted the retained zero-Point fixture.
+
 
 ## MSAEP PubSub envelope
 

@@ -53,3 +53,18 @@ func TestPackedFloatLimitBeforeAllocation(t *testing.T) {
 		t.Fatalf("float array limit error=%v", err)
 	}
 }
+
+func TestProto3ZeroPointIsAValidObject(t *testing.T) {
+	// Empty nested Point is how proto3 serializes X=0, Y=0.
+	wire, err := hex.DecodeString("0a0e0a066f726967696e1204080e7a00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, err := Unmarshal(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values["origin"] != (Point{}) {
+		t.Fatalf("zero Point=%#v", values["origin"])
+	}
+}

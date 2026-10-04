@@ -1094,7 +1094,6 @@ func marshalRect(r Rect) []byte {
 }
 func unmarshalPoint(b []byte) (Point, error) {
 	var p Point
-	seen := 0
 	for o := 0; o < len(b); {
 		t, n, e := readVarint(b, o)
 		if e != nil {
@@ -1111,10 +1110,6 @@ func unmarshalPoint(b []byte) (Point, error) {
 		} else {
 			p.Y = v
 		}
-		seen++
-	}
-	if seen == 0 {
-		return p, fmt.Errorf("%w: empty point", ErrMalformed)
 	}
 	return p, nil
 }
