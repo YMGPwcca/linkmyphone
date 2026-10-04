@@ -87,7 +87,7 @@ The initial trial is receive-only. The module requires a session D-Bus notificat
 
 Enable `remote_actions` only when you want desktop user dismissals and Android buttons/replies to affect the phone. Desktop expiry and programmatic close never dismiss the phone. Replies require Python GI/GTK4; the module exposes them only when available and submits only explicitly confirmed text. APP success for a launch/reply means Android accepted dispatch, not delivery to the recipient. See [notification configuration](../reference/configuration.md#notification-configuration) and [privacy](../operations/privacy-and-state.md#notifications).
 
-**Verification limit:** isolated PL enrollment, APP connect and receipt/reconciliation of a real S23 notification have passed with `remote_actions=false`. Desktop actions/replies passed local fixtures and synthetic native UI checks; live phone dismissal/action/reply and prolonged recovery remain untested.
+**Verification limit:** isolated PL enrollment, APP connect and S23 receive/reconcile passed. An authorized temporary Android fixture also verified actual phone dismissal, explicit-key clear, launch, action and Unicode/multiline reply. Restart recovered notifications created/updated while disconnected. Real messaging-app reply delivery and prolonged recovery remain unverified; WhatsApp self-chat did not produce a notification for the requested test.
 
 
 ## 2. Resume an existing enrollment

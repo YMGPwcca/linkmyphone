@@ -23,6 +23,7 @@ type memoryDesktop struct {
 	events      chan NativeEvent
 	failOnce    bool
 	renderCount int
+	closeCount  int
 }
 
 func newMemoryDesktop() *memoryDesktop {
@@ -52,7 +53,12 @@ func (n *memoryDesktop) CloseNotification(_ context.Context, id uint32) error {
 }
 func (n *memoryDesktop) Events() <-chan NativeEvent { return n.events }
 func (n *memoryDesktop) SupportsActions() bool      { return true }
-func (n *memoryDesktop) Close() error               { return nil }
+func (n *memoryDesktop) Close() error {
+	n.mu.Lock()
+	n.closeCount++
+	n.mu.Unlock()
+	return nil
+}
 
 type sentMessage struct {
 	message app.Message
@@ -91,6 +97,37 @@ func newFixtureClient(t *testing.T) (*Client, *memoryDesktop, *fixtureTransport)
 		t.Fatal(err)
 	}
 	return client, native, transport
+}
+
+func startClient(t *testing.T, c *Client) (context.CancelFunc, <-chan error) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- c.Run(ctx) }()
+	return cancel, done
+}
+
+func stopClient(t *testing.T, cancel context.CancelFunc, done <-chan error) {
+	t.Helper()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("client did not stop")
+	}
+}
+
+func respond(t *testing.T, transport *fixtureTransport, request sentMessage, values app.ValueSet) {
+	t.Helper()
+	id, ok := request.message.Header(platform.HeaderRequestID)
+	if !ok {
+		t.Fatal("request lacks correlation ID")
+	}
+	payload, err := app.MarshalMessage(app.NewResponse(id, values))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport.received <- relay.Received{Source: "phone", TransportMessageType: dcg.TransportMessageTypeApp, Payload: payload}
 }
 func item(key, text string, postTime int64) *wire.Item {
 	return &wire.Item{Key: key, AppName: "Synthetic app", Title: "Title", Text: text, PostTime: postTime, IsClearable: true, Actions: []wire.Action{{Name: "Reply", InlineReply: true, Index: 4}}}
@@ -300,6 +337,328 @@ func TestAPPResultAcknowledgementDuplicateAndMalformedBatch(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("malformed batch lacked failure APP response")
+	}
+}
+
+func sentWithin(t *testing.T, transport *fixtureTransport) sentMessage {
+	t.Helper()
+	select {
+	case message := <-transport.sent:
+		return message
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for application request")
+		return sentMessage{}
+	}
+}
+
+func pushBatch(t *testing.T, transport *fixtureTransport, id, dedupe string, value *wire.Item) {
+	t.Helper()
+	body, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := app.ValueSet{
+		"contentType":      wire.ContentType,
+		"notificationKeys": []string{value.Key},
+		"operations":       []int32{wire.OperationNew},
+		"notifications":    []string{string(body)},
+		"dedupeID":         dedupe,
+	}
+	payload, err := app.MarshalMessage(app.NewRequest(wire.RoutePhoneContent, id, values))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport.received <- relay.Received{Source: "phone", TransportMessageType: dcg.TransportMessageTypeApp, Payload: payload}
+}
+
+func TestUserDismissReasonForwardsOnlyClearableNotification(t *testing.T) {
+	c, native, transport := newFixtureClient(t)
+	c.ready = true
+	apply(t, c, wire.OperationNew, item("one", "text", 10))
+	cancel, done := startClient(t, c)
+	defer stopClient(t, cancel, done)
+
+	native.events <- NativeEvent{Kind: NativeClosed, ID: 1, Reason: 2}
+	request := sentWithin(t, transport)
+	if request.message.Values["operation"] != wire.OperationRemove || request.message.Values["key"] != "one" {
+		t.Fatalf("user dismissal request=%#v", request.message.Values)
+	}
+	respond(t, transport, request, app.ValueSet{"result": int32(0)})
+	c.stateMu.Lock()
+	hidden := c.records["one"].hidden
+	c.stateMu.Unlock()
+	if !hidden {
+		t.Fatal("user dismissal did not hide the local notification")
+	}
+}
+
+func TestClearRejectsUnknownOngoingAndEmptyKeysWithoutSending(t *testing.T) {
+	c, _, transport := newFixtureClient(t)
+	c.ready = true
+	apply(t, c, wire.OperationNew, item("clearable", "text", 1))
+	ongoing := item("ongoing", "text", 2)
+	ongoing.IsClearable = false
+	apply(t, c, wire.OperationNew, ongoing)
+
+	for name, keys := range map[string][]string{
+		"empty":   nil,
+		"unknown": {"clearable", "missing"},
+		"ongoing": {"ongoing"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := c.Clear(context.Background(), keys); err == nil {
+				t.Fatal("invalid clear was accepted")
+			}
+		})
+	}
+	select {
+	case request := <-transport.sent:
+		t.Fatalf("invalid clear sent request: %#v", request)
+	default:
+	}
+}
+
+func TestOriginalActionAndInlineReplyPayloads(t *testing.T) {
+	c, native, transport := newFixtureClient(t)
+	c.ready = true
+	value := item("one", "text", 10)
+	value.Actions = []wire.Action{
+		{Name: "Open", Index: 7},
+		{Name: "Reply", InlineReply: true, Index: 4},
+	}
+	apply(t, c, wire.OperationNew, value)
+	prompted := make(chan struct{})
+	c.cfg.Prompt = func(context.Context, ReplyPrompt) (string, bool, error) {
+		close(prompted)
+		return "  exact reply 👋  ", true, nil
+	}
+	cancel, done := startClient(t, c)
+	defer stopClient(t, cancel, done)
+
+	var normalID, replyID string
+	for _, action := range native.visible[1].Actions {
+		if action.Label == "Open" {
+			normalID = action.ID
+		}
+		if action.Label == "Reply" {
+			replyID = action.ID
+		}
+	}
+	if normalID == "" || replyID == "" {
+		t.Fatal("expected original and inline reply actions")
+	}
+	native.events <- NativeEvent{Kind: NativeAction, ID: 1, Action: normalID}
+	request := sentWithin(t, transport)
+	if request.message.Values["operation"] != wire.OperationLaunch || request.message.Values["actionIndex"] != int32(7) {
+		t.Fatalf("original action request=%#v", request.message.Values)
+	}
+	if _, ok := request.message.Values["inlineReplyMessage"]; ok {
+		t.Fatal("original action unexpectedly carried inline reply")
+	}
+	respond(t, transport, request, app.ValueSet{"result": int32(0)})
+
+	native.events <- NativeEvent{Kind: NativeAction, ID: 1, Action: replyID}
+	select {
+	case <-prompted:
+	case <-time.After(time.Second):
+		t.Fatal("inline reply prompt did not open")
+	}
+	request = sentWithin(t, transport)
+	if request.message.Values["actionIndex"] != int32(4) || request.message.Values["inlineReplyMessage"] != "  exact reply 👋  " {
+		t.Fatalf("inline reply request=%#v", request.message.Values)
+	}
+	respond(t, transport, request, app.ValueSet{"result": int32(0)})
+	c.prompts.Wait()
+}
+
+func TestConcurrentReplyPromptDoesNotBlockOtherAction(t *testing.T) {
+	c, native, transport := newFixtureClient(t)
+	c.ready = true
+	value := item("one", "text", 10)
+	value.Actions = []wire.Action{
+		{Name: "Open", Index: 7},
+		{Name: "Reply", InlineReply: true, Index: 4},
+	}
+	apply(t, c, wire.OperationNew, value)
+	opened := make(chan struct{})
+	release := make(chan struct{})
+	c.cfg.Prompt = func(ctx context.Context, _ ReplyPrompt) (string, bool, error) {
+		close(opened)
+		select {
+		case <-release:
+			return "", false, nil
+		case <-ctx.Done():
+			return "", false, ctx.Err()
+		}
+	}
+	cancel, done := startClient(t, c)
+	defer stopClient(t, cancel, done)
+	var normalID, replyID string
+	for _, action := range native.visible[1].Actions {
+		if action.Label == "Open" {
+			normalID = action.ID
+		}
+		if action.Label == "Reply" {
+			replyID = action.ID
+		}
+	}
+	native.events <- NativeEvent{Kind: NativeAction, ID: 1, Action: replyID}
+	select {
+	case <-opened:
+	case <-time.After(time.Second):
+		t.Fatal("reply prompt did not open")
+	}
+	native.events <- NativeEvent{Kind: NativeAction, ID: 1, Action: normalID}
+	request := sentWithin(t, transport)
+	if request.message.Values["actionIndex"] != int32(7) {
+		t.Fatalf("other action was not dispatched while reply was open: %#v", request.message.Values)
+	}
+	respond(t, transport, request, app.ValueSet{"result": int32(0)})
+	close(release)
+	c.prompts.Wait()
+}
+
+func TestPendingMutationCancellationRemovesRequest(t *testing.T) {
+	c, _, transport := newFixtureClient(t)
+	c.ready = true
+	apply(t, c, wire.OperationNew, item("one", "text", 10))
+	cancelRun, done := startClient(t, c)
+	defer stopClient(t, cancelRun, done)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errs := make(chan error, 1)
+	go func() { errs <- c.Dismiss(ctx, "one") }()
+	_ = sentWithin(t, transport)
+	cancel()
+	select {
+	case err := <-errs:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled mutation=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled mutation remained pending")
+	}
+	c.pendingMu.Lock()
+	pending := len(c.pending)
+	c.pendingMu.Unlock()
+	if pending != 0 {
+		t.Fatalf("pending request leaked after cancellation: %d", pending)
+	}
+}
+
+func TestPermissionRevokeMakesSessionNotReady(t *testing.T) {
+	c, _, transport := newFixtureClient(t)
+	c.ready = true
+	apply(t, c, wire.OperationNew, item("one", "text", 10))
+	cancelRun, done := startClient(t, c)
+	defer cancelRun()
+	errs := make(chan error, 1)
+	go func() { errs <- c.Dismiss(context.Background(), "one") }()
+	request := sentWithin(t, transport)
+	respond(t, transport, request, app.ValueSet{"result": int32(7)})
+	select {
+	case err := <-errs:
+		if !errors.Is(err, ErrPermission) {
+			t.Fatalf("permission revoke mutation=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("permission revoke mutation did not finish")
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrPermission) {
+			t.Fatalf("client did not stop on permission revoke: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("client remained running after permission revoke")
+	}
+	c.stateMu.Lock()
+	ready := c.ready
+	c.stateMu.Unlock()
+	if ready {
+		t.Fatal("permission revoke left session ready")
+	}
+}
+
+func TestDelayedMutationGuardRejectsAfterUpdate(t *testing.T) {
+	c, _, transport := newFixtureClient(t)
+	c.ready = true
+	apply(t, c, wire.OperationNew, item("one", "original", 10))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	errs := make(chan error, 1)
+	go func() { errs <- c.Dismiss(ctx, "one") }()
+	var queued sendJob
+	select {
+	case queued = <-c.sends:
+	case <-ctx.Done():
+		t.Fatal("mutation was not queued")
+	}
+	apply(t, c, wire.OperationNew, item("one", "updated", 11))
+	c.sends <- queued
+	loopDone := make(chan struct{})
+	go func() {
+		c.sendLoop(ctx, c.failures)
+		close(loopDone)
+	}()
+	select {
+	case err := <-errs:
+		if !errors.Is(err, ErrStaleAction) {
+			t.Fatalf("delayed mutation=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("delayed mutation did not complete")
+	}
+	cancel()
+	<-loopDone
+	select {
+	case request := <-transport.sent:
+		t.Fatalf("stale mutation reached phone: %#v", request)
+	default:
+	}
+}
+
+func TestDedupeFailureCanRetrySameBatch(t *testing.T) {
+	c, native, transport := newFixtureClient(t)
+	native.failOnce = true
+	cancel, done := startClient(t, c)
+	defer stopClient(t, cancel, done)
+	value := item("one", "retry", 10)
+	pushBatch(t, transport, "push-1", "same-batch", value)
+	first := sentWithin(t, transport)
+	if first.message.Values["result"] != int32(1) {
+		t.Fatalf("failed batch result=%#v", first.message.Values)
+	}
+	pushBatch(t, transport, "push-2", "same-batch", value)
+	second := sentWithin(t, transport)
+	if second.message.Values["result"] != int32(0) {
+		t.Fatalf("retry batch result=%#v", second.message.Values)
+	}
+	native.mu.Lock()
+	renderCount := native.renderCount
+	native.mu.Unlock()
+	if renderCount != 1 {
+		t.Fatalf("successful dedupe retry rendered %d times", renderCount)
+	}
+}
+
+func TestRunTeardownClosesBackendAndLocalState(t *testing.T) {
+	c, native, _ := newFixtureClient(t)
+	apply(t, c, wire.OperationNew, item("one", "text", 10))
+	cancel, done := startClient(t, c)
+	stopClient(t, cancel, done)
+	native.mu.Lock()
+	closeCount, visible := native.closeCount, len(native.visible)
+	native.mu.Unlock()
+	if closeCount != 1 || visible != 0 {
+		t.Fatalf("teardown backend close=%d visible=%d", closeCount, visible)
+	}
+	c.stateMu.Lock()
+	records := len(c.records)
+	c.stateMu.Unlock()
+	if records != 0 {
+		t.Fatalf("teardown retained %d records", records)
 	}
 }
 
