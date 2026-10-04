@@ -25,7 +25,7 @@ Run `linkmyphone help` for the top-level list. Commands return a non-zero status
 | Flag | Default | Effect |
 | --- | --- | --- |
 | `--state PATH` | Platform user config plus `linkmyphone/state.json`, normally `~/.config/linkmyphone/state.json` | Persistent enrollment, token, key, certificate, and trust state path. |
-| `--profile PROFILE` | Existing state's profile, otherwise `crossdevice` | First enrollment only: `crossdevice` (WEA) or `phonelink` (PL). PL requires explicit `--state`; a mismatched existing profile is refused. |
+| `--profile PROFILE` | Existing state's profile, otherwise `phonelink` | First enrollment only: `phonelink` (PL, clipboard + notifications) or `crossdevice` (legacy WEA, clipboard only). A mismatched existing profile is refused; a new PL enrollment can use the default state path. |
 | `--app-version VERSION` | `1.26072.116.0` | Compatibility app version sent in DCG metadata. |
 | `--ring NAME` | `Public` | Compatibility ring metadata. |
 | `--os-version VERSION` | `10.0.26100` | Windows-compatible OS version metadata. |

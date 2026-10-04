@@ -17,6 +17,18 @@ This page records manual device tests and automated checks. Older results come f
 
 Authenticated X11 runs, other phones and other desktop setups still need testing. The [research method](method.md) describes the capture procedure.
 
+## Unified PL enrollment (2026-10-05)
+
+PR [#9](https://github.com/YMGPwcca/linkmyphone/pull/9) merged notification synchronization into `main` before this change. A fresh `bootstrap-probe` now chooses PL for its single device-code sign-in; a saved WEA enrollment remains WEA and is never relabeled. The previously enrolled PL profile was reused on the CachyOS desktop without a new sign-in.
+
+With the existing PL state, `session-probe --context-probe` reached S23 clipboard STATUS and CONTENT with matching correlation IDs. The probe answered FEATURE_ON and declined CONTENT, **sending no clipboard bytes**. In a separate combined runtime, both `linkmyphone.clipboard` and `linkmyphone.notifications` reached Ready in one host generation. Clipboard FEATURE_ON returned status 1; notifications APP connect reported `ecr=true` and reconciled six items with remote actions disabled. `feature get` reported both records Ready, epoch 1, and exposed clipboard text/HTML/image and notification receive capabilities.
+
+Linux `go test -race ./...`, `go vet ./...` and CLI build passed on the isolated build tree; focused bootstrap/CLI/state tests passed after the final test cleanup. Tests assert the fresh enrollment's `PL` metadata/app ID, persisted profile and refusal to reclassify an existing WEA path. No fresh Microsoft device-code login was performed for this change; the real run reused the existing PL identity.
+
+Bidirectional plain-text delivery also passed while **both modules were Ready on the PL state** and the old WEA service was stopped. A temporary Android foreground fixture set a harmless test string; the PL runtime reported `phone -> Linux applied clipboard (bytes=28)` and the Linux selection's SHA-256 matched the fixture string. A second harmless Linux selection produced `Linux -> phone published clipboard (bytes=33)`; the foreground Android fixture compared the received clipboard to the expected value and logged `PC_TO_PHONE_MATCH` without printing it. This validates both directions on this S23 with its existing Windows pairing; HTML/image and other phones under PL remain untested. The earlier source concern remains a compatibility risk in other connection-sharing configurations, not a failure observed here.
+
+The old WEA service was restored to Active/Running. The desktop's original PNG selection was restored byte-for-byte (matching SHA-256) before removing the private backup. The Android fixture was uninstalled and its test clipboard was cleared; **its first backup read ran before the fixture gained foreground focus and reported an empty clip, so it cannot prove the phone's pre-test clipboard was empty**. Any prior phone clipboard value may need to be recopied. No phone network, account, notification permission or enrollment was changed.
+
 ## Notification validation (2026-10-04)
 
 Implementation on `feature/notification-sync`; source corpus: Phone Link 1.26072.257.0 and active Link to Windows 1.26082.130.0. No Microsoft source, application assemblies or captured personal notification payloads are tracked in the repository.

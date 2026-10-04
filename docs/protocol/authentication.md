@@ -94,6 +94,8 @@ https://dcg.microsoft.com/DCG.ReadWrite offline_access
 
 `auth/msa` posts `client_id` and `scope` to `/consumers/oauth2/v2.0/devicecode`, polls `/token` with the device-code grant, handles `authorization_pending` and `slow_down`, and can refresh a saved refresh token. The implementation labels this an interoperability experiment, not a source-confirmed replacement for WAM. See [`auth/msa/devicecode.go`](../../auth/msa/devicecode.go#L21-L24) and [`auth/msa/devicecode_test.go`](../../auth/msa/devicecode_test.go#L13-L123).
 
+On a new state path, the default OAuth client is Phone Link (`8CF55838-E496-42C5-829B-F8D6945288F3`) and enrollment metadata uses `PL`. The one saved PL refresh credential and DCG identity serve both clipboard and notification modules. Explicit `--profile crossdevice` remains available for clipboard-only enrollment; existing WEA state resumes with its original CrossDevice OAuth client ID rather than changing profile.
+
 The repository history records one production probe that received HTTP 200 from the device-code endpoint for the public client and migrated scope. That is historical validation, not a guarantee that the service or account is available now. Do not put access tokens, refresh tokens, device codes, or account payloads in issues or sample output.
 
 ### Compatibility constants
@@ -150,9 +152,9 @@ Dcg-Token: <DCG general token>
 Content-Type: application/json
 ```
 
-The JSON request has `certificates` and `metadata`. The normal request registers the trust certificate under `SelfSigned`. Windows-compatible metadata uses client type `WEA`, OS name `Windows`, `IsEnabled: true`, explicit client/display/OS versions, and `Unknown` manufacture/model fields. An optional `pop-device-key` query parameter is sent only when supplied; an empty value is omitted. The response must include `accountCert` and may include account info, linked devices, and a root certificate chain. See [`auth/dcgauth/enroll.go`](../../auth/dcgauth/enroll.go#L15-L167) and [`auth/dcgauth/enroll_test.go`](../../auth/dcgauth/enroll_test.go#L12-L96).
+The JSON request has `certificates` and `metadata`. The enrollment registers the trust certificate under `SelfSigned`. New PL enrollment uses client type `PL`; explicit or legacy CrossDevice enrollment uses `WEA`. Both advertise OS name `Windows`, `IsEnabled: true`, explicit client/display/OS versions, and `Unknown` manufacture/model fields. An optional `pop-device-key` query parameter is sent only when supplied; an empty value is omitted. The response must include `accountCert` and may include account info, linked devices, and a root certificate chain. See [`services/dcg/client.go`](../../services/dcg/client.go) and [`auth/dcgauth/enroll.go`](../../auth/dcgauth/enroll.go).
 
-These metadata fields are compatibility metadata, not a claim that Linux is a Windows device. The implementation intentionally sends the source-compatible profile because it is the enrolled service contract used by this project.
+These fields are interoperability metadata, not a claim that Linux runs Windows. An existing WEA identity must not be relabeled as PL: recipient selection uses trusted-peer metadata, and the OAuth app ID and refresh token remain tied to the original profile.
 
 Discovery uses:
 
@@ -172,7 +174,7 @@ Trust and feature permissions are separate. Device metadata capabilities describ
 
 The default auth state path is the platform user configuration directory followed by `linkmyphone/state.json`, normally `~/.config/linkmyphone/state.json`. The state directory is mode `0700`; the state file is mode `0600`.
 
-The JSON snapshot contains:
+The JSON snapshot contains a persisted `clientProfile` (`phonelink` for new installs; missing legacy value means `crossdevice`) plus:
 
 - a stable logical-device ID;
 - the MSA refresh token;

@@ -15,7 +15,7 @@
   "configuration_schema": "config.schema.json",
   "metadata": {
     "display_name": "Notification Sync",
-    "description": "Android notification push, desktop notifications, dismissal and replies through an isolated Phone Link enrollment.",
+    "description": "Android notification push, desktop notifications, dismissal and replies through a Phone Link enrollment shared with clipboard.",
     "diagnostic_label": "linkmyphone.notifications"
   }
 }

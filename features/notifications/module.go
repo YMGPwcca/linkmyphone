@@ -41,7 +41,7 @@ func (m *Module) Start(ctx context.Context, raw json.RawMessage, reporter kernel
 		return nil, err
 	}
 	if m.session.Profile.Canonical() != dcgheaders.ProfilePhoneLink {
-		return nil, errors.New("notifications module: full push requires an isolated phonelink enrollment; do not reclassify working CrossDevice state")
+		return nil, errors.New("notifications module: full push requires a phonelink enrollment; existing CrossDevice identities cannot be reclassified")
 	}
 	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	native, err := client.NewDesktop(runCtx)

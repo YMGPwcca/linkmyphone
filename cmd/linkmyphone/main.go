@@ -126,7 +126,7 @@ func runBootstrapProbe(ctx context.Context, args []string) error {
 	opts := probeOptions{}
 	fs.StringVar(&opts.statePath, "state", defaultStatePath, "persistent bootstrap state path")
 	var requestedProfile string
-	fs.StringVar(&requestedProfile, "profile", "", "enrollment profile: crossdevice or phonelink; persisted profile is reused")
+	fs.StringVar(&requestedProfile, "profile", "", "first enrollment profile: phonelink (default) or crossdevice; existing profile is reused")
 	fs.StringVar(&opts.appVersion, "app-version", defaultAppVersion, "compatibility app version advertised to DCG")
 	fs.StringVar(&opts.ringName, "ring", defaultRingName, "compatibility ring name")
 	fs.StringVar(&opts.osVersion, "os-version", defaultOSVersion, "Windows-compatible OS version advertised to DCG")
@@ -145,13 +145,6 @@ func runBootstrapProbe(ctx context.Context, args []string) error {
 	if err := opts.profile.Validate(); err != nil {
 		return err
 	}
-	stateSpecified := false
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "state" {
-			stateSpecified = true
-		}
-	})
-
 	fmt.Println("LinkMyPhone bootstrap probe")
 	fmt.Printf("State: %s\n", opts.statePath)
 	fmt.Println("Secrets are not printed.")
@@ -161,15 +154,14 @@ func runBootstrapProbe(ctx context.Context, args []string) error {
 	switch {
 	case loadErr == nil:
 		if requestedProfile != "" && opts.profile.Canonical() != snapshot.ClientProfile {
-			return errors.New("existing enrollment uses a different client profile; choose a separate --state path")
+			return errors.New("existing enrollment uses a different client profile; use the existing Phone Link state or a new --state path")
 		}
 		opts.profile = snapshot.ClientProfile
 		fmt.Println("[state] Existing enrollment found; reusing the same DCG identity.")
 		return probeExistingState(ctx, opts, snapshot)
 	case errors.Is(loadErr, os.ErrNotExist):
-		opts.profile = opts.profile.Canonical()
-		if opts.profile == dcgheaders.ProfilePhoneLink && !stateSpecified {
-			return errors.New("phonelink enrollment requires an explicit isolated --state path")
+		if opts.profile == "" {
+			opts.profile = dcgheaders.ProfilePhoneLink
 		}
 		fmt.Println("[state] No existing enrollment; starting first-run bootstrap.")
 		return probeFirstRun(ctx, opts)

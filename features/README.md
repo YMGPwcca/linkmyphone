@@ -73,7 +73,7 @@ The compatibility command `clipboard-sync` starts this same module through the m
 
 `notifications/native.go` implements the freedesktop notification service, checks signal ownership, invalidates IDs on owner loss and replays visible/pending items silently after rebind. The optional GTK4 reply helper has a labelled multiline editor, Cancel/confirmation controls and exact Unicode/newline transport. Replies are cancellable, limited to four simultaneous windows and kept off the desktop event worker. Update, removal, service reset or Stop cancels stale prompts; queued mutations are checked again before sending. No pending mutation is replayed after a host generation change.
 
-The feature defaults to avoiding alerts for existing items; its `remote_actions=false` mode permits receive/reconcile without phone dismissal/action/reply. Disable/Stop closes only local notifications. See [setup](../docs/getting-started/first-run.md#separate-phone-link-enrollment), [configuration](../docs/reference/configuration.md#notification-configuration) and [verification limits](../docs/research/validation.md#notification-validation-2026-10-04).
+The feature defaults to avoiding alerts for existing items; its `remote_actions=false` mode permits receive/reconcile without phone dismissal/action/reply. Disable/Stop closes only local notifications. The same PL host session can start clipboard and notifications; existing WEA state is not relabeled. See [setup](../docs/getting-started/first-run.md#existing-crossdevice-and-trial-phone-link-enrollments), [configuration](../docs/reference/configuration.md#notification-configuration) and [verification limits](../docs/research/validation.md#unified-pl-enrollment-2026-10-05).
 
 
 ## Adding or removing a builtin

@@ -50,11 +50,11 @@ type FirstRunResult struct {
 // account-level SignalR relay connection.
 func BootstrapFirstRun(ctx context.Context, cfg FirstRunConfig) (*FirstRunResult, error) {
 	result := &FirstRunResult{}
+	if cfg.ClientProfile == "" {
+		cfg.ClientProfile = dcgheaders.ProfilePhoneLink
+	}
 	if err := cfg.ClientProfile.Validate(); err != nil {
 		return result, err
-	}
-	if cfg.ClientProfile.Canonical() == dcgheaders.ProfilePhoneLink && cfg.StatePath == "" {
-		return result, errors.New("bootstrap: Phone Link enrollment requires an explicit isolated state path")
 	}
 	if cfg.Auth == nil || cfg.Services == nil {
 		return result, errors.New("bootstrap: auth and DCG service clients are required")
