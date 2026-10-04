@@ -94,6 +94,7 @@ class ReplyWindow(Gtk.Window):
         root.append(buttons)
 
         keys = Gtk.EventControllerKey()
+        keys.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
         keys.connect("key-pressed", self._key_pressed)
         self.add_controller(keys)
         self.connect("close-request", self._closed)
