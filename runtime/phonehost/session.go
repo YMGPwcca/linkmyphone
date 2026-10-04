@@ -52,6 +52,9 @@ type Session struct {
 	Target          servicedcg.DeviceInfo
 	SelfDcgClientID string
 	Region          string
+	Profile         dcgheaders.Profile
+	AppVersion      string
+	InstallationID  string
 }
 
 func (s *Session) Subscribe(name string, matcher Matcher, queueSize int) (*Endpoint, error) {
@@ -126,14 +129,15 @@ func Open(ctx context.Context, cfg Config, reporter kernel.Reporter) (*Session, 
 		return nil, permanent(err)
 	}
 
-	clientInfo, err := dcgheaders.NewCrossDeviceClientInfo(
+	clientInfo, err := dcgheaders.NewClientInfo(
+		snapshot.ClientProfile,
 		snapshot.LogicalDeviceID,
 		cfg.AppVersion,
 		cfg.RingName,
 		cfg.OSVersion,
 	)
 	if err != nil {
-		return nil, permanent(fmt.Errorf("phonehost: build CrossDevice client info: %w", err))
+		return nil, permanent(fmt.Errorf("phonehost: build client profile info: %w", err))
 	}
 
 	msaClient := msa.NewDeviceCodeClient()
@@ -242,6 +246,9 @@ func Open(ctx context.Context, cfg Config, reporter kernel.Reporter) (*Session, 
 		Target:          target,
 		SelfDcgClientID: resumed.Identity.DeviceID,
 		Region:          cloud.Region,
+		Profile:         snapshot.ClientProfile,
+		AppVersion:      cfg.AppVersion,
+		InstallationID:  snapshot.LogicalDeviceID,
 	}
 	session.router = newRouter(cloud.Relay)
 	// The host is the sole owner of the raw relay receive stream even when no

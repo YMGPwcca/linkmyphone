@@ -19,11 +19,12 @@ type FirstRunConfig struct {
 	Services *servicedcg.Client
 	MSAToken msa.OAuthToken
 
-	AppVersion string
-	DisplayName string
-	RingName   string
-	OSVersion  string
-	MSACID     string
+	AppVersion    string
+	ClientProfile dcgheaders.Profile
+	DisplayName   string
+	RingName      string
+	OSVersion     string
+	MSACID        string
 
 	LogicalDeviceID string
 	StatePath       string
@@ -49,6 +50,12 @@ type FirstRunResult struct {
 // account-level SignalR relay connection.
 func BootstrapFirstRun(ctx context.Context, cfg FirstRunConfig) (*FirstRunResult, error) {
 	result := &FirstRunResult{}
+	if err := cfg.ClientProfile.Validate(); err != nil {
+		return result, err
+	}
+	if cfg.ClientProfile.Canonical() == dcgheaders.ProfilePhoneLink && cfg.StatePath == "" {
+		return result, errors.New("bootstrap: Phone Link enrollment requires an explicit isolated state path")
+	}
 	if cfg.Auth == nil || cfg.Services == nil {
 		return result, errors.New("bootstrap: auth and DCG service clients are required")
 	}
@@ -71,7 +78,8 @@ func BootstrapFirstRun(ctx context.Context, cfg FirstRunConfig) (*FirstRunResult
 			return result, err
 		}
 	}
-	clientInfo, err := dcgheaders.NewCrossDeviceClientInfo(
+	clientInfo, err := dcgheaders.NewClientInfo(
+		cfg.ClientProfile,
 		logicalDeviceID,
 		cfg.AppVersion,
 		cfg.RingName,
@@ -96,7 +104,7 @@ func BootstrapFirstRun(ctx context.Context, cfg FirstRunConfig) (*FirstRunResult
 	enrollment, err := enroller.EnrollWithMSAToken(
 		ctx,
 		cfg.MSAToken.AccessToken,
-		servicedcg.MetadataForClipboardPC(cfg.AppVersion, cfg.DisplayName, cfg.OSVersion),
+		servicedcg.MetadataForPC(cfg.ClientProfile, cfg.AppVersion, cfg.DisplayName, cfg.OSVersion),
 	)
 	if err != nil {
 		return result, err
@@ -122,6 +130,7 @@ func BootstrapFirstRun(ctx context.Context, cfg FirstRunConfig) (*FirstRunResult
 		enrollment,
 		trust,
 		logicalDeviceID,
+		cfg.ClientProfile,
 	)
 	if err != nil {
 		return result, err

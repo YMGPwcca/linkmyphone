@@ -289,13 +289,19 @@ func (c *Client) endpoint(path string, query map[string]string) (string, error) 
 	return u.String(), nil
 }
 
-// MetadataForClipboardPC produces the Windows-side metadata shape used by the
-// CrossDevice runtime, while leaving app version, display name, and OS version
-// explicit so callers do not silently spoof a package build.
-func MetadataForClipboardPC(clientVersion, displayName, osVersion string) DeviceMetadata {
+// MetadataForPC advertises only capabilities implemented by this profile.
+// Full Phone Link notification support is negotiated over APP, not a guessed
+// device-management notification capability.
+func MetadataForPC(profile dcgheaders.Profile, clientVersion, displayName, osVersion string) DeviceMetadata {
+	var capabilities []string
+	if profile.Canonical() == dcgheaders.ProfileCrossDevice {
+		capabilities = []string{"CLIPBOARD"}
+	} else {
+		capabilities = []string{}
+	}
 	return DeviceMetadata{
-		Capabilities:   []string{"CLIPBOARD"},
-		ClientType:     "WEA",
+		Capabilities:   capabilities,
+		ClientType:     profile.ClientType(),
 		ClientVersion:  clientVersion,
 		DisplayName:    displayName,
 		IsEnabled:      true,

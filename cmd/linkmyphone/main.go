@@ -103,6 +103,7 @@ func usage() {
 
 type probeOptions struct {
 	statePath   string
+	profile     dcgheaders.Profile
 	appVersion  string
 	ringName    string
 	osVersion   string
@@ -124,8 +125,10 @@ func runBootstrapProbe(ctx context.Context, args []string) error {
 	fs.SetOutput(os.Stderr)
 	opts := probeOptions{}
 	fs.StringVar(&opts.statePath, "state", defaultStatePath, "persistent bootstrap state path")
-	fs.StringVar(&opts.appVersion, "app-version", defaultAppVersion, "CrossDevice app version advertised to DCG")
-	fs.StringVar(&opts.ringName, "ring", defaultRingName, "CrossDevice ring name")
+	var requestedProfile string
+	fs.StringVar(&requestedProfile, "profile", "", "enrollment profile: crossdevice or phonelink; persisted profile is reused")
+	fs.StringVar(&opts.appVersion, "app-version", defaultAppVersion, "compatibility app version advertised to DCG")
+	fs.StringVar(&opts.ringName, "ring", defaultRingName, "compatibility ring name")
 	fs.StringVar(&opts.osVersion, "os-version", defaultOSVersion, "Windows-compatible OS version advertised to DCG")
 	fs.StringVar(&opts.displayName, "display-name", hostname, "device display name used for first enrollment")
 	fs.DurationVar(&opts.timeout, "signalr-timeout", bootstrap.DefaultOnConnectedTimeout, "time to wait for SignalR OnConnected")
@@ -138,6 +141,16 @@ func runBootstrapProbe(ctx context.Context, args []string) error {
 	if opts.timeout <= 0 {
 		return errors.New("signalr timeout must be positive")
 	}
+	opts.profile = dcgheaders.Profile(requestedProfile)
+	if err := opts.profile.Validate(); err != nil {
+		return err
+	}
+	stateSpecified := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "state" {
+			stateSpecified = true
+		}
+	})
 
 	fmt.Println("LinkMyPhone bootstrap probe")
 	fmt.Printf("State: %s\n", opts.statePath)
@@ -147,9 +160,17 @@ func runBootstrapProbe(ctx context.Context, args []string) error {
 	snapshot, loadErr := authstate.Load(opts.statePath)
 	switch {
 	case loadErr == nil:
+		if requestedProfile != "" && opts.profile.Canonical() != snapshot.ClientProfile {
+			return errors.New("existing enrollment uses a different client profile; choose a separate --state path")
+		}
+		opts.profile = snapshot.ClientProfile
 		fmt.Println("[state] Existing enrollment found; reusing the same DCG identity.")
 		return probeExistingState(ctx, opts, snapshot)
 	case errors.Is(loadErr, os.ErrNotExist):
+		opts.profile = opts.profile.Canonical()
+		if opts.profile == dcgheaders.ProfilePhoneLink && !stateSpecified {
+			return errors.New("phonelink enrollment requires an explicit isolated --state path")
+		}
 		fmt.Println("[state] No existing enrollment; starting first-run bootstrap.")
 		return probeFirstRun(ctx, opts)
 	default:
@@ -159,6 +180,7 @@ func runBootstrapProbe(ctx context.Context, args []string) error {
 
 func probeFirstRun(ctx context.Context, opts probeOptions) error {
 	msaClient := msa.NewDeviceCodeClient()
+	msaClient.ClientID = opts.profile.MSAClientID()
 	scope := msa.ScopeWithOfflineAccess(dcgauth.MigratedProdMSAScope)
 
 	fmt.Println("[auth] Requesting Microsoft device code...")
@@ -200,7 +222,7 @@ func probeFirstRun(ctx context.Context, opts probeOptions) error {
 	enrollment, err := enroller.EnrollWithMSAToken(
 		ctx,
 		msaToken.AccessToken,
-		servicedcg.MetadataForClipboardPC(opts.appVersion, opts.displayName, opts.osVersion),
+		servicedcg.MetadataForPC(opts.profile, opts.appVersion, opts.displayName, opts.osVersion),
 	)
 	if err != nil {
 		return fmt.Errorf("stage 1 enrollment: %w", err)
@@ -216,6 +238,7 @@ func probeFirstRun(ctx context.Context, opts probeOptions) error {
 		enrollment,
 		bootstrap.TrustSyncResult{},
 		logicalDeviceID,
+		opts.profile,
 	)
 	if err != nil {
 		return fmt.Errorf("stage 2 build state: %w", err)
@@ -265,6 +288,7 @@ func probeFirstRun(ctx context.Context, opts probeOptions) error {
 }
 
 func probeExistingState(ctx context.Context, opts probeOptions, snapshot authstate.Snapshot) error {
+	opts.profile = snapshot.ClientProfile
 	clientInfo, err := buildClientInfo(opts, snapshot.LogicalDeviceID)
 	if err != nil {
 		return err
@@ -334,14 +358,15 @@ func configureDCGClients(authClient *dcgauth.Client, serviceClient *servicedcg.C
 }
 
 func buildClientInfo(opts probeOptions, logicalDeviceID string) (dcgheaders.ClientInfo, error) {
-	info, err := dcgheaders.NewCrossDeviceClientInfo(
+	info, err := dcgheaders.NewClientInfo(
+		opts.profile,
 		logicalDeviceID,
 		opts.appVersion,
 		opts.ringName,
 		opts.osVersion,
 	)
 	if err != nil {
-		return dcgheaders.ClientInfo{}, fmt.Errorf("build CrossDevice headers: %w", err)
+		return dcgheaders.ClientInfo{}, fmt.Errorf("build client profile headers: %w", err)
 	}
 	return info, nil
 }

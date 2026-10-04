@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/YMGPwcca/linkmyphone/dcgheaders"
 )
 
 func TestListDevicesWireShape(t *testing.T) {
@@ -95,7 +97,7 @@ func TestEnrollDeviceWireShape(t *testing.T) {
 
 	client := NewClient(server.URL)
 	out, err := client.EnrollDevice(context.Background(), "msa", "dcg", "", EnrollRequest{
-		Metadata: MetadataForClipboardPC("1.0.0", "linux", "1.0"),
+		Metadata: MetadataForPC(dcgheaders.ProfileCrossDevice, "1.0.0", "linux", "1.0"),
 		Certificates: map[string][]string{
 			"SelfSigned": {"cert"},
 		},

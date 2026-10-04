@@ -61,6 +61,18 @@ linkmyphone bootstrap-probe --state "$HOME/.config/linkmyphone-test/state.json"
 
 The other bootstrap flags are documented in the [CLI reference](../reference/cli.md). They change compatibility metadata sent to Microsoft's service. Keep their defaults unless a deployment-specific requirement gives you a reason to change them.
 
+### Separate Phone Link enrollment
+
+The default `crossdevice` profile preserves the existing WEA/clipboard identity. Full notification push uses a genuine `phonelink` (PL) enrollment, not a changed request body on an unrelated WEA identity:
+
+```bash
+linkmyphone bootstrap-probe --profile phonelink \
+  --state "$HOME/.config/linkmyphone-notifications/state.json"
+```
+
+Use a **new state path**. The CLI refuses to change the profile of an existing enrollment and requires an explicit state path for a new PL enrollment. The chosen profile is saved with its identity and determines the Microsoft OAuth client ID, DCG app ID and enrollment client type on every resume. Old state without `clientProfile` remains CrossDevice. Keep any working clipboard service and state separate during a notification trial; a new enrollment changes the account's device/trust list.
+
+
 ## 2. Resume an existing enrollment
 
 Run `bootstrap-probe` again, or start `run`, `peer-probe`, or `session-probe` with the same state path. An existing state file is loaded and the program refreshes the Microsoft token, signs the existing DCG identity in, refreshes linked-device trust, and reconnects SignalR. Normal resume calls DCG `SignIn`; it does not create a second identity.
