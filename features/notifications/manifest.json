@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "id": "linkmyphone.notifications",
+  "version": "0.1.0",
+  "kind": "builtin",
+  "runtime": {"api_version": "1.0"},
+  "capabilities": {"potential": [
+    {"id": "notifications.receive", "contract_version": "1.0.0"},
+    {"id": "notifications.dismiss", "contract_version": "1.0.0"},
+    {"id": "notifications.actions", "contract_version": "1.0.0"},
+    {"id": "notifications.reply", "contract_version": "1.0.0"}
+  ]},
+  "dependencies": {"required": [], "optional": []},
+  "permissions": {"requested": ["notifications.desktop", "notifications.phone.read", "notifications.phone.actions", "network.dcg"]},
+  "configuration_schema": "config.schema.json",
+  "metadata": {
+    "display_name": "Notification Sync",
+    "description": "Android notification push, desktop notifications, dismissal and replies through an isolated Phone Link enrollment.",
+    "diagnostic_label": "linkmyphone.notifications"
+  }
+}

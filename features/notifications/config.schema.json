@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://linkmyphone.local/schema/features/notifications/1.0",
+  "title": "LinkMyPhone notification module configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "request_timeout_ms": {"type": "integer", "minimum": 100, "maximum": 120000, "default": 10000},
+    "remote_actions": {"type": "boolean", "default": true, "description": "Allow explicit desktop dismissals, Android actions and confirmed replies. Disable for receive-only trials."},
+    "show_existing": {"type": "boolean", "default": false, "description": "Render reconciled existing items with suppress-sound. False avoids startup/recovery notification floods."}
+  }
+}

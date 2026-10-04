@@ -28,6 +28,7 @@ Keep each profile in its own directory. Saving authentication state changes its 
 | Field | Stored value and purpose |
 | --- | --- |
 | `version` | State schema version. The current value is `1`; unsupported versions are rejected. |
+| `clientProfile` | Persisted `crossdevice` or `phonelink` enrollment identity. Missing legacy values stay CrossDevice; unknown profiles are refused. Do not edit this field to reclassify an existing identity. |
 | `logicalDeviceId` | Stable logical device identifier used in CrossDevice headers. |
 | `msaRefreshToken` | Microsoft identity refresh credential used to resume sign-in. |
 | `identity` | Linux DCG identity key pair: `id`, base64 PKCS#8 private key, and base64 DER certificate. |
@@ -113,7 +114,7 @@ Each feature record has exactly these fields:
 
 | Field | Meaning |
 | --- | --- |
-| `id` | Feature identifier. The current catalog contains `linkmyphone.clipboard`. |
+| `id` | Feature identifier. The catalog contains `linkmyphone.clipboard` and `linkmyphone.notifications`. |
 | `enabled` | Desired startup state. `run` starts available records with `true`. |
 | `config` | Feature-specific JSON object. The built-in clipboard validator rejects unknown properties. |
 
@@ -123,7 +124,7 @@ The store writes mode `0600` files under a mode `0700` directory and replaces th
 
 ## Clipboard configuration
 
-The catalog's only built-in feature has ID `linkmyphone.clipboard`, version `0.2.0`, and this default configuration:
+The clipboard feature has ID `linkmyphone.clipboard`, version `0.2.0`, and this default configuration:
 
 | Property | Type and range | Default | Effect |
 | --- | --- | --- | --- |
@@ -140,8 +141,23 @@ linkmyphone feature update \
   --config '{"poll_interval_ms":500,"request_timeout_ms":10000,"publish_initial":true}' \
   linkmyphone.clipboard
 ```
-
 The compatibility command's `--poll-interval` and `--publish-initial` flags construct an in-memory record for the same module. They do not write this configuration to `features.json`.
+
+## Notification configuration
+
+`linkmyphone.notifications` requires an isolated `phonelink` enrollment, granted phone notification permission and a desktop session bus service implementing `org.freedesktop.Notifications`.
+
+| Property | Type and range | Default | Effect |
+| --- | --- | --- | --- |
+| `request_timeout_ms` | Integer, 100 through 120000 | `10000` | APP request/desktop-call deadline. |
+| `remote_actions` | Boolean | `true` | Permit explicit desktop dismissal, Android action buttons, launch and confirmed reply. Set false for a receive-only trial. |
+| `show_existing` | Boolean | `false` | Render existing/reconciled items with the suppress-sound hint; false avoids startup/recovery floods. The hint does not guarantee that a server hides its popup. |
+
+Schema: [`features/notifications/config.schema.json`](../../features/notifications/config.schema.json). Unknown properties, non-object values and trailing JSON are rejected. Reply UI is optional Python GI/GTK4; absent GTK or native action support removes the reply capability/buttons, not notification reception. A new host generation reconciles from fresh memory and never replays pending mutations.
+
+State is bounded to 4096 items and 32 MiB of estimated retained content. The oldest item is evicted locally when that budget is exhausted; eviction never dismisses it on the phone and is reported in diagnostics. Desktop service loss invalidates native IDs and cancels replies; a new owner silently replays previously visible/pending items. Source: [`notifications/`](../../notifications/) and [`features/notifications/`](../../features/notifications/).
+
+
 
 ## Live and offline edits
 

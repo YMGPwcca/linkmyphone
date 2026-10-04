@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	clipboardfeature "github.com/YMGPwcca/linkmyphone/features/clipboard"
+	notificationsfeature "github.com/YMGPwcca/linkmyphone/features/notifications"
 	"github.com/YMGPwcca/linkmyphone/runtime/kernel"
 	"github.com/YMGPwcca/linkmyphone/runtime/phonehost"
 )
@@ -26,6 +27,14 @@ func Catalog() ([]Definition, error) {
 	if err != nil {
 		return nil, err
 	}
+	notificationsManifest, err := notificationsfeature.Manifest()
+	if err != nil {
+		return nil, err
+	}
+	defaultNotificationsConfig, err := json.Marshal(notificationsfeature.DefaultConfig())
+	if err != nil {
+		return nil, err
+	}
 
 	definitions := []Definition{
 		{
@@ -37,6 +46,17 @@ func Catalog() ([]Definition, error) {
 			},
 			Build: func(session *phonehost.Session) (kernel.Module, error) {
 				return clipboardfeature.New(session)
+			},
+		},
+		{
+			Manifest:      notificationsManifest,
+			DefaultConfig: defaultNotificationsConfig,
+			Validate: func(raw json.RawMessage) error {
+				_, err := notificationsfeature.DecodeConfig(raw)
+				return err
+			},
+			Build: func(session *phonehost.Session) (kernel.Module, error) {
+				return notificationsfeature.New(session)
 			},
 		},
 	}

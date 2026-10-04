@@ -54,6 +54,7 @@ type Session struct {
 	Region          string
 	Profile         dcgheaders.Profile
 	AppVersion      string
+	RingName        string
 	InstallationID  string
 }
 
@@ -248,6 +249,7 @@ func Open(ctx context.Context, cfg Config, reporter kernel.Reporter) (*Session, 
 		Region:          cloud.Region,
 		Profile:         snapshot.ClientProfile,
 		AppVersion:      cfg.AppVersion,
+		RingName:        cfg.RingName,
 		InstallationID:  snapshot.LogicalDeviceID,
 	}
 	session.router = newRouter(cloud.Relay)

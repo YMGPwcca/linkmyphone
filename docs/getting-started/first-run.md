@@ -72,6 +72,23 @@ linkmyphone bootstrap-probe --profile phonelink \
 
 Use a **new state path**. The CLI refuses to change the profile of an existing enrollment and requires an explicit state path for a new PL enrollment. The chosen profile is saved with its identity and determines the Microsoft OAuth client ID, DCG app ID and enrollment client type on every resume. Old state without `clientProfile` remains CrossDevice. Keep any working clipboard service and state separate during a notification trial; a new enrollment changes the account's device/trust list.
 
+After enrollment, create a **separate** feature store and run the notification module with that PL state:
+
+```bash
+linkmyphone feature create \
+  --state "$HOME/.config/linkmyphone-notifications/features.json" \
+  --enabled --config '{"remote_actions":false}' linkmyphone.notifications
+linkmyphone run \
+  --state "$HOME/.config/linkmyphone-notifications/state.json" \
+  --features-state "$HOME/.config/linkmyphone-notifications/features.json"
+```
+
+The initial trial is receive-only. The module requires a session D-Bus notification service and notification access granted to Link to Windows on the phone. Start fails rather than claiming Ready when the PL profile, permissions, typed APP connect or reconcile is unavailable. New items replace their desktop counterpart; phone removals close it. Existing/reconciled items are cached without startup alerts by default.
+
+Enable `remote_actions` only when you want desktop user dismissals and Android buttons/replies to affect the phone. Desktop expiry and programmatic close never dismiss the phone. Replies require Python GI/GTK4; the module exposes them only when available and submits only explicitly confirmed text. APP success for a launch/reply means Android accepted dispatch, not delivery to the recipient. See [notification configuration](../reference/configuration.md#notification-configuration) and [privacy](../operations/privacy-and-state.md#notifications).
+
+**Verification limit:** codec interoperability and synthetic native desktop/reply flows are tested. The isolated PL device-code sign-in expired before authentication completed; genuine PL enrollment and S23 push have not yet been exercised.
+
 
 ## 2. Resume an existing enrollment
 

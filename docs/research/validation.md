@@ -17,6 +17,23 @@ This page records manual device tests and automated checks. Older results come f
 
 Authenticated X11 runs, other phones and other desktop setups still need testing. The [research method](method.md) describes the capture procedure.
 
+## Notification validation (2026-10-04)
+
+Implementation on `feature/notification-sync`; source corpus: Phone Link 1.26072.257.0 and active Link to Windows 1.26082.130.0. No Microsoft source, application assemblies or captured personal notification payloads are tracked in the repository.
+
+| Check | Observed result |
+| --- | --- |
+| Independent PBValueSet interoperability | Original Windows protocol assembly decoded synthetic Go Double, Int32/Int64 arrays, empty string-array elements and nested Bool; Go decoded its serialized response. |
+| APP/state regressions | Typed correlated responses, malformed aligned arrays, duplicate pushes, silent existing state, key/post-time pairing, session reset, failed-render retry, stale actions/replies and non-user close reasons covered. |
+| Real native desktop | A synthetic local peer drove real Quickshell D-Bus Notify/replacement/removal on CachyOS/Wayland; replacement retained its native ID, phone removal did not echo a mutation and teardown completed. No Microsoft/phone network was involved. |
+| Actual GTK reply UI | Own native window inspected with cropped screenshots and AT-SPI. Confirmed `Xin chào 👋\\nSecond line` through its editor and Reply button; the synthetic peer received exact text and Android action index 4. |
+| Linux verification | Full tests, full race suite, vet and CLI build passed on the isolated staging checkout. Working clipboard state/service were not replaced. |
+| Genuine PL enrollment | Correct-profile device-code authorization started; sign-in expired before account authentication. No PL identity/state was created in that attempt. |
+| S23 live push/reconcile and mutations | **Not exercised.** Requires completing isolated PL sign-in. Live dismiss/action/reply were explicitly excluded; their validation used local fixtures/synthetic desktop only. |
+
+Automation limits: Hyprland `focuswindow` dispatch failed and `ydotoold` was unavailable, so submission was exercised through the actual accessible Reply button, not synthetic Ctrl+Enter. Keyboard bindings exist in the helper but were not runtime-verified here. Notification module status remains **Experimental** until genuine PL eligibility and S23 push/reconcile are observed.
+
+
 ## Clipboard validation (2026-10-03)
 
 Setup: CachyOS/Wayland, `wl-clipboard`, Samsung Galaxy S23 with Link to Windows, and Windows Phone Link for the image comparison. HTML offers used GTK4/Python GI. The new executable reused `~/.config/phonelink-linux/state.json` through `--state`.
