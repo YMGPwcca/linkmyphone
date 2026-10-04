@@ -50,7 +50,7 @@ type Item struct {
 	IsOngoing         bool     `json:"isOngoing"`
 	LargeIcon         string   `json:"largeIcon"`
 	SmallIcon         string   `json:"smallIcon"`
-	Actions           []Action `json:"actions"`
+	Actions           []Action `json:"notificationActions"`
 }
 
 type Operation struct {

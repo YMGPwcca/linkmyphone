@@ -7,7 +7,7 @@ import (
 )
 
 func TestBatchRemovalWithoutJSONAndOriginalActionIndex(t *testing.T) {
-	body := `{"key":"current","postTime":1700000000123,"isClearable":true,"actions":[{"actionName":"Reply","isActionInlineReply":true,"actionIndex":4}]}`
+	body := `{"key":"current","postTime":1700000000123,"isClearable":true,"notificationActions":[{"actionName":"Reply","isActionInlineReply":true,"actionIndex":4}]}`
 	batch, err := DecodeBatch(app.ValueSet{"contentType": "notifications", "notificationKeys": []string{"current", "gone"}, "operations": []int32{1, 2}, "notifications": []string{body, ""}})
 	if err != nil {
 		t.Fatal(err)
@@ -16,7 +16,7 @@ func TestBatchRemovalWithoutJSONAndOriginalActionIndex(t *testing.T) {
 		t.Fatalf("removal=%#v", batch.Operations[1])
 	}
 	item := batch.Operations[0].Item
-	if item.PostTime != 1700000000123 || !item.IsClearable || item.Actions[0].Index != 4 || !item.Actions[0].InlineReply {
+	if item.PostTime != 1700000000123 || !item.IsClearable || len(item.Actions) != 1 || item.Actions[0].Index != 4 || !item.Actions[0].InlineReply {
 		t.Fatalf("item=%#v", item)
 	}
 }

@@ -32,9 +32,10 @@ Implementation on `feature/notification-sync`; source corpus: Phone Link 1.26072
 | Genuine PL enrollment | Separate PL device-code sign-in, identity enrollment, trust and Hub Relay succeeded. Existing WEA clipboard state/service remained separate. |
 | S23 live receive/reconcile | APP connect succeeded with `ecr=true`; one real notification was synchronized. Module Ready exposed only `notifications.receive`, with `remote_actions=false`. |
 | Android parser compatibility | Initial connect failed in Java lite `readInt64List` on an explicitly encoded zero-length packed array. Reproduced offline using the active Android schema and Java lite stream parser. Omitting empty repeated fields while preserving variant types fixed the offline parser and live S23 connect. |
-| Live phone mutations | Dismiss/action/reply were explicitly excluded; their validation used local fixtures and synthetic desktop UI only. |
+| Live Android fixture mutations | Subsequently authorized and exercised on S23: explicit dismiss, explicit-key clear, launch, non-reply action and Unicode/multiline inline reply. A temporary fixture recorded actual Android receiver/activity effects; no personal notification was targeted. |
+| Android action contract | Live fixture revealed that actions are serialized as `notificationActions`, not `actions`. Corrected the decoder and independent JSON fixture; action/reply then executed on the phone. |
 
-Automation limits: Hyprland `focuswindow` dispatch failed and `ydotoold` was unavailable, so submission was exercised through the actual accessible Reply button, not synthetic Ctrl+Enter. Keyboard bindings exist in the helper but were not runtime-verified here. Notification status remains **Experimental**: live phone mutations, long-running recovery and broader device coverage remain untested.
+Automation limits: Hyprland `focuswindow` dispatch failed and `ydotoold` was unavailable, so initial GTK submission was exercised through the actual accessible Reply button, not synthetic Ctrl+Enter. Notification status remains **Experimental**: real messaging-app delivery, long-running recovery and broader device coverage are not implied by fixture success.
 
 
 ## Clipboard validation (2026-10-03)
