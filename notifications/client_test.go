@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -336,6 +337,62 @@ func TestOtherAPPRouteDoesNotMasqueradeAsMalformedNotification(t *testing.T) {
 	}
 }
 
+func TestSharedPhoneContentRouteSkipsLargeClipboardImage(t *testing.T) {
+	c, native, transport := newFixtureClient(t)
+	events := make(chan string, 8)
+	c.cfg.OnEvent = func(message string, _ map[string]string) { events <- message }
+	cancel, done := startClient(t, c)
+	defer stopClient(t, cancel, done)
+
+	// Android's copy metadata has image_bytes on the same route as
+	// notifications. Put it before contentType to cover unordered map entries.
+	variant := binary.AppendUvarint(nil, 8)     // PBVariant type field
+	variant = binary.AppendUvarint(variant, 18) // UInt8Array
+	variant = appendPBBytes(variant, 21, make([]byte, 4097))
+	entry := appendPBBytes(nil, 1, []byte("image_bytes"))
+	entry = appendPBBytes(entry, 2, variant)
+	body := appendPBBytes(nil, 1, entry)
+	kind, err := app.Marshal(app.ValueSet{"contentType": "copypaste_metadata"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = append(body, kind...)
+	frame, err := platform.MarshalWithHeaderCount(platform.Message{
+		Headers: []platform.Header{{Key: platform.HeaderRoute, Value: wire.RoutePhoneContent}},
+		Payload: body,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport.received <- relay.Received{Source: "phone", TransportMessageType: dcg.TransportMessageTypeApp, Payload: frame}
+	pushBatch(t, transport, "notification", "", item("one", "text", 10))
+	if response := sentWithin(t, transport); response.message.Values["result"] != int32(0) {
+		t.Fatalf("notification after clipboard image rejected: %#v", response)
+	}
+	native.mu.Lock()
+	rendered := native.renderCount
+	native.mu.Unlock()
+	if rendered != 1 {
+		t.Fatalf("subsequent notification rendered %d times", rendered)
+	}
+	for {
+		select {
+		case event := <-events:
+			if event == "malformed APP envelope" {
+				t.Fatal("clipboard image on shared APP route logged as malformed notification")
+			}
+		default:
+			return
+		}
+	}
+}
+
+func appendPBBytes(dst []byte, field uint64, value []byte) []byte {
+	dst = binary.AppendUvarint(dst, field<<3|2)
+	dst = binary.AppendUvarint(dst, uint64(len(value)))
+	return append(dst, value...)
+}
+
 func TestMalformedNotificationAPPReportsDecodeStage(t *testing.T) {
 	c, _, transport := newFixtureClient(t)
 	events := make(chan map[string]string, 1)
@@ -346,9 +403,19 @@ func TestMalformedNotificationAPPReportsDecodeStage(t *testing.T) {
 	}
 	cancel, done := startClient(t, c)
 	defer stopClient(t, cancel, done)
+	body, err := app.Marshal(app.ValueSet{"contentType": wire.ContentType})
+	if err != nil {
+		t.Fatal(err)
+	}
+	variant := binary.AppendUvarint(nil, 8)
+	variant = binary.AppendUvarint(variant, 18)
+	variant = appendPBBytes(variant, 21, make([]byte, 4097))
+	entry := appendPBBytes(nil, 1, []byte("invalid_image"))
+	entry = appendPBBytes(entry, 2, variant)
+	body = appendPBBytes(body, 1, entry)
 	payload, err := platform.MarshalWithHeaderCount(platform.Message{
 		Headers: []platform.Header{{Key: platform.HeaderRoute, Value: wire.RoutePhoneContent}},
-		Payload: []byte(`{"invalid":"PBValueSet"}`),
+		Payload: body,
 	})
 	if err != nil {
 		t.Fatal(err)

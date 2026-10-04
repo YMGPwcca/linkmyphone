@@ -150,6 +150,16 @@ func (c *Client) Run(ctx context.Context) error {
 			} else if route != wire.RoutePhoneContent {
 				continue
 			}
+			if route == wire.RoutePhoneContent {
+				contentType, _, err := app.PeekString(envelope.Payload, "contentType")
+				if err != nil {
+					c.event("malformed APP envelope", map[string]string{"stage": "contentType", "reason": err.Error()})
+					continue
+				}
+				if contentType != wire.ContentType {
+					continue
+				}
+			}
 			values, err := app.Unmarshal(envelope.Payload)
 			if err != nil {
 				c.event("malformed APP envelope", map[string]string{"stage": "values", "reason": err.Error()})
