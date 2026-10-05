@@ -2,125 +2,37 @@
 
 [Documentation index](../docs/README.md)
 
-Use this page to find the builtin boundary before editing `features/catalog.go` or a feature package. Read the [module architecture](../docs/architecture/modules.md) for lifecycle and dependency rules, the [architecture overview](../docs/architecture/overview.md) for runtime ownership, and the [control-plane contract](../docs/architecture/control-plane.md) for live feature CRUD.
+The catalog registers two in-process modules: clipboard synchronization and Android notification forwarding. Other Phone Link capabilities are not implemented.
 
-Clipboard and Notifications are the two shipped modules. The catalog below lists what they implement; it does not imply support for every Phone Link feature.
+| Feature ID | Package | Behavior |
+| --- | --- | --- |
+| `linkmyphone.clipboard` | [`features/clipboard`](clipboard) | Bidirectional text, HTML and image clipboard sync. |
+| `linkmyphone.notifications` | [`features/notifications`](notifications) | Phone notification display, dismissal, app actions and replies when supported. |
 
-## Current catalog
+## Catalog and module boundaries
 
-Each directory under `features/` is a bounded business module. The kernel and phone host expose generic contracts; [`features/catalog.go`](catalog.go) registers these builtin implementations:
+[`features/catalog.go`](catalog.go) builds a `kernel.Definition` for each module: its manifest, default configuration, validator and factory. The catalog resolves only implementations compiled into the program. Add or remove a catalog entry with its feature package; do not add feature-specific branches to the kernel or phone host.
 
-```text
-linkmyphone.clipboard
-    features/clipboard
-    bidirectional text, HTML and image clipboard synchronization
+Each feature owns its protocol and native resources. Modules subscribe to the shared `phonehost.Session` through matcher-scoped endpoints; they do not read the raw relay stream. Manifests declare potential capabilities and requested permissions, but permissions are metadata—not authorization or sandboxing. The runtime does not isolate in-process modules.
 
-linkmyphone.notifications
-    features/notifications
-    APP push/reconcile, native desktop notifications, dismissal and confirmed replies
-```
+## Clipboard module
 
-The module directory contains a strict [`manifest.json`](clipboard/manifest.json), [`config.schema.json`](clipboard/config.schema.json), Go configuration validation, lifecycle code, protocol and native ownership, and tests. The manifest declares potential capabilities and requested permissions. Permissions are metadata only. The runtime does not sandbox an in-process builtin or treat a declaration as authorization.
+`features/clipboard` owns native clipboard observation and writes, protocol handling, publication queues, generation ordering and echo suppression. Wayland and X11 rich providers poll MIME offers at `poll_interval_ms`; the legacy Wayland text path uses `wl-paste --watch` when available. `xsel` supports text only. Native commands run without a shell.
 
-## Catalog contract
+Clipboard snapshots are retained for two minutes, up to 64 entries and 16 MiB total. Retired correlations are capped at 256 with no time expiry. The three-second origin barrier suppresses reflected content; it is not a secret filter. The `clipboard-sync` compatibility command starts this same module through the modular lifecycle.
 
-`Catalog()` builds a `features.Definition` for each builtin. A definition contains:
+## Notification module
 
-- the parsed `kernel.Manifest`;
-- marshaled default configuration;
-- a validator for raw JSON configuration;
-- a factory that receives the shared `phonehost.Session` and returns a `kernel.Module`.
+`features/notifications` requires a Phone Link (PL) enrollment, granted phone notification access, a session D-Bus notification service, and a successful APP connect/reconcile. It keeps bounded in-memory notification state and exposes only capabilities that are live on the selected peer.
 
-The catalog sorts definitions by manifest ID. `Find` resolves only IDs compiled into the catalog. Adding a feature requires one catalog entry and the feature package. Removing a feature removes the entry and package. Kernel lifecycle and phone-host routing must not gain feature-specific branches.
+The native backend invalidates desktop IDs when the notification service owner changes and silently restores visible items after reconnecting. The optional GTK4 reply helper supports up to four cancellable reply windows and requires confirmation before sending. Updates, removals, service resets and shutdown cancel stale prompts; queued actions are rechecked before sending and are not replayed into a replacement session.
 
-Composition flows from **catalog → definition → kernel and feature package → scoped endpoint**.
+Existing phone notifications stay quiet by default. Set `remote_actions=false` for receive-only use. Stopping the module closes local notifications but does not dismiss them on the phone. Clipboard and notifications can share one PL session; existing CrossDevice (WEA) state is not relabeled. See [first-run setup](../docs/getting-started/first-run.md), [notification configuration](../docs/reference/configuration.md#notification-configuration), and [validation limits](../docs/research/validation.md#unified-pl-enrollment-2026-10-05).
 
-<details>
-<summary>Composition ownership chart</summary>
+## Lifecycle and extension
 
-```mermaid
-flowchart TD
-    Catalog[features/catalog.go] --> Definition[manifest<br/>defaults<br/>validator<br/>factory]
-    Definition --> Kernel[runtime/kernel]
-    Definition --> Module[features/<id>]
-    Module --> Session[phonehost.Session.Subscribe]
-    Session --> Endpoint[bounded matcher-scoped endpoint]
-```
+Modules validate configuration before opening long-lived resources, return only live capabilities, own and stop every worker or endpoint they create, and make `Stop` idempotent. Clipboard `FEATURE_ON`/`FEATURE_OFF` exchanges are advisory; notification startup requires a successful APP connect/reconcile.
 
-</details>
+Use the clipboard module as the implementation example. A new builtin needs a manifest, configuration validator, module, narrow endpoint matcher and tests before it is registered. To remove one, stop it and its dependents, remove its catalog entry and package, and leave stale records available for inspection or deletion. See the [module architecture](../docs/architecture/modules.md#adding-a-builtin) for the lifecycle contract.
 
-## Clipboard module ownership
-
-`features/clipboard/module.go` is the concrete pattern for a builtin. `New` requires the shared host session and parses the embedded manifest. `Start` validates configuration, detects and reads a native Linux clipboard provider and typed content, registers a narrow target matcher through `Session.Subscribe`, starts the protocol client and worker queues, sends clipboard `FEATURE_ON`, and returns an instance. The kernel registers its live text capabilities and, on rich providers, HTML/image capabilities during successful start. Capability registration and the `ready` state are separately synchronized, so a capability-only lookup is not an atomic Ready snapshot, as described in the [module contract](../docs/architecture/modules.md).
-
-The feature owns all clipboard behavior:
-
-- `matcher.go` filters selected-peer PLATFORM traffic for `/DeviceResourceManager`, `/internal/response`, and tag-9 `/Context/Publish` messages;
-- `clipboard.Client` handles request IDs, `STATUS`, `CONTENT`, feature state, correlation snapshots, bounded incoming requests, and the shared local and phone generation sequence;
-- `sync.go` owns local observation, latest-value publication queues, echo suppression, Wayland nil-clear debounce, and worker shutdown;
-- `clipboard/` provides direct `wl-paste` and `wl-copy` execution, X11 fallback through `xclip` or `xsel`, and the Wayland watch helper;
-- the module closes its endpoint, cancels its workers, and attempts a short `FEATURE_OFF` synchronization on stop.
-
-Rich Wayland and X11 providers poll MIME offers at `poll_interval_ms`, so image-only and formatting-only changes are observed. The legacy text path uses `wl-paste --watch` when supported and polling when unavailable or failed. Native commands do not run through a shell. Rapid local updates coalesce in bounded queues. A phone publication advances the same generation domain used for local changes, supersedes older outbound snapshots, and avoids rewriting identical local content. These ownership rules prevent stale CONTENT responses and phone-to-Linux-to-phone echo loops.
-
-The origin barrier suppresses both the previous and incoming format-aware content hashes for a three-second remote-write settle window. This is echo tracking, not a filter for secret clipboard content. Clipboard snapshots last two minutes and are bounded to 64 entries and 16 MiB total. Retired IDs are capped at 256 with no time expiry; duplicate CONTENT requests do not retire an active snapshot, and fallback excludes retired or superseded IDs.
-
-The compatibility command `clipboard-sync` starts this same module through the modular lifecycle. It is an alias, not a second implementation.
-
-## Notification module ownership
-
-`features/notifications/module.go` requires a persisted PL profile, a real session D-Bus notification service and a successful APP connect/reconcile with granted phone notification access before returning an instance. `notifications.Client` owns typed application responses, bounded in-memory key/post-time reconciliation, deduplication, desktop ID mapping and generation-checked actions. The module consumes selected-peer APP traffic through a scoped endpoint; it does not read the shared relay directly or add business rules to the kernel.
-
-`notifications/native.go` implements the freedesktop notification service, checks signal ownership, invalidates IDs on owner loss and replays visible/pending items silently after rebind. The optional GTK4 reply helper has a labelled multiline editor, Cancel/confirmation controls and exact Unicode/newline transport. Replies are cancellable, limited to four simultaneous windows and kept off the desktop event worker. Update, removal, service reset or Stop cancels stale prompts; queued mutations are checked again before sending. No pending mutation is replayed after a host generation change.
-
-The feature defaults to avoiding alerts for existing items; its `remote_actions=false` mode permits receive/reconcile without phone dismissal/action/reply. Disable/Stop closes only local notifications. The same PL host session can start clipboard and notifications; existing WEA state is not relabeled. See [setup](../docs/getting-started/first-run.md#existing-crossdevice-and-trial-phone-link-enrollments), [configuration](../docs/reference/configuration.md#notification-configuration) and [verification limits](../docs/research/validation.md#unified-pl-enrollment-2026-10-05).
-
-
-## Adding or removing a builtin
-
-Use `features/clipboard` as the complete example. A new builtin supplies its manifest, configuration validator, module implementation, endpoint matcher, resource ownership, and invariant tests before it is added to the catalog.
-
-A module should:
-
-- keep protocol and native domain behavior inside its feature boundary;
-- consume relay traffic through `phonehost.Session.Subscribe`, never through `transport/relay.Client.Received()`;
-- use the narrowest matcher and a bounded queue with explicit overflow behavior;
-- validate configuration before allocating long-lived resources;
-- return only genuinely live capabilities;
-- stop every goroutine, timer, child process, endpoint, and native watcher it creates;
-- make `Stop` idempotent;
-- test concurrency, stale work, capability revocation, and consumer-visible error behavior.
-
-The start and stop boundaries are:
-
-| Phase | Ordering |
-| --- | --- |
-| Start | Validate/open resources and negotiate the feature's readiness. Clipboard attempts advisory `FEATURE_ON`; notifications requires granted APP connect/reconcile. |
-| Ready | The kernel registers capabilities before marking Ready; these are separately synchronized. |
-| Stop | The kernel revokes capabilities before calling `Module.Stop`. Clipboard attempts advisory `FEATURE_OFF`; every module cancels its workers and closes its endpoint/native resources. |
-
-Neither advisory feature-state exchange can make capability revocation wait for an unresponsive phone.
-
-<details>
-<summary>Capability and resource lifecycle chart</summary>
-
-```mermaid
-flowchart TD
-    Contract[manifest and config] --> Start[Module.Start]
-    Start --> Resources[native backend<br/>workers<br/>endpoint]
-    Resources --> On[Advisory FEATURE_ON attempt]
-    On --> Instance[Return instance]
-    Instance --> Caps[Kernel registers capabilities]
-    Caps --> Ready[Kernel marks Ready]
-    Ready --> Revoked[Kernel revokes capabilities]
-    Revoked --> Off[Module.Stop attempts FEATURE_OFF]
-    Off --> Cleanup[Cancel workers and close endpoint]
-```
-
-</details>
-
-To remove a builtin, disable it and stop any dependents, remove its factory entry from `catalog.go`, then remove the feature package and tests. Stale desired-state records remain generic data. They can be listed, disabled, and deleted, but they cannot be enabled or reconfigured until a matching implementation is compiled in again.
-
-## Supported content and normalization
-
-Module `0.2.0` supports plain text, HTML fragments and images. HTML dual offers use optional Python GI/GTK4; `xsel` remains text-only. `content_sync.go` tracks typed hashes and suppresses reflected content without changing a received image's dimensions. `clipboard/content.go` normalizes incoming JPEG/GIF/BMP to PNG without resizing, and prepares outbound PNG within 1 MiB. `native_content.go` discovers MIME offers and caches normalized images; `html_offer.py` supplies HTML plus derived plain text. See [clipboard behavior](../docs/user-guide/clipboard.md) for budgets and [validation](../docs/research/validation.md#clipboard-validation-2026-10-03) for live evidence.
+For formats and transfer limits, see [clipboard behavior](../docs/user-guide/clipboard.md). The [clipboard protocol reference](../docs/protocol/clipboard.md) documents wire messages and correlation rules.

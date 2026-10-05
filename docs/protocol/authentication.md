@@ -1,14 +1,14 @@
-# Authentication, enrollment, and session reference
+# Authentication, enrollment, and sessions
 
 [Documentation index](../README.md)
 
-Phone Link interoperability uses Microsoft cloud services. The Linux client keeps three related identities and two token systems separate because enrollment, trust, wake, and relay traffic use different credentials.
+LinkMyPhone uses Microsoft cloud services for authentication, enrollment, trust, wake and relay traffic. These operations use three related identities and two separate token systems.
 
 Related evidence: [research findings](../research/findings.md), [historical validation](../research/validation.md), and [development history](../research/history.md).
 
-## Start here: first-run sequence
+## First-run sequence
 
-With an MSA access token, the library's `bootstrap.BootstrapFirstRun` follows these phases:
+Given an MSA access token, `bootstrap.BootstrapFirstRun` performs these steps:
 
 | Phase | Local and cloud work |
 | --- | --- |
@@ -18,34 +18,8 @@ With an MSA access token, the library's `bootstrap.BootstrapFirstRun` follows th
 | Trust and persistence | Fetch `GetDeviceInfoList`, build trust relationships, and save local state. |
 | Relay | Obtain the assigned shard, connect `relayhub/`, and await `OnConnected`. |
 
-<details>
-<summary>Local identity and cloud exchange sequence</summary>
 
-```mermaid
-sequenceDiagram
-    participant L as Linux client
-    participant A as DCG auth
-    participant E as Enrollment
-    participant R as Relay
-    L->>L: Create UUID, P-384 key and certificate
-    L->>A: GenerateNonce
-    A-->>L: Nonce
-    L->>L: Sign ES384 nonce JWT
-    L->>A: CreateIdentity
-    A-->>L: General services token
-    L->>L: Create trust identity key and certificate
-    L->>E: EnrollDevice with trust certificate
-    E-->>L: Account certificate
-    L->>E: GetDeviceInfoList
-    E-->>L: Linked peer metadata
-    L->>L: Build trust and save state
-    L->>R: Get shard and connect relayhub
-    R-->>L: OnConnected
-```
-
-</details>
-
-The state write precedes relay connection. If the relay fails after persistence, the result can resume without creating a second DCG identity. The public `bootstrap-probe` CLI has a deliberate difference: it saves after enrollment, synchronizes trust, saves again, and only then connects the account relay. That preserves new keys when trust discovery fails. The two paths are implemented in [`bootstrap/first_run.go`](../../bootstrap/first_run.go#L47-L165), [`bootstrap/enroll.go`](../../bootstrap/enroll.go#L25-L70), and [`cmd/linkmyphone/main.go`](../../cmd/linkmyphone/main.go#L160-L264).
+State is saved before relay connection, so a relay failure can resume without creating a second DCG identity. The public `bootstrap-probe` CLI saves after enrollment, synchronizes trust, saves again, then connects the account relay. This preserves new keys if trust discovery fails. See [`bootstrap/first_run.go`](../../bootstrap/first_run.go#L47-L165), [`bootstrap/enroll.go`](../../bootstrap/enroll.go#L25-L70), and [`cmd/linkmyphone/main.go`](../../cmd/linkmyphone/main.go#L160-L264).
 
 The production service base is `https://dcg.microsoft.com/`, with default Hub endpoint `relayhub/`. Compatibility metadata defaults to app version `1.26072.116.0`, ring `Public`, and advertised OS version `10.0.26100`. The OS value describes a Windows-compatible service profile, not the Linux host version. Defaults are in [`auth constants`](../../auth/dcgauth/constants.go#L5-L26) and [`phone-host defaults`](../../runtime/phonehost/session.go#L21-L24); the [CLI reference](../reference/cli.md) lists overrides.
 
@@ -61,7 +35,7 @@ The production service base is `https://dcg.microsoft.com/`, with default Hub en
 | Relay and wake | Assigned SignalR shards use the `general` DCG services token; wake uses a trust-identity `DCG-CryptoWakeJwt`. |
 | Resume | Refresh the MSA token, obtain a fresh nonce, call `/Auth/SignIn`, and keep the same DCG client ID. |
 
-Microsoft services provide account tokens, enrollment, device trust, relay and wake. The runtime refreshes credentials and reopens the session after an interruption. See [session recovery](../operations/session-recovery.md) for retry behavior.
+The runtime refreshes credentials and reopens interrupted sessions. See [session recovery](../operations/session-recovery.md) for retry behavior.
 
 ## Identity and token roles
 
@@ -74,7 +48,7 @@ Microsoft services provide account tokens, enrollment, device trust, relay and w
 | Account trust | Enrollment response account certificate | A2D trust relationship for the account certificate | Certificate and relationship metadata |
 | Peer trust | Linked peer metadata from `GetDeviceInfoList` | AsyncD2D authentication of a linked device | Peer certificate and relationship metadata |
 
-The auth identity and trust identity are different. `auth/dcgauth/identity.go` defines the former, `auth/dcgauth/trust_identity.go` defines the latter, and `bootstrap/wake.go` signs wake data with the trust identity. The state schema storing both key pairs is in [`auth/state/store.go`](../../auth/state/store.go#L20-L50).
+`auth/dcgauth/identity.go` defines the auth identity; `auth/dcgauth/trust_identity.go` defines the separate trust identity. `bootstrap/wake.go` signs wake data with the trust identity. [`auth/state/store.go`](../../auth/state/store.go#L20-L50) stores both key pairs.
 
 ## Microsoft account acquisition
 
@@ -92,7 +66,7 @@ Linux uses the Microsoft identity-platform device authorization grant with this 
 https://dcg.microsoft.com/DCG.ReadWrite offline_access
 ```
 
-`auth/msa` posts `client_id` and `scope` to `/consumers/oauth2/v2.0/devicecode`, polls `/token` with the device-code grant, handles `authorization_pending` and `slow_down`, and can refresh a saved refresh token. The implementation labels this an interoperability experiment, not a source-confirmed replacement for WAM. See [`auth/msa/devicecode.go`](../../auth/msa/devicecode.go#L21-L24) and [`auth/msa/devicecode_test.go`](../../auth/msa/devicecode_test.go#L13-L123).
+`auth/msa` posts `client_id` and `scope` to `/consumers/oauth2/v2.0/devicecode`, polls `/token` with the device-code grant, handles `authorization_pending` and `slow_down`, and refreshes saved refresh tokens. This is an interoperability experiment, not a source-confirmed replacement for WAM. See [`auth/msa/devicecode.go`](../../auth/msa/devicecode.go#L21-L24) and [`auth/msa/devicecode_test.go`](../../auth/msa/devicecode_test.go#L13-L123).
 
 On a new state path, the default OAuth client is Phone Link (`8CF55838-E496-42C5-829B-F8D6945288F3`) and enrollment metadata uses `PL`. The one saved PL refresh credential and DCG identity serve both clipboard and notification modules. Explicit `--profile crossdevice` remains available for clipboard-only enrollment; existing WEA state resumes with its original CrossDevice OAuth client ID rather than changing profile.
 
@@ -123,7 +97,7 @@ The nonce JWT contains:
 - `Nonce`, from `GenerateNonce`;
 - `Certificate`, containing the base64 DER certificate.
 
-The JWT header is `ES384` and `JWT`; its signature is the fixed-width 96-byte P-384 `r || s` form. These implementation contracts are in [`auth/dcgauth/identity.go`](../../auth/dcgauth/identity.go#L31-L150), with claim and signature checks in [`auth/dcgauth/identity_test.go`](../../auth/dcgauth/identity_test.go#L14-L75).
+The JWT header is `ES384` and `JWT`; its signature is the fixed-width 96-byte P-384 `r || s` form. See [`auth/dcgauth/identity.go`](../../auth/dcgauth/identity.go#L31-L150) and the claim and signature checks in [`auth/dcgauth/identity_test.go`](../../auth/dcgauth/identity_test.go#L14-L75).
 
 ## Auth service routes and headers
 
@@ -220,8 +194,8 @@ protobuf: PlatformCapabilities = [SessionValidation]
 
 The capability enum is `Unspecified=0`, `SessionValidation=1`, `PersistentMessageChannel=2`, and `NanoTransportPreference=3`. The response carries capabilities plus `PersistentMessagingChannelVersion` and `NanoTransportPreferenceVersion`. The implementation matches `/internal/response` by `_originalRequestId`, filters by target source and platform transport type, rejects a peer rejection, and requires the response to advertise `SessionValidation`. See [`bootstrap/session.go`](../../bootstrap/session.go#L17-L120), [`protocol/sessionvalidation/codec.go`](../../protocol/sessionvalidation/codec.go#L8-L155), and [`bootstrap/session_test.go`](../../bootstrap/session_test.go#L46-L179).
 
-The historical S23 probe observed versions 14 and 3 for persistent messaging and nano transport. Those are observed compatibility values for that run, not a supported-version promise or requirement for all phones.
+The historical S23 probe observed persistent messaging version 14 and nano transport version 3. These are values from that run, not supported-version promises or requirements for all phones.
 
-## Current boundary
+## Authentication limits
 
 The authentication flow requires Microsoft services. A revoked refresh credential needs account reauthorization; reconnecting cannot repair it. [Session recovery](../operations/session-recovery.md#errors-that-need-intervention) covers runtime authentication failures, and [validation](../research/validation.md#session-resilience-2026-10-03) lists the completed recovery tests.

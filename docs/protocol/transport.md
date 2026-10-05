@@ -1,4 +1,4 @@
-# Transport and message reference
+# Transport and messages
 
 [Documentation index](../README.md)
 
@@ -6,7 +6,7 @@ A packet can be valid at one layer and fail at another. Name the first boundary 
 
 Related evidence: [research findings](../research/findings.md), [historical validation](../research/validation.md), and [development history](../research/history.md).
 
-## Start here: message path and acknowledgements
+## Message path and acknowledgements
 
 The outer wire stack is:
 
@@ -18,7 +18,7 @@ flowchart TD
     D --> E[RFC 6455 WebSocket binary message]
 ```
 
-A normal Linux clipboard publication crosses the layers in this order:
+A Linux clipboard publication crosses these layers:
 
 ```text
 ClipboardResponseMessage(CLIPBOARD_CHANGE)
@@ -40,7 +40,7 @@ A successful peer ACK may complete a send before Hub Completion arrives. `Succes
 
 ## Identifier map
 
-Do not substitute one identifier for another:
+These identifiers are not interchangeable:
 
 | Identifier | Scope | Where it appears |
 | --- | --- | --- |
@@ -94,13 +94,13 @@ The parser validates this shape and decodes nullable invocation IDs. See [`proto
 
 ## Hub Relay methods and trace context
 
-Normal DCG traffic uses `SendMessageAsync`, including normal PLATFORM traffic:
+Normal DCG traffic, including PLATFORM traffic, uses `SendMessageAsync`:
 
 ```text
 [1, {}, invocationId, "SendMessageAsync", [trace, targetDcgClientId, packet], []]
 ```
 
-Session-based traffic is separate:
+Session-based traffic uses a separate method:
 
 ```text
 [1, {}, invocationId, "SendSessionBasedMessageAsync",
@@ -128,7 +128,7 @@ TraceState  non-null map, normally empty
 
 `NewTraceContextPacket` generates 16 random bytes for `TraceId` and 8 random bytes for `ParentId`, encoded as lowercase hex. `NormalizeTraceContextPacket` fills missing or incorrectly sized IDs and replaces nil `TraceState` with an empty map. See [`protocol/signalr/trace.go`](../../protocol/signalr/trace.go#L9-L74) and [`protocol/signalr/trace_test.go`](../../protocol/signalr/trace_test.go#L5-L30).
 
-An empty trace object was an observed interoperability failure: the receiver could fail before processing the DCG packet, so no DCG ACK appeared. The project normalizes traces for fragments, ACKs, presence, and pre-wake presence flushes. This source-compatible requirement is recorded in [`research findings`](../research/findings.md#trace-context-shape).
+An empty trace object caused an observed interoperability failure: the receiver could fail before processing the DCG packet, leaving no DCG ACK. Traces are normalized for fragments, ACKs, presence, and pre-wake presence flushes. See [research findings](../research/findings.md#trace-context-shape) for the source-compatible requirement.
 
 ## Completion, ACK, and retry behavior
 
@@ -159,7 +159,7 @@ Fragment property names are case-sensitive:
 | `FragmentCount` | Total fragments |
 | `MessageType` | Hub Relay transport type, `App=0`, `Platform=1`, or `Unknown=2` |
 
-An acknowledgement may carry `ErrorNo` and `ErrorMessage` when `Success` is false. `ErrorNo` is parsed into `Ack`; the current parser retains `ErrorMessage` only as a property name and does not expose it in `Ack`. These peer DCG details are distinct from a SignalR Completion error.
+An acknowledgement with `Success=false` may carry `ErrorNo` and `ErrorMessage`. `ErrorNo` is parsed into `Ack`; the parser retains `ErrorMessage` only as a property name and does not expose it in `Ack`. These peer DCG details are separate from a SignalR Completion error.
 
 DCG packet type values are separate from Hub Relay transport values:
 
@@ -174,7 +174,7 @@ DCG packet type values are separate from Hub Relay transport values:
 
 The ACK has `Version=1`, `Type=1`, `SessionId`, `SequenceNumber`, `Success`, and optional `ErrorNo`. A successful ACK has `Success=true` and `ErrorNo=0`. The parser requires handler type, version, packet type, sequence, success, and a non-empty session ID. See [`protocol/dcg/constants.go`](../../protocol/dcg/constants.go#L3-L30), [`protocol/dcg/fragment.go`](../../protocol/dcg/fragment.go#L10-L81), and [`protocol/dcg/packet.go`](../../protocol/dcg/packet.go#L11-L122).
 
-The `MessageType` property is a compatibility boundary. Hub Relay `TransportMessageType` is `App=0`, `Platform=1`, `Unknown=2`; a separate protobuf enum is `Unspecified=0`, `App=1`, `Platform=2`. Hub Relay packets use the first enum. Copying protobuf values into `Properties["MessageType"]` mislabels traffic. The wire-value test is [`protocol/dcg/packet_test.go`](../../protocol/dcg/packet_test.go#L48-L58).
+Hub Relay `TransportMessageType` is `App=0`, `Platform=1`, `Unknown=2`; the separate protobuf enum is `Unspecified=0`, `App=1`, `Platform=2`. Hub Relay packets use the first enum. Copying protobuf values into `Properties["MessageType"]` mislabels traffic. See the wire-value test in [`protocol/dcg/packet_test.go`](../../protocol/dcg/packet_test.go#L48-L58).
 
 ### Fragmentation, reassembly, and ordering
 
@@ -221,7 +221,6 @@ A successful response is matched by route and `_originalRequestId`; neither the 
 Synthetic Go payloads were decoded by the supplied Windows 1.26072.257.0 PBValueSet assembly, and its independently serialized response was decoded by Go. The retained synthetic fixture verifies typed zero results, nested permissions, signed arrays and empty string positions. This is codec interoperability evidence, not evidence of a live notification subscription.
 
 Proto3 zero-valued Point/Size objects may have empty nested messages; these decode to zero geometry instead of being rejected. The original Windows serializer emitted the retained zero-Point fixture.
-
 
 ## MSAEP PubSub envelope
 

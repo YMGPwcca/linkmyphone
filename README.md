@@ -1,39 +1,50 @@
 # LinkMyPhone
 
-An independent, unofficial Phone Link client for Linux.
+LinkMyPhone is an independent, unofficial Linux client for Microsoft's Phone Link. It connects an Android phone to a Linux desktop using Microsoft's services.
 
-LinkMyPhone connects Linux to an Android phone through Microsoft's Phone Link services. It supports clipboard sync for text, HTML and images, plus notification forwarding, dismissal, Android actions and native replies.
+Today, it syncs clipboard text, HTML and images and forwards Android notifications to Linux. The goal is broader Phone Link integration; [current support](#current-support) lists what is implemented and what is not.
 
-[Get started](docs/getting-started/installation.md) · [Documentation](docs/README.md) · [Protocol and research](docs/research/README.md)
+[Get started](docs/getting-started/installation.md) · [Documentation](docs/README.md) · [Contributing](docs/developer/contributing.md)
 
 <picture>
   <source media="(prefers-color-scheme: dark) and (max-width: 640px)" srcset="docs/assets/sync-flow-mobile-dark.svg">
   <source media="(max-width: 640px)" srcset="docs/assets/sync-flow-mobile-light.svg">
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/sync-flow-dark.svg">
-  <img src="docs/assets/sync-flow-light.svg" width="860" alt="Current clipboard feature: two-way text, HTML and image synchronization between Linux and Android through Microsoft's DCG and Hub Relay services.">
+  <img src="docs/assets/sync-flow-light.svg" width="860" alt="Two-way text, HTML and image clipboard synchronization between Linux and Android through Microsoft's DCG and Hub Relay services.">
 </picture>
 
 *Current clipboard sync path.*
 
-The current implementation is a reverse-engineered, command-line client for bidirectional clipboard sync and desktop notifications. A personal Microsoft account and an internet connection are required.
+## Current support
 
-LinkMyPhone is an independent, unofficial project, not affiliated with, endorsed by, or sponsored by Microsoft. Microsoft, Phone Link, and Link to Windows are trademarks of the Microsoft group of companies.
+Clipboard sync works in both directions for text, HTML and images. Incoming JPEG, GIF and BMP images are converted to PNG; outbound images are limited to 1 MiB. Wayland and X11 are supported; `xsel` supports text only.
 
-> [!NOTE]
->
-> Tested on a Samsung Galaxy S23 with CachyOS/Wayland. Clipboard reconnects after network loss or suspend. Desktop Like, reply and dismissal were also verified. Token expiry, long runs and other phones have not been tested. [Test results](docs/research/validation.md).
+Android notifications appear on the desktop. You can dismiss them, use app actions and reply when the app supports replies. A Phone Link (PL) sign-in can support both notifications and clipboard sync; existing CrossDevice (WEA) profiles remain clipboard-only.
 
-## Try clipboard and notifications
+A per-user `systemd` service is available. Recovery after network loss and suspend has been tested on a Samsung Galaxy S23 with CachyOS/Wayland. Other phones, token expiry and extended runs remain untested. See [validation results](docs/research/validation.md).
+
+Phone Link capabilities not yet implemented:
+
+- **Messages:** reading SMS/RCS conversations, sending text messages and MMS media attachments.
+- **Calls and audio:** incoming and outgoing call notifications, a dialer, and in-call Bluetooth/relay audio routing.
+- **Photos and media:** Android camera-roll browsing, photo synchronization and media caching.
+- **File transfer and sharing:** drag-and-drop file sharing between a Linux desktop and Android.
+- **Screen mirroring and apps:** streaming the phone screen or individual apps.
+- **Graphical pairing:** setup currently uses the CLI.
+
+This project is not affiliated with, endorsed by or sponsored by Microsoft. Microsoft, Phone Link and Link to Windows are trademarks of the Microsoft group of companies.
+
+## Quick start
 
 You need:
 
-- Linux, Git, and Go 1.23 or newer.
-- `wl-clipboard` on Wayland, or `xclip` on X11 (`xsel` is a text-only fallback).
+- Linux, Git and Go 1.23 or newer.
+- `wl-clipboard` on Wayland, or `xclip` on X11. `xsel` is a text-only fallback.
 - A desktop notification service and notification access for Link to Windows on the phone.
-- Optional Python 3 with PyGObject and GTK4 for HTML offers with a plain-text fallback and notification replies.
-- Link to Windows on an Android phone, signed into the same personal Microsoft account.
+- Link to Windows on an Android phone, signed in to the same personal Microsoft account.
+- Optional Python 3, PyGObject and GTK4 for rich HTML clipboard offers and notification replies; without them, HTML falls back to plain text.
 
-### 1. Build
+### Build
 
 ```bash
 git clone https://github.com/YMGPwcca/linkmyphone.git
@@ -41,21 +52,19 @@ cd linkmyphone
 go build -o linkmyphone ./cmd/linkmyphone
 ```
 
-See [installation](docs/getting-started/installation.md) for source access and desktop setup.
+See [installation](docs/getting-started/installation.md) for setup details.
 
-### 2. Sign in
+### Sign in
 
 ```bash
 ./linkmyphone bootstrap-probe
 ```
 
-Follow the device-code instructions printed in the terminal.
+Follow the device-code instructions in the terminal.
 
-### 3. Start syncing
+### Start syncing
 
-> [!WARNING]
->
-> Clipboard selections are sent through Microsoft's services, including any secrets you copy while sync is enabled. Enabling notification actions also lets desktop dismissal and replies affect the phone. Keep `state.json` private: it contains refresh credentials and private keys. [Privacy and local state](docs/operations/privacy-and-state.md).
+Clipboard content is sent through Microsoft's services while sync is enabled. Avoid copying secrets. Notification dismissal, app actions and replies can affect the phone. Keep `state.json` private; it contains refresh credentials and private keys. See [privacy and local state](docs/operations/privacy-and-state.md).
 
 ```bash
 ./linkmyphone feature create --enabled linkmyphone.clipboard
@@ -63,84 +72,54 @@ Follow the device-code instructions printed in the terminal.
 ./linkmyphone run
 ```
 
-Wait for `Modular runtime is running`, then copy fresh, non-sensitive text, formatted HTML or an image and try pasting on the other device. New phone notifications appear on the desktop; existing items do not raise startup alerts by default. The existing clipboard is not published at startup by default. Press Ctrl+C to stop.
+Wait for `Modular runtime is running`, then copy non-sensitive text, formatted HTML or an image and paste it on the other device. New phone notifications appear on the desktop; existing notifications do not raise startup alerts by default. The existing clipboard is not published at startup by default. Press Ctrl+C to stop.
 
 <details>
-<summary>Already enrolled, or choosing a specific phone?</summary>
+<summary>Already enrolled or selecting a phone</summary>
 
-Enable existing feature records instead of creating them again. If several Android peers are linked, select one explicitly:
+Enable existing feature records rather than creating them again. If several Android peers are linked, select one explicitly:
 
 ```bash
 ./linkmyphone run --target "PHONE_NAME"
 ```
 
-The [first-run guide](docs/getting-started/first-run.md) covers resuming a profile, target selection, clipboard sync and notification setup.
+See the [first-run guide](docs/getting-started/first-run.md) for profile recovery, phone selection and setup.
 
 </details>
 
-## Current support and broader scope
-
-The table tracks implemented features and distinguishes them from broader Phone Link capabilities.
-
-| Feature / Area | Status | Current implementation details |
-| :--- | :---: | :--- |
-| **Plain-text clipboard** | Supported | Bidirectional text synchronization, clipboard clears, and echo suppression. |
-| **Wayland & X11 clipboard** | Supported | MIME polling with `wl-clipboard` or `xclip`; `xsel` supports text only. |
-| **Microsoft sign-in & DCG** | Supported | Microsoft OAuth device-code login, DCG enrollment, key-pair creation, and identity resume. |
-| **Device discovery & wake** | Supported | Linked Android peer discovery and EC-signed wake push via Microsoft Hub Relay. |
-| **Relay & PLATFORM transport** | Supported | WebSocket SignalR Hub Relay and PLATFORM session validation handshake. |
-| **Feature lifecycle & CLI** | Supported | Live enable, disable, configure, or remove feature modules via CLI and Unix socket control plane. |
-| **Background daemon** | Supported | Per-user `systemd` unit (`linkmyphone.service`) tied to the graphical session. |
-| **Rich text & HTML clipboard** | Supported | Bidirectional HTML fragments; optional GTK4 provider also offers plain text. Rich formatting is supported through HTML, not a separate RTF codec. |
-| **Image clipboard** | Supported | Bidirectional PNG transfer with JPEG/GIF/BMP input normalization. Incoming dimensions are preserved; only outbound images are resized to fit 1 MiB. |
-| **Session recovery & refresh** | Partial | Network-loss and suspend recovery tested. Token-expiry and extended operation still need [testing](docs/operations/session-recovery.md). |
-| **Notifications** | Supported | Shows Android notifications on the desktop. You can dismiss them, use app buttons and reply when the app allows it. One PL sign-in also runs Clipboard. Tested on S23/CachyOS/Wayland; other phones, permission revocation and long-running recovery remain untested. [Set up notifications](docs/getting-started/first-run.md#existing-crossdevice-and-trial-phone-link-enrollments) · [See test results](docs/research/validation.md#notification-desktop-actions-on-unified-enrollment-2026-10-05). |
-| **Messages (SMS / RCS)** | Not implemented | Reading SMS/RCS conversations, sending text messages, and MMS media attachments. |
-| **Calls & Audio** | Not implemented | Incoming/outgoing call notifications, dialer, and in-call Bluetooth/relay audio routing. |
-| **Photos & Media** | Not implemented | Android camera roll browsing, photo synchronization, and media caching. |
-| **File transfer & Sharing** | Not implemented | Drag-and-drop file sharing between Linux desktop and Android. |
-| **Screen mirroring & Apps** | Not implemented | Android screen streaming and individual app streaming. |
-| **Graphical pairing UI** | Not implemented | Initial setup is CLI-based (`linkmyphone bootstrap-probe`); no native GUI pairing wizard. |
-
 ## Run in the background
 
-Stop the foreground runtime first, then install the user service:
+Stop the foreground runtime, then install the user service:
 
 ```bash
 ./linkmyphone service install
 ~/.local/bin/linkmyphone service status
 ```
 
-Custom state paths or phone target? Configure them with the [systemd guide](docs/operations/systemd.md) before starting the service.
+For a custom state path or phone target, see the [systemd guide](docs/operations/systemd.md) before starting the service.
 
-## Find your next step
+## Documentation
 
-| You want to… | Read |
+| Topic | Guide |
 | --- | --- |
 | Set up and use clipboard sync | [First run](docs/getting-started/first-run.md) · [Clipboard behavior](docs/user-guide/clipboard.md) |
-| Find a setting or fix a failure | [CLI](docs/reference/cli.md) · [Configuration](docs/reference/configuration.md) · [Troubleshooting](docs/operations/troubleshooting.md) |
-| Work on the client | [Architecture](docs/architecture/overview.md) · [Contributing](docs/developer/contributing.md) · [Source map](docs/developer/source-map.md) |
-| Follow the reverse engineering | [Findings](docs/research/findings.md) · [Development history](docs/research/history.md) |
+| Find a command, setting or fix | [CLI](docs/reference/cli.md) · [Configuration](docs/reference/configuration.md) · [Troubleshooting](docs/operations/troubleshooting.md) |
+| Understand the client | [Architecture](docs/architecture/overview.md) · [Source map](docs/developer/source-map.md) |
+| Contribute or test | [Contributing](docs/developer/contributing.md) · [Testing](docs/developer/testing.md) |
+| Read protocol and research notes | [Protocol references](docs/README.md#protocol-and-research) · [Research index](docs/research/README.md) |
 
-Browse the [full documentation index](docs/README.md) for the remaining guides and references.
+For setup paths, operations and references, browse the [documentation index](docs/README.md).
 
-<details>
-<summary>Authentication stages and development checks</summary>
+## Development
 
-Startup includes Microsoft device-code sign-in, persistent DCG enrollment, linked-device discovery, trust synchronization, peer wake, and session validation. [Authentication and bootstrap](docs/protocol/authentication.md) follows that sequence.
-
-Run the existing tests on Linux:
+Run the test suite on Linux:
 
 ```bash
 go test ./...
 go test -race ./...
 ```
 
-The [testing guide](docs/developer/testing.md) covers prerequisites and which checks prove which behavior. GitHub Actions runs only on pushes to `main`, including merged pull requests and direct pushes. Feature-branch pushes, open pull requests and manual dispatch do not trigger CI. Automated tests do not establish live Microsoft or phone compatibility.
-
-The repository does not track the original decompiled Windows sources or production capture logs. The [research record](docs/research/README.md) identifies the available evidence and its limits.
-
-</details>
+See the [testing guide](docs/developer/testing.md) for prerequisites and limits. Automated tests do not establish live Microsoft-service or phone compatibility.
 
 ## License
 

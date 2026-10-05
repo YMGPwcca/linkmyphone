@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md)
 
-Start here when you know the behavior but not the package. The repository is organized by ownership. Begin at `cmd/linkmyphone/main.go` for command dispatch, then follow the contract owner in the index below. The [architecture overview](../architecture/overview.md) shows runtime flow, and the [module architecture](../architecture/modules.md) describes builtin lifecycle ownership.
+Use this map to find the package that owns a behavior. `cmd/linkmyphone/main.go` dispatches commands; the tables below identify each subsystem and its contract. See the [architecture overview](../architecture/overview.md) for runtime flow and [module architecture](../architecture/modules.md) for builtin lifecycle rules.
 
 ## Find a path by behavior
 
@@ -22,7 +22,7 @@ Start here when you know the behavior but not the package. The repository is org
 
 | Path | Role and entry points |
 | --- | --- |
-| [`cmd/linkmyphone`](../../cmd/linkmyphone) | User-facing command dispatch and orchestration. `main.go` selects probes, `feature`, `run`, `service`, and `clipboard-sync`, and also hosts the hidden native watch helper. `runtime_run.go` opens the host and managed registry. `runtime_control.go` applies live CRUD transactions and rollback. `feature.go` implements offline or socket-routed feature commands. `service.go` installs and manages the systemd user unit. `session_probe.go`, `peer_probe.go`, and `main.go` contain opt-in Microsoft probes. |
+| [`cmd/linkmyphone`](../../cmd/linkmyphone) | CLI dispatch and orchestration. `main.go` selects probes, `feature`, `run`, `service`, and `clipboard-sync`, and hosts the hidden native watch helper. `runtime_run.go` opens the host and managed registry. `runtime_control.go` applies live CRUD transactions and rollback. `feature.go` handles offline or socket-routed feature commands. `service.go` manages the systemd user unit. `session_probe.go`, `peer_probe.go`, and `main.go` contain opt-in Microsoft probes. |
 | [`features/catalog.go`](../../features/catalog.go) | Builtin composition. It returns each manifest, default configuration, validator, and module factory. `Find` resolves IDs compiled into the executable. |
 | [`features`](../../features) | [`features/clipboard`](../../features/clipboard) owns clipboard behavior; [`features/notifications`](../../features/notifications) owns notification lifecycle/configuration through the shared host. |
 | [`contracts/manifests`](../../contracts/manifests) | Versioned JSON Schema for feature manifests. It is a contract artifact, not a loader or runtime sandbox. |
@@ -39,28 +39,14 @@ Start here when you know the behavior but not the package. The repository is org
 | [`dcgheaders`](../../dcgheaders) | CrossDevice client metadata, compatibility profile, and DCG header construction. |
 | [`services/dcg`](../../services/dcg) | HTTP client and service models for DCG device discovery and assigned relay information. |
 
-Authentication ownership is **Microsoft token → bootstrap → DCG identity, trust, state, and relay discovery**. This is a package map, not an execution-order diagram.
+Authentication ownership runs from **Microsoft token → bootstrap → DCG identity, trust, state, and relay discovery**. This maps packages, not execution order.
 
-<details>
-<summary>Authentication package chart</summary>
-
-```mermaid
-flowchart TD
-    MSA[auth/msa<br/>device-code and refresh] --> Bootstrap[bootstrap<br/>first-run/resume]
-    Bootstrap --> Identity[auth/dcgauth<br/>DCG identity and trust]
-    Identity --> State[auth/state<br/>state.json]
-    Bootstrap --> Services[services/dcg<br/>discovery and relay assignment]
-    Services --> Host[runtime/phonehost<br/>peer, wake, SessionValidation]
-    DcgHeaders[dcgheaders<br/>metadata and profiles] --> Identity
-```
-
-</details>
 
 ## Clipboard and protocol layers
 
 | Path | Role and entry points |
 | --- | --- |
-| [`clipboard`](../../clipboard) | Domain clipboard client and native Linux integration. `client.go` owns request dispatch, correlation snapshots, generation ordering, publication, phone CONTENT pulls, and feature-state requests. `content.go` validates typed content, preserves received dimensions and prepares outbound PNG. `native_content.go` discovers and transfers MIME selections; `html_offer.py` offers HTML plus plain text. `native.go` detects and invokes Wayland or X11 utilities without a shell. `native_watch.go` frames `wl-paste --watch` events and implements the hidden helper. |
+| [`clipboard`](../../clipboard) | Clipboard protocol client and native Linux integration. `client.go` owns request dispatch, correlation snapshots, generation ordering, publication, phone CONTENT pulls, and feature-state requests. `content.go` validates typed content, preserves received dimensions, and prepares outbound PNG. `native_content.go` discovers and transfers MIME selections; `html_offer.py` offers HTML plus plain text. `native.go` detects and invokes Wayland or X11 utilities without a shell. `native_watch.go` frames `wl-paste --watch` events and implements the hidden helper. |
 | [`protocol/clipboard`](../../protocol/clipboard) | Clipboard request, response, item, PubSub, and Device Resource Manager codecs. |
 | [`protocol/platform`](../../protocol/platform) | PLATFORM message headers, routes, and binary message framing. |
 | [`protocol/msaep`](../../protocol/msaep) | MSAEP envelope and message-tag encoding used by cloud PubSub. |
@@ -73,9 +59,7 @@ flowchart TD
 | Direction | Clipboard behavior |
 | --- | --- |
 | Linux to phone | Observe typed local content, prepare outbound PNG within 1 MiB when applicable, publish tag 9 through `PubSubPayload.Data`, then answer the phone's matching CONTENT request with the snapshot. |
-| Phone to Linux | Decode tag 9 from `PubSubPayload.Additional`, pull CONTENT through the endpoint, then normalize supported IMAGE bytes to PNG without resizing, then apply typed text/HTML/image content to the native clipboard. |
-
-All raw incoming relay traffic passes through the shared router before a matcher-scoped feature endpoint. The endpoint is the clipboard client's transport; only the router consumes raw `Received()` traffic.
+| Phone to Linux | Decode tag 9 from `PubSubPayload.Additional`, pull CONTENT through the endpoint, normalize supported IMAGE bytes to PNG without resizing, and apply typed text/HTML/image content to the native clipboard. |
 
 <details>
 <summary>Linux publication layers in plain text</summary>
@@ -94,33 +78,8 @@ local clipboard
 
 </details>
 
-<details>
-<summary>Shared outbound and inbound transport sequence</summary>
 
-```mermaid
-sequenceDiagram
-    participant Client as clipboard.Client
-    participant Endpoint as phonehost endpoint
-    participant Router as phonehost.Router
-    participant Relay as transport/relay
-    participant Hub as Microsoft Hub Relay
-
-    Note over Client,Hub: Outbound PLATFORM publications, requests and responses
-    Client->>Endpoint: Marshaled PLATFORM payload
-    Endpoint->>Relay: Forward through shared host transport
-    Relay->>Hub: Fragment DCG and invoke Hub
-
-    Note over Client,Hub: Inbound PLATFORM publications, requests and responses
-    Hub-->>Relay: Peer DCG fragments
-    Relay->>Relay: Reassemble PLATFORM payload
-    Relay-->>Router: Raw Received traffic
-    Router-->>Endpoint: Match and queue for feature
-    Endpoint-->>Client: Deliver for protocol decoding
-```
-
-</details>
-
-`clipboard.Client` invokes the protocol codecs to marshal or parse PLATFORM payloads. `transport/relay` owns DCG fragmentation and reassembly, while the phone host owns routing. Native writes belong only to the phone-to-Linux CONTENT path, not to the local publication path.
+`clipboard.Client` uses the protocol codecs to marshal and parse PLATFORM payloads. `transport/relay` owns DCG fragmentation and reassembly; the phone host owns routing. Native writes occur only on the phone-to-Linux CONTENT path, not on local publication.
 
 ## Runtime and ownership
 
@@ -132,7 +91,7 @@ sequenceDiagram
 | [`runtime/systemdnotify`](../../runtime/systemdnotify) | Optional systemd readiness and stopping notifications used by the managed runtime. |
 | [`packaging/systemd`](../../packaging/systemd) | Embedded user service unit and its `systemd --user` packaging data. The unit runs `linkmyphone run` after `graphical-session.target` with bounded failure restart and `KillMode=mixed`. |
 
-The phone host owns exactly one raw `transport/relay` receive loop. A feature receives an endpoint from `Session.Subscribe`; it never reads the raw relay channel. Endpoint queues are bounded, payload bytes are cloned for fan-out, and overflow revokes only the affected subscriber.
+The phone host owns the sole raw `transport/relay` receive loop. Features use matcher-scoped endpoints from `Session.Subscribe`, never the raw relay channel. Queues are bounded, payloads are cloned for fan-out, and overflow revokes only the affected subscriber.
 
 ## Transport layers
 
@@ -144,7 +103,7 @@ The phone host owns exactly one raw `transport/relay` receive loop. A feature re
 
 ## Tests by package
 
-Tests sit beside the implementation. The most useful invariant owners are:
+Tests sit beside their implementation:
 
 - [`runtime/kernel/*_test.go`](../../runtime/kernel) for manifests, persistence, dependencies, epochs, capability revocation, stale completion, and teardown;
 - [`runtime/phonehost/*_test.go`](../../runtime/phonehost) for routing, bounded endpoint overflow, cancellation, and session registration;
@@ -156,4 +115,4 @@ Tests sit beside the implementation. The most useful invariant owners are:
 - [`transport/**/*_test.go`](../../transport) for WebSocket, SignalR, and relay behavior;
 - [`auth/**/*_test.go`](../../auth), [`bootstrap/**/*_test.go`](../../bootstrap), [`dcgheaders/**/*_test.go`](../../dcgheaders), and [`services/dcg/**/*_test.go`](../../services/dcg) for local authentication, state, headers, trust, bootstrap, and service contracts.
 
-The full command list and deterministic versus opt-in live scenarios are in [testing](testing.md).
+See [testing](testing.md) for commands and the boundary between deterministic tests and opt-in live scenarios.

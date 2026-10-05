@@ -1,4 +1,4 @@
-# Clipboard wire and state reference
+# Clipboard wire format and state
 
 [Documentation index](../README.md)
 
@@ -6,37 +6,15 @@ The Linux runtime transfers plain text, HTML fragments and PNG images. Probe out
 
 Related evidence: [research findings](../research/findings.md), [historical validation](../research/validation.md), and [development history](../research/history.md).
 
-## Start here: two directions, two exchanges
+## Publication and content exchange
 
 | Direction | Exchange |
 | --- | --- |
 | Linux to phone | Announce a change → receive the phone's CONTENT request → return the correlated content. |
 | Phone to Linux | Receive an announcement → request CONTENT → apply the correlated response locally. |
 
-These are logical peers; all messages pass through Microsoft's cloud relay.
+All messages pass through Microsoft's cloud relay.
 
-<details>
-<summary>Two-way publication and CONTENT sequence</summary>
-
-```mermaid
-sequenceDiagram
-    participant L as Linux
-    participant P as Phone
-    Note over L,P: All messages use Microsoft cloud relay
-    opt Linux to phone
-        L->>P: Change announcement
-        P->>L: CONTENT(cid)
-        L->>P: OK + TEXT_PLAIN(cid)
-    end
-    opt Phone to Linux
-        P->>L: Change announcement
-        L->>P: CONTENT(cid)
-        P->>L: OK + TEXT_PLAIN(cid)
-        L->>L: Apply text with echo barrier
-    end
-```
-
-</details>
 
 The outbound Linux publication and inbound phone publication use different wrappers:
 
@@ -63,7 +41,7 @@ phone-to-Linux publication
 
 </details>
 
-For phone-to-Linux publication, the phone puts the serialized change response in `PubSubPayload.Additional`, not `Data`. The Linux client preserves that correlation ID and immediately requests `CONTENT`; it does not issue `STATUS` on this receive path. Feature state is separate and uses `FEATURE_ON`, `FEATURE_OFF`, or `FEATURE_DISABLE`. Directional constructors and parsers are in [`protocol/clipboard/pubsub.go`](../../protocol/clipboard/pubsub.go#L8-L32).
+For phone-to-Linux publication, the serialized change response is in `PubSubPayload.Additional`, not `Data`. The client preserves its correlation ID and immediately requests `CONTENT`, without issuing `STATUS`. Feature state is separate and uses `FEATURE_ON`, `FEATURE_OFF`, or `FEATURE_DISABLE`. See the directional constructors and parsers in [`protocol/clipboard/pubsub.go`](../../protocol/clipboard/pubsub.go#L8-L32).
 
 ## Contract at a glance
 
@@ -165,9 +143,9 @@ Item enum values are `UNSPECIFIED=0`, `IMAGE=1`, `TEXT_PLAIN=2`, and `TEXT_HTML=
 | `Data`       |      1 | bytes | PC-to-phone `CLIPBOARD_CHANGE` publication |
 | `Additional` |      2 | bytes | Phone-to-PC `CLIPBOARD_CHANGE` publication |
 
-The selected field contains a serialized `ClipboardResponseMessage`. The project intentionally does not treat the fields as interchangeable. `TestPCClipboardChangePublicationUsesData`, `TestPhoneClipboardChangePublicationUsesAdditional`, and `TestPhoneClipboardChangePublicationRejectsDataOnly` record this boundary in [`protocol/clipboard/pubsub_test.go`](../../protocol/clipboard/pubsub_test.go#L5-L38).
+The selected field contains a serialized `ClipboardResponseMessage`; `Data` and `Additional` are not interchangeable. `TestPCClipboardChangePublicationUsesData`, `TestPhoneClipboardChangePublicationUsesAdditional`, and `TestPhoneClipboardChangePublicationRejectsDataOnly` cover this boundary in [`protocol/clipboard/pubsub_test.go`](../../protocol/clipboard/pubsub_test.go#L5-L38).
 
-The outer MSAEP message uses tag 9 for clipboard, sender DCG client ID, an envelope message ID, serialized `PubSubPayload`, and platform protocol version 1.1. `protocol/msaep/message.go` documents fields 1 through 6 and the default version in [`protocol/msaep/message.go`](../../protocol/msaep/message.go#L1-L50). The PC publisher builds the sequence in [`clipboard/client.go`](../../clipboard/client.go#L178-L203).
+The outer MSAEP message carries tag 9, the sender DCG client ID, an envelope message ID, serialized `PubSubPayload`, and platform protocol version 1.1. See fields 1 through 6 and the default version in [`protocol/msaep/message.go`](../../protocol/msaep/message.go#L1-L50), and PC publication in [`clipboard/client.go`](../../clipboard/client.go#L178-L203).
 
 </details>
 
@@ -239,7 +217,7 @@ A PC publication records exact content under its correlation ID before sending `
 
 ## Generation ordering and tombstones
 
-The modular and continuous paths use one monotonically increasing generation domain for local and remote changes:
+The modular and continuous paths share one monotonically increasing generation domain:
 
 1. Reserve a local generation when the native observer sees a change, before the publication worker sends it.
 2. Prepare outbound image bytes if needed, then store the typed content snapshot with its generation and correlation ID.
@@ -248,9 +226,9 @@ The modular and continuous paths use one monotonically increasing generation dom
 5. Cancel an older phone CONTENT pull when a newer phone publication arrives.
 6. Before applying a phone response, verify that its generation is still current.
 
-An older local publication remains addressable while the peer may still request its correlation ID. If a newer remote generation supersedes it, a later CONTENT request returns `INVALID_CONTENT` rather than current or stale text. This is a tombstone, not a silent substitution. See [`clipboard/client.go`](../../clipboard/client.go#L229-L291), [`clipboard/generation_test.go`](../../clipboard/generation_test.go#L14-L108), and [`clipboard/generation_order_test.go`](../../clipboard/generation_order_test.go#L36-L136).
+An older local publication remains addressable while the peer may request its correlation ID. If a newer remote generation supersedes it, later CONTENT requests return `INVALID_CONTENT`, not current or stale text. See [`clipboard/client.go`](../../clipboard/client.go#L229-L291), [`clipboard/generation_test.go`](../../clipboard/generation_test.go#L14-L108), and [`clipboard/generation_order_test.go`](../../clipboard/generation_order_test.go#L36-L136).
 
-The inbound resource-request queue is bounded at 16. The phone publication queue keeps the newest pending publication and cancels the prior pull. Late responses for a canceled request are harmless because the pending request was removed and the generation check blocks stale application. This ordering followed receive/send races and is tested in [`clipboard/client_test.go`](../../clipboard/client_test.go#L446-L568).
+The inbound resource-request queue is bounded at 16. The phone publication queue keeps the newest pending publication and cancels the prior pull. Late responses cannot apply stale content: cancellation removes the pending request, and the generation check blocks stale application. Receive/send race coverage is in [`clipboard/client_test.go`](../../clipboard/client_test.go#L446-L568).
 
 ## Echo and native clipboard behavior
 
@@ -263,11 +241,11 @@ Phone-to-Linux writes avoid immediate phone-to-Linux-to-phone echo:
 
 Native backend selection prefers Wayland `wl-paste`/`wl-copy`; X11 falls back to `xclip`, then `xsel`. Commands execute directly without a shell. The native implementation is in [`clipboard/native.go`](../../clipboard/native.go#L19-L211). Rich providers use MIME polling. The legacy text observer supports `wl-paste --watch` and a hidden helper in the same executable. The helper sends length-delimited frames over pipes, includes `data` or `nil` state, and keeps events separated. See [`clipboard/native_watch.go`](../../clipboard/native_watch.go#L36-L329) and [`clipboard/native_watch_test.go`](../../clipboard/native_watch_test.go#L12-L153).
 
-`wl-copy` forks by default so it can keep owning the selection. Capturing stdout or stderr pipes while waiting can leave the parent blocked until selection changes, so the native write path runs the command without captured output pipes. Wayland compositor handoff can emit transient nil selection before the next data offer; the watcher debounces nil for 100 ms. A following data event cancels the clear; a genuine clear publishes one empty value after debounce. These are implementation and historical live-validation details, not protocol fields. Rich Wayland and X11 providers use MIME polling at 500 ms by default; empty selections are re-read after debounce.
+`wl-copy` forks by default to keep owning the selection. Capturing stdout or stderr pipes while waiting can block the parent until the selection changes, so native writes do not capture those pipes. A Wayland compositor handoff can emit a transient nil selection before the next data offer; the watcher debounces nil for 100 ms. A following data event cancels the clear; a genuine clear publishes one empty value after debounce. These are native-backend behaviors and historical live observations, not protocol fields. Rich Wayland and X11 providers use MIME polling at 500 ms by default and re-read empty selections after debounce.
 
 No clipboard text is printed by the CLI. Documented probes limit explicit probe content to 4096 bytes and report only byte counts. Do not use sensitive text in command-line arguments because shell history can retain it.
 
-## Supported wire versus implemented feature
+## Support boundaries
 
 The native runtime supports text, HTML and images through wl-clipboard and xclip; xsel remains text-only. Protocol enum values, platform version, message tag, and resource enum values are compatibility constants. They do not establish full Phone Link parity, arbitrary resource operations, or support for a specific phone model.
 

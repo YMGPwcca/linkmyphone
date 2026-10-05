@@ -2,9 +2,7 @@
 
 [Documentation index](../README.md)
 
-Use this page when changing feature CRUD, the runtime socket, or the boundary between persisted desired state and live module state.
-
-`linkmyphone run` exposes feature CRUD to the CLI through a Unix domain socket. The implementation is in [`runtime/controlplane`](../../runtime/controlplane), and the runtime handler is [`cmd/linkmyphone/runtime_control.go`](../../cmd/linkmyphone/runtime_control.go). The socket controls the local feature registry only. It is not the Microsoft or Hub Relay protocol.
+`linkmyphone run` exposes local feature CRUD to the CLI through a Unix domain socket. [`runtime/controlplane`](../../runtime/controlplane) implements the socket protocol; [`cmd/linkmyphone/runtime_control.go`](../../cmd/linkmyphone/runtime_control.go) reconciles persisted records with the live registry. This is separate from the Microsoft and Hub Relay protocols.
 
 ## Socket identity and permissions
 
@@ -26,7 +24,7 @@ On listen, an existing path is probed with a version 1 `list` request. A respond
 
 ## Version 1 wire format
 
-Requests and responses are one JSON object per connection, terminated by the JSON encoder's newline. The request decoder rejects unknown fields and the response decoder used by the CLI also rejects unknown fields. `version` must be `1`.
+Each connection carries one JSON request and response, terminated by the JSON encoder's newline. Both the server's request decoder and the CLI's response decoder reject unknown fields. `version` must be `1`.
 
 ### Request fields
 
@@ -39,7 +37,7 @@ Requests and responses are one JSON object per connection, terminated by the JSO
 | `enabled` | boolean | An optional desired-state change in `update`. |
 | `config` | JSON object | An optional whole-configuration replacement in `update`. |
 
-For example, a create request:
+Example create request:
 
 ```json
 {
@@ -99,21 +97,6 @@ The runtime reserves the socket before opening the Phone Link host. At this poin
 runtime is starting; retry the feature command
 ```
 
-The lifecycle of that one socket is:
-
-```mermaid
-stateDiagram-v2
-    [*] --> starting: reserve socket
-    starting --> live: load records, start enabled modules
-    starting --> stopping: runtime startup fails or is cancelled
-    live --> recovering: host lost or tokens need renewal
-    recovering --> live: replacement host and modules ready
-    recovering --> stopping: terminal failure or shutdown
-    live --> stopping: shutdown begins
-    stopping --> closed: wait for handlers and remove socket
-    closed --> teardown: Registry.StopAll
-    teardown --> [*]: close shared host
-```
 
 The CLI treats a live response error as authoritative. It does not fall back to offline store edits after connecting to a runtime that rejects a mutation. After feature records load and enabled modules start, the runtime swaps in the live controller without replacing the socket. During shutdown it switches to:
 
@@ -125,7 +108,7 @@ Recovery cancels the old controller context before swapping the handler. Handler
 
 ## Reconciliation semantics
 
-`runtimeController` serializes all requests with one mutex and applies a fifteen-second mutation timeout. It holds the store and kernel as separate representations of the same desired feature state. Persistence is authoritative when the daemon is offline; while the daemon is live, the controller owns the mutation path.
+`runtimeController` serializes requests with one mutex and applies a fifteen-second mutation timeout. The store and kernel represent the same desired feature state. Offline, persistence is authoritative; while the daemon is live, the controller owns mutations.
 
 A live mutation follows this order:
 
@@ -176,11 +159,11 @@ The CLI still resolves known definitions for list and get. It prints unknown per
 
 ## Observable invariant tests
 
-The protocol and reconciliation contract is exercised by:
+Contract coverage:
 
 - `runtime/controlplane/controlplane_test.go`, which checks JSON round trips, version handling, socket modes, stale-path replacement, scoped and short fallback paths, startup and shutdown handler transitions, client unavailability, bounded handler behavior, and panic isolation;
 - `cmd/linkmyphone/feature_test.go`, which checks offline CRUD, stale-record cleanup, and the rule that a connected runtime rejection never falls back to mutating persistence;
 - `runtime/kernel/registry_test.go`, which checks dependency ordering, epochs, stale errors, provider teardown protection, transitive degradation, stale start rollback, and stopped update state;
 - `runtime/kernel/store_test.go`, which checks persistence across reopen, duplicate detection, object configuration checks, and deletion.
 
-Dated production reports cover live `list/get`, disable, enable, config restart, delete, and create while one runtime remained connected to the same S23. Those reports do not prove long-running reconnect, wake, or token-refresh resilience. See the [validation research](../research/validation.md) for the reported environment and limits.
+Dated device reports cover live `list/get`, disable, enable, config restart, delete, and create while one runtime remained connected to the same S23. They do not prove long-running reconnect, wake, or token-refresh resilience. See [validation](../research/validation.md) for the environment and limits.

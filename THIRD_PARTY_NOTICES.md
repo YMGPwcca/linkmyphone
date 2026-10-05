@@ -1,6 +1,6 @@
 # Third-party notices
 
-The BMP decoder uses `golang.org/x/image/bmp` from `golang.org/x/image` v0.30.0 (https://go.googlesource.com/image). Its BSD 3-Clause license follows. Other packages in that module, including TIFF and WebP, are not imported.
+LinkMyPhone uses `golang.org/x/image/bmp` from [`golang.org/x/image`](https://go.googlesource.com/image) v0.30.0 for BMP decoding. The module's BSD 3-Clause license is reproduced below. Other packages in the module, including TIFF and WebP, are not imported.
 
 ```text
 Copyright 2009 The Go Authors.
@@ -32,7 +32,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-The native notification backend uses `github.com/godbus/dbus/v5` v5.1.0 (https://github.com/godbus/dbus). Its BSD 2-Clause license follows.
+The native notification backend uses [`github.com/godbus/dbus/v5`](https://github.com/godbus/dbus) v5.1.0. Its BSD 2-Clause license is reproduced below.
 
 ```text
 Copyright (c) 2013, Georg Reinke (<guelfey at gmail dot com>), Google

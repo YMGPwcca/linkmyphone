@@ -4,7 +4,7 @@
 
 ## Follow a message
 
-The protocol docs follow the connection from Microsoft sign-in to a clipboard transfer. Start with the layer you are working on:
+The protocol references trace a connection from Microsoft sign-in to clipboard transfer. Choose the layer you need:
 
 | Layer | Documentation |
 | --- | --- |
@@ -19,11 +19,12 @@ The [architecture overview](../architecture/overview.md) maps these layers to Go
 
 | File | Contents |
 | --- | --- |
-| [Notification sync](notification-sync.md) | Source investigation of Phone Link APP push/actions, CrossDevice GET and unresolved session prerequisites. No notification implementation. |
-| [Findings](findings.md) | Problems found during implementation, what caused them and the fixes. |
-| [Validation](validation.md) | Test commands, device results and remaining checks. |
+| [Notification sync](notification-sync.md) | Historical source investigation of Phone Link APP push/actions, CrossDevice GET and session prerequisites; later implementation results are linked from the page. |
+| [Clipboard content](clipboard-content.md) | Content encoding, image dimensions, transfer limits and source provenance. |
+| [Findings](findings.md) | Implementation failures, causes, fixes and evidence. |
+| [Validation](validation.md) | Test commands, dated device results and remaining checks. |
 | [Development history](history.md) | Commits in implementation order. |
-| [Method and provenance](method.md) | Source inspection, capture procedure and how results were recorded. |
+| [Method and provenance](method.md) | Source inspection, capture procedure and evidence records. |
 
 The repository contains the Go client, tests and research notes. Decompiled Windows/Android source and raw production captures are kept outside it. Follow the [privacy guide](../operations/privacy-and-state.md) when preparing an issue or capture.
 
@@ -31,3 +32,4 @@ The repository contains the Go client, tests and research notes. Decompiled Wind
 
 - [Clipboard, 2026-10-03](validation.md#clipboard-validation-2026-10-03): text, HTML and images on S23/Wayland, including incoming dimensions and Linux/Windows outbound image comparisons. [Clipboard content](clipboard-content.md) explains the encoding and resize rules.
 - [Session recovery, 2026-10-03](validation.md#session-resilience-2026-10-03): full race suite, Linux and phone network loss, suspend/resume and saved feature state. The [recovery guide](../operations/session-recovery.md) covers the remaining token-expiry and extended-run checks.
+- [Notifications and unified enrollment, 2026-10-05](validation.md#notification-desktop-actions-on-unified-enrollment-2026-10-05): clipboard and notifications Ready after one PL sign-in; Messenger Like, reply and desktop dismissal on S23/CachyOS/Wayland.

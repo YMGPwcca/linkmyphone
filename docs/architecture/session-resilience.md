@@ -2,7 +2,7 @@
 
 [Architecture](overview.md) · [Session recovery guide](../operations/session-recovery.md) · [Test results](../research/validation.md#session-resilience-2026-10-03)
 
-`phonehost.Supervise` opens and replaces cloud sessions. Each session has its own relay, router, feature registry and module instances. Feature modules use the host's endpoints and leave reconnection to the host.
+`phonehost.Supervise` opens and replaces cloud sessions. Each session owns a relay, router, feature registry and module instances. Modules use scoped host endpoints; the host handles reconnection.
 
 ## Session lifecycle
 
@@ -21,7 +21,7 @@ flowchart TD
 
 The callback passed to `Supervise` owns module startup and shutdown. It must finish teardown before returning a recoverable host error. The supervisor waits for that return before opening another session.
 
-For `run`, teardown cancels the old controller's context and waits for active control calls to finish. It then closes the failed host and stops its modules. The control socket stays open, with a temporary handler that asks callers to retry. Once the replacement host passes SessionValidation, the runtime loads the saved feature records and installs a new controller.
+During `run` recovery, teardown cancels the old controller's context and waits for active control calls. It then closes the failed host and stops its modules. The control socket stays open and asks callers to retry. After the replacement host passes SessionValidation, the runtime loads saved feature records and installs a new controller.
 
 Old requests, snapshots and correlation IDs stay with the old session. New modules start from the saved enabled flags and configuration. Registry epochs can restart at zero or one because each replacement has a new registry.
 
@@ -42,7 +42,7 @@ Feature configuration, control-server and teardown errors stop the runtime. A mo
 
 ## Retry policy
 
-The base delay starts at one second and doubles to a one-minute cap. Each retry waits between half and all of the base delay. After a session has run for at least 30 seconds, the next failure starts again at the minimum. Retry-After sets a minimum wait and can exceed the cap.
+The base retry delay starts at one second and doubles to a one-minute cap. Each retry waits between half and all of that delay. After a session runs for at least 30 seconds, the next failure resets the delay to the minimum. Retry-After sets a minimum wait and can exceed the cap.
 
 Temporary network errors, timeouts and retryable HTTP failures reopen the session. Invalid local state, failed credential writes, identity mismatches and permanent OAuth/DCG errors stop it. A relay 401 gets one refresh-and-reopen attempt; a repeated 401 stops it. Recovery reuses the enrolled identity and keys.
 
@@ -58,7 +58,7 @@ The health monitor runs every five seconds. It checks the renewal deadline, the 
 
 ## Source notes
 
-The source review used `ltw-baseline-20260929-203827.zip` and `phonelink-winrev.zip`. Android paths are relative to `jadx/Microsoft-Active/sources/com/microsoft/mmx/agents/ypp/`; Windows paths are relative to the decompiled root. The decompiled files are kept outside this repository.
+Source evidence comes from `ltw-baseline-20260929-203827.zip` and `phonelink-winrev.zip`. Android paths are relative to `jadx/Microsoft-Active/sources/com/microsoft/mmx/agents/ypp/`; Windows paths are relative to the decompiled root. Decompiled files are kept outside this repository.
 
 | Source file | Behavior used in the design |
 | --- | --- |

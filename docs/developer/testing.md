@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md)
 
-Use the smallest test command that owns the behavior, then run the full Linux suite before submitting. Tests are Go package tests. The deterministic suite uses fakes, temporary stores, protocol fixtures, and injected transports. It does not require Microsoft authentication or a desktop clipboard session.
+Run the smallest package test that covers the change, then the full Linux suite before submitting. Deterministic Go tests use fakes, temporary stores, protocol fixtures, and injected transports. They need neither Microsoft authentication nor a desktop clipboard session.
 
 ## Supported commands
 
@@ -13,7 +13,7 @@ go test ./...
 go test -race ./...
 ```
 
-Choose the lane that matches the evidence you need:
+Choose the checks that match your environment and the behavior under test:
 
 | Lane | Prerequisites | Proves |
 | --- | --- | --- |
@@ -22,25 +22,9 @@ Choose the lane that matches the evidence you need:
 | Cloud probe | Microsoft account, network, linked device | A finite exchange with live services, not regression coverage. |
 | Desktop smoke | Linux graphical session, clipboard tools | Visible clipboard behavior in that session. |
 
-<details>
-<summary>Test lane chart</summary>
-
-```mermaid
-flowchart TD
-    Change[Changed owner] --> Focus[Focused package test]
-    Focus --> Full[go test ./...]
-    Full --> Race[go test -race ./...<br/>Linux, CGO, C compiler]
-    Change --> Cloud[Opt-in cloud probes<br/>Microsoft account, network, linked device]
-    Change --> Desktop[Opt-in desktop smokes<br/>Linux session and clipboard tools]
-    Cloud --> Evidence[Manual evidence<br/>not deterministic regression coverage]
-    Desktop --> Evidence
-```
-
-</details>
-
 ### Package commands
 
-The same package commands are useful while changing one owner:
+Run the relevant packages:
 
 ```bash
 go test ./runtime/kernel
@@ -62,11 +46,11 @@ go test ./cmd/linkmyphone -run 'TestFeatureCommand'
 go test ./features/clipboard -run 'TestConfig|TestManifest|TestInstanceStop'
 ```
 
-The CI workflow at [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs only on pushes to `main` (merged pull requests or direct pushes); feature pushes, open pull requests and manual dispatch do not trigger it. It uses the Go version declared by `go.mod`, runs vet and build, then runs the full race suite under Xvfb with real X11 MIME transfers. Format changed Go files with `gofmt`. No separate linter, release command, or coverage threshold is configured here.
+The [CI workflow](../../.github/workflows/ci.yml) runs only on pushes to `main`, including merged pull requests and direct pushes. Feature-branch pushes, open pull requests, and manual dispatch do not trigger it. CI uses the Go version in `go.mod`, runs vet and build, then the full race suite under Xvfb with real X11 MIME transfers. Format changed Go files with `gofmt`. No separate linter, release command, or coverage threshold is configured.
 
 ## Invariant map
 
-Run the test package that owns the invariant after changing its implementation. The full suite remains the final local check.
+Use this table to select regression coverage:
 
 | Consumer-visible invariant | Tests and owner |
 | --- | --- |
@@ -92,7 +76,7 @@ Run the test package that owns the invariant after changing its implementation. 
 | Header profiles and DCG service request behavior remain source-compatible | `dcgheaders/**/*_test.go`, `services/dcg/**/*_test.go` |
 | systemd readiness notification reports the runtime state without changing module ownership | `runtime/systemdnotify/*_test.go` |
 
-Tests are not substitutes for the ownership rules. When changing a queue, endpoint, or worker, add or update a test that observes the feature or shared host behavior, not just an internal field or a mock call count.
+For queue, endpoint, or worker changes, test observable feature or host behavior rather than internal fields or mock call counts. Tests do not replace ownership rules.
 
 ## Microsoft cloud probes
 
@@ -105,9 +89,9 @@ go run ./cmd/linkmyphone session-probe
 go run ./cmd/linkmyphone session-probe --context-probe
 ```
 
-The first probe performs device-code login, DCG identity enrollment, trust refresh, and SignalR connection. Later probes reuse persisted identity state. `peer-probe` selects or wakes a linked Android peer. `session-probe` validates PLATFORM `/SessionValidation`; `--context-probe` observes the tag-9 clipboard publication path without returning clipboard content unless an explicit probe text is supplied. These probes exercise Microsoft cloud behavior and should be treated as manual evidence, not deterministic regression tests.
+`bootstrap-probe` performs device-code login, DCG identity enrollment, trust refresh, and SignalR connection. Later probes reuse persisted identity state. `peer-probe` selects or wakes a linked Android peer. `session-probe` validates PLATFORM `/SessionValidation`; `--context-probe` observes tag-9 clipboard publication without returning clipboard content unless explicit probe text is supplied. These are live checks, not deterministic regression tests.
 
-The runtime path uses the same cloud stages:
+To exercise the runtime through the same cloud stages:
 
 ```bash
 go run ./cmd/linkmyphone feature create --enabled linkmyphone.clipboard
@@ -130,9 +114,9 @@ go run ./cmd/linkmyphone service restart
 go run ./cmd/linkmyphone service uninstall
 ```
 
-Rich Wayland and X11 providers poll MIME offers. Empty selections are debounced and re-read before publication. The legacy text watcher remains available for text-only providers. A desktop smoke should observe local copy, phone-to-Linux write, reflected-echo suppression, genuine clear, and clean Ctrl+C or service stop. Keep clipboard text non-sensitive. `service install` changes the user executable and systemd unit, so use a disposable user environment when testing installation behavior.
+Rich Wayland and X11 providers poll MIME offers. Empty selections are debounced and re-read before publication; text-only providers retain the legacy watcher. Check local copy, phone-to-Linux write, reflected-echo suppression, genuine clear, and clean Ctrl+C or service stop. Use non-sensitive clipboard text. `service install` changes the user executable and systemd unit; test installation in a disposable user environment.
 
-The archived project findings include dated Wayland, S23, and systemd validation reports, plus race-test repetitions. Those reports are evidence of the environments described at the time, not a promise that an untested machine or a current Microsoft service will behave the same way.
+Archived findings include dated Wayland, S23, and systemd validation reports and repeated race runs. They document those environments at that time, not untested machines or current Microsoft service behavior.
 
 ## Rich clipboard regression and live evidence
 
@@ -143,4 +127,4 @@ LINKMYPHONE_NATIVE_INTEGRATION=1 xvfb-run -a go test -race ./...
 
 The second command requires Xvfb, xclip, Python GI and GTK4, matching CI. Content tests cover explicit-empty text, UTF-16 limits, immutable typed snapshots, fragmented image payloads, malformed/oversized input, BMP/JPEG conversion, incoming dimension preservation, and the outbound budget on both snapshots and live CONTENT fallback. Native tests check MIME preference, bounded command output, full PNG observer/cache bytes above 1 MiB and actual X11 text/HTML/image round-trips. Feature tests cover format-aware echo suppression.
 
-[CI run 37098891014](https://github.com/YMGPwcca/linkmyphone/actions/runs/37098891014) passed vet, build, the full race suite and X11 transfers at `7f999f3`. The [2026-10-03 device tests](../research/validation.md#clipboard-validation-2026-10-03) cover HTML and bidirectional image pastes on S23/Wayland, including the Windows comparison. Run local checks before merging: CI runs after main pushes, and feature branches do not trigger it.
+[CI run 37098891014](https://github.com/YMGPwcca/linkmyphone/actions/runs/37098891014) passed vet, build, the full race suite, and X11 transfers at `7f999f3`. The [2026-10-03 device tests](../research/validation.md#clipboard-validation-2026-10-03) cover HTML and bidirectional image pastes on S23/Wayland, including the Windows comparison. Run local checks before merging; CI runs only after a push to `main`.

@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md)
 
-The [baseline README at `e51728b`](https://github.com/YMGPwcca/phonelink-linux/blob/e51728b12a148061c8076c67200ee4a8f366e423/README.md) reports the production observations summarized here. Source and tests establish the Linux implementation's behavior. The original Windows source corpus, raw production frames, live logs, and phone payloads are not tracked, so historical observations cannot be independently replayed from this checkout. [Research method](method.md) describes that provenance boundary.
+The [baseline README at `e51728b`](https://github.com/YMGPwcca/phonelink-linux/blob/e51728b12a148061c8076c67200ee4a8f366e423/README.md) records the historical production observations summarized here. Later dated findings are identified separately. Source and tests establish the Linux implementation's behavior. The original Windows source corpus, raw production frames, live logs and phone payloads are not tracked, so historical observations cannot be independently replayed from this checkout. [Research method](method.md) describes that provenance boundary.
 
 ## Findings at a glance
 
@@ -14,9 +14,9 @@ The [baseline README at `e51728b`](https://github.com/YMGPwcca/phonelink-linux/b
 | Ordering and native clipboard | Receive handling continues while publication waits; a 3-second echo barrier handles remote-write races; Wayland writes avoid inherited pipe blocking and debounce transient nil selection. |
 | Runtime and service | Shared host and feature lifecycle are separate; capability registration and Ready use separate locks; live CRUD reserves the startup socket; systemd readiness follows the graphical session. |
 | Rich clipboard | Text/HTML/images are supported; incoming image dimensions are preserved, and the 1 MiB PNG budget applies only to outbound preparation. Live owner reports and X11 integration tests are recorded separately. |
-| Limits | Long-running reconnect, repeated wake/re-presence, active-session token refresh, live authenticated X11, other compositors, other phones, and Windows WAM execution remain unvalidated in the tracked record. |
+| Baseline limits | Long-running reconnect, repeated wake/re-presence, active-session token refresh, live authenticated X11, other compositors, other phones and Windows WAM execution were unvalidated in the baseline. Later recovery results and remaining gaps are recorded [below](#remaining-gaps). |
 
-Each result keeps its evidence trail in an expandable section. Findings and uncertainty stay visible; open the evidence when tracing a source, test, or corrective commit.
+Expandable sections link the sources, tests and corrective commits for each finding.
 
 ## Authentication and enrollment
 
@@ -125,7 +125,7 @@ Trace generation and normalization are in [`trace.go`](../../protocol/signalr/tr
 
 </details>
 
-Failure before DCG processing, and therefore before ACK generation, is the inferred explanation from the source-described trace conversion and missing ACK. No raw receiver log is tracked to establish that internal failure directly.
+**Inference:** the source-described trace conversion and missing ACK suggest failure before DCG processing and ACK generation. No tracked raw receiver log establishes that internal failure directly.
 
 ## Session and clipboard findings
 

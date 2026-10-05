@@ -2,16 +2,16 @@
 
 [Documentation index](../README.md)
 
-Use the two stores for different jobs:
+Authentication and feature configuration use separate stores:
 
 | Path                                      | Purpose                       |
 | ----------------------------------------- | ----------------------------- |
 | `~/.config/linkmyphone/state.json`    | Authentication and enrollment |
 | `~/.config/linkmyphone/features.json` | Desired feature records       |
 
-Both defaults use the platform user configuration directory, so `XDG_CONFIG_HOME` can change the base directory. The stores are independent. `--state` on `bootstrap-probe`, `peer-probe`, `session-probe`, and `run` selects authentication state; `--state` on `feature` commands selects the feature registry.
+Both defaults use the platform user configuration directory; `XDG_CONFIG_HOME` can change the base directory. `--state` on `bootstrap-probe`, `peer-probe`, `session-probe`, and `run` selects authentication state. On `feature` commands, it selects the feature registry.
 
-For a separate account or test profile, choose an explicit path for each store:
+Use explicit paths when selecting stores for an account or test profile:
 
 ```bash
 linkmyphone run \
@@ -19,7 +19,7 @@ linkmyphone run \
   --features-state "$HOME/.config/linkmyphone/features.json"
 ```
 
-Keep each separately enrolled identity in its own directory. Saving authentication state changes its parent directory to `0700`, including an existing directory. Avoid placing a custom state file in a shared directory. A fresh installation enrolls PL at the default path; an existing WEA state remains WEA and must not be relabeled. The same PL state and one feature store can serve clipboard and notifications.
+Keep each separately enrolled identity in its own directory. Saving authentication state changes its parent directory to `0700`, even if the directory already exists; do not use a shared directory. Fresh installations enroll PL at the default path. Existing WEA state remains WEA and must not be relabeled. One PL state and feature store can serve both clipboard and notifications.
 
 ## Authentication state
 
@@ -53,7 +53,7 @@ The `enrollment` object contains:
 | Field | Meaning |
 | --- | --- |
 | `accountCert` | Service-returned account certificate. |
-| `accountInfo` | Account metadata with optional `accountKey`, `firstName`, `lastName`, and `signInName` fields. These identify the account and belong in redaction. |
+| `accountInfo` | Account metadata with optional `accountKey`, `firstName`, `lastName`, and `signInName` fields. Redact these account identifiers. |
 | `rootCertificateChain` | Array of service-returned certificate strings. |
 
 Each `trustRelationships` entry has these fields:
@@ -118,7 +118,7 @@ Each feature record has exactly these fields:
 | `enabled` | Desired startup state. `run` starts available records with `true`. |
 | `config` | Feature-specific JSON object. The built-in clipboard validator rejects unknown properties. |
 
-The registry is desired state, not proof that a module is currently running. A disabled record remains installed. A live runtime snapshot adds operational fields such as `state`, `epoch`, and `last_error`; these are not persisted in `features.json`. Live capabilities belong to the kernel capability registry and are not fields in the control-plane snapshot.
+The registry records desired state, not whether a module is running. Disabled records remain installed. Live snapshots add `state`, `epoch`, and `last_error`; these are not persisted in `features.json`. Live capabilities belong to the kernel capability registry, not the control-plane snapshot.
 
 The store writes mode `0600` files under a mode `0700` directory and replaces them atomically. A missing file is treated as an empty registry. Unknown top-level fields, an unsupported schema version, duplicate IDs, invalid IDs, non-object config, trailing JSON, and malformed JSON are rejected.
 
@@ -134,13 +134,14 @@ The clipboard feature has ID `linkmyphone.clipboard`, version `0.2.0`, and this 
 
 The feature schema is [`features/clipboard/config.schema.json`](../../features/clipboard/config.schema.json). Empty or omitted config is decoded with defaults. `feature create --config JSON` validates the object before writing it. `feature update --config JSON` validates and replaces the entire object. It does not merge keys with the previous object.
 
-For example, preserve the default request timeout while enabling initial publication by sending both values explicitly:
+To enable initial publication with the default polling interval and request timeout:
 
 ```bash
 linkmyphone feature update \
   --config '{"poll_interval_ms":500,"request_timeout_ms":10000,"publish_initial":true}' \
   linkmyphone.clipboard
 ```
+
 The compatibility command's `--poll-interval` and `--publish-initial` flags construct an in-memory record for the same module. They do not write this configuration to `features.json`.
 
 ## Notification configuration
@@ -153,15 +154,13 @@ The compatibility command's `--poll-interval` and `--publish-initial` flags cons
 | `remote_actions` | Boolean | `true` | Permit explicit desktop dismissal, Android action buttons, launch and confirmed reply. Set false for a receive-only trial. |
 | `show_existing` | Boolean | `false` | Render existing/reconciled items with the suppress-sound hint; false avoids startup/recovery floods. The hint does not guarantee that a server hides its popup. |
 
-Schema: [`features/notifications/config.schema.json`](../../features/notifications/config.schema.json). Unknown properties, non-object values and trailing JSON are rejected. Reply UI is optional Python GI/GTK4; absent GTK or native action support removes the reply capability/buttons, not notification reception. A new host generation reconciles from fresh memory and never replays pending mutations.
+The [notification schema](../../features/notifications/config.schema.json) rejects unknown properties, non-object values, and trailing JSON. The optional reply UI uses Python GI/GTK4. Missing GTK or native action support removes reply capabilities/buttons, not notification reception. Each new host generation reconciles from fresh memory without replaying pending mutations.
 
-State is bounded to 4096 items and 32 MiB of estimated retained content. The oldest item is evicted locally when that budget is exhausted; eviction never dismisses it on the phone and is reported in diagnostics. Desktop service loss invalidates native IDs and cancels replies; a new owner silently replays previously visible/pending items. Source: [`notifications/`](../../notifications/) and [`features/notifications/`](../../features/notifications/).
-
-
+State is limited to 4096 items and 32 MiB of estimated retained content. When that budget is exhausted, the oldest item is evicted locally and reported in diagnostics; eviction never dismisses it on the phone. Desktop service loss invalidates native IDs and cancels replies. A new owner silently replays previously visible/pending items. See [`notifications/`](../../notifications/) and [`features/notifications/`](../../features/notifications/).
 
 ## Live and offline edits
 
-Feature commands connect to the selected store's control socket. A ready runtime handles them through its registry and saves successful changes. Enabling, disabling or changing configuration can restart a module while the process keeps running. The entry's epoch increases on restart; deleting and recreating the entry starts its epoch sequence again.
+Feature commands connect to the selected store's control socket. A ready runtime applies changes through its registry and saves them on success. Enabling, disabling, or changing configuration can restart a module without restarting the process. The entry's epoch increases on restart; deleting and recreating it starts a new epoch sequence.
 
 If the socket is absent, refused or invalid, commands read or edit the registry file directly. Use this to configure features before starting the runtime.
 
@@ -169,4 +168,4 @@ During startup or recovery, the socket stays reserved and feature commands ask y
 
 The socket is a user-local Unix socket under `$XDG_RUNTIME_DIR/linkmyphone/` with a filename derived from a hash of the absolute feature-store path. If `XDG_RUNTIME_DIR` is unset or the candidate path reaches the 100-byte budget, the runtime uses `/tmp/linkmyphone-<uid>/`. The socket directory is mode `0700` and the socket is mode `0600`.
 
-Implementation and test references: [`runtime/kernel/store.go`](../../runtime/kernel/store.go) defines registry persistence and replacement behavior; [`runtime/kernel/store_test.go`](../../runtime/kernel/store_test.go) covers it; [`auth/state/store.go`](../../auth/state/store.go) and [`auth/state/store_test.go`](../../auth/state/store_test.go) cover authentication state; the live socket contract is in [`runtime/controlplane/protocol.go`](../../runtime/controlplane/protocol.go) and [`runtime/controlplane/controlplane_test.go`](../../runtime/controlplane/controlplane_test.go).
+Registry persistence and atomic replacement are defined in [`runtime/kernel/store.go`](../../runtime/kernel/store.go) and covered by [`runtime/kernel/store_test.go`](../../runtime/kernel/store_test.go). Authentication state is defined in [`auth/state/store.go`](../../auth/state/store.go) and covered by [`auth/state/store_test.go`](../../auth/state/store_test.go). The socket contract is defined in [`runtime/controlplane/protocol.go`](../../runtime/controlplane/protocol.go) and covered by [`runtime/controlplane/controlplane_test.go`](../../runtime/controlplane/controlplane_test.go).

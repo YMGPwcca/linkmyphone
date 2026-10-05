@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md) · [Runtime flags](../reference/cli.md#modular-runtime-run) · [Implementation](../architecture/session-resilience.md)
 
-`run` and `clipboard-sync` reconnect automatically after network loss, a phone disconnection or suspend. They refresh authentication, reconnect the relay, wake the same phone when needed, and restart enabled modules once PLATFORM SessionValidation succeeds. The process keeps its enrollment and device keys.
+`run` and `clipboard-sync` reconnect automatically after network loss, phone disconnection or suspend. They refresh authentication, reconnect the relay, wake the same phone if needed, and restart enabled modules after PLATFORM SessionValidation succeeds. Enrollment and device keys are preserved.
 
 ## What triggers recovery
 
@@ -16,7 +16,7 @@
 | Temporary startup failure | Retry with backoff, starting at one second and growing to a one-minute base delay. Each wait is between half and all of that delay. |
 | HTTP 429 | Wait for Retry-After, even if it exceeds one minute. Without a valid header, wait at least one minute. |
 
-Hub pings go out every 15 seconds. The handshake has a 15-second timeout, writes have a five-second timeout, and one complete session-opening attempt can take up to two minutes. The [runtime flags](../reference/cli.md#modular-runtime-run) let you adjust startup and recovery settings.
+Hub pings are sent every 15 seconds. The handshake times out after 15 seconds, writes after five seconds, and a complete session-opening attempt after up to two minutes. Use the [runtime flags](../reference/cli.md#modular-runtime-run) to adjust startup and recovery settings.
 
 After the first successful connection, the runtime keeps the selected phone's DCG ID. Removing that phone from the account causes target selection to fail.
 
@@ -30,11 +30,11 @@ The log prints `session recovering` with a reason and retry delay. Wait for `PLA
 runtime is recovering; retry the feature command
 ```
 
-Retry the command after readiness. Changes saved before the interruption, including disabled modules and their configuration, are loaded into the new session.
+Retry after readiness. The new session loads changes saved before the interruption, including disabled modules and their configuration.
 
-The clipboard module sends FEATURE_ON again when it starts. With the default `publish_initial=false`, **copy a new selection after readiness** to send it. Setting `publish_initial=true` sends the current selection on every module start, including after recovery. Interrupted requests and old snapshots are discarded.
+The clipboard module sends FEATURE_ON each time it starts. With the default `publish_initial=false`, **copy a new selection after readiness** to send it. With `publish_initial=true`, the current selection is sent on every module start, including recovery. Interrupted requests and old snapshots are discarded.
 
-You may see `FEATURE_OFF synchronization failed` with `endpoint is closed` during teardown. The failed session has already closed its transport, so the old module cannot send FEATURE_OFF. Check that the replacement sends FEATURE_ON and reaches readiness.
+During teardown, `FEATURE_OFF synchronization failed` with `endpoint is closed` means the failed session's transport has already closed. The old module cannot send FEATURE_OFF. Check that the replacement sends FEATURE_ON and reaches readiness.
 
 ## Errors that need intervention
 
@@ -44,7 +44,7 @@ Recovery stops for invalid or missing enrollment, failed state-file writes, an i
 
 A relay HTTP 401 gets one retry with refreshed credentials. A second 401 stops the runtime.
 
-`bootstrap-probe`, `peer-probe` and `session-probe` exit after their diagnostic stages. Automatic recovery runs in `run` and `clipboard-sync`.
+`bootstrap-probe`, `peer-probe` and `session-probe` exit after their diagnostic stages; only `run` and `clipboard-sync` recover automatically.
 
 ## Live checks
 
@@ -60,6 +60,6 @@ Use one runtime with the existing enrollment. After each interruption, wait for 
 | Stop while offline | Stop during an attempt or backoff. Check that the process and clipboard workers exit. |
 | systemd | Install the updated unit and repeat the interruption tests. The main process should recover without a systemd restart. |
 
-Network loss on both devices, suspend/resume and feature-state recovery passed on the S23/Wayland setup at `a1f53ff`. Testing across token expiry, a multi-hour run and recovery under the updated systemd unit is still open. See [test results](../research/validation.md#session-resilience-2026-10-03).
+Network loss on both devices, suspend/resume and feature-state recovery passed on the S23/Wayland setup at `a1f53ff`. Token-expiry recovery, a multi-hour run and recovery under the updated systemd unit remain untested. See [test results](../research/validation.md#session-resilience-2026-10-03).
 
 View service logs with `linkmyphone service logs --follow`, or run `linkmyphone run` in a terminal. During offline startup, `systemctl start` waits for readiness. Use `systemctl --user --no-block start linkmyphone.service` to return immediately while it connects.

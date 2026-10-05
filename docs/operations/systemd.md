@@ -2,11 +2,11 @@
 
 [Documentation index](../README.md)
 
-The optional systemd integration runs the same modular `run` command as an interactive session. It is a per-user service tied to the graphical login, not a machine-wide daemon.
+The optional systemd integration runs `linkmyphone run` as a per-user service tied to the graphical login. It is not a machine-wide daemon.
 
 ## Install and start
 
-Build the executable and run the installer from the same executable you want systemd to use:
+Build the executable, then install the service using that binary:
 
 ```bash
 go build -o linkmyphone ./cmd/linkmyphone
@@ -29,11 +29,11 @@ Use flags before any positional arguments:
 ./linkmyphone service install --enable=false
 ```
 
-`--start=false` installs and reloads without starting. `--enable=false` installs without enabling automatic graphical-session startup. The false flags skip actions. They do not disable an already enabled unit or stop a process that is already running.
+`--start=false` installs and reloads without starting. `--enable=false` skips automatic graphical-session startup. These flags do not disable an already enabled unit or stop a running process.
 
 The installed unit executes `%h/.local/bin/linkmyphone run`, so authentication and feature paths come from the service user's environment and defaults.
 
-Stop an interactive `linkmyphone run` before starting the service. Both modes own the same per-feature-store control socket; running both would contend for the runtime rather than create independent state.
+Stop an interactive `linkmyphone run` before starting the service. Both use the same per-feature-store control socket; only one runtime can own it.
 
 ## Manage the service
 
@@ -46,7 +46,7 @@ Stop an interactive `linkmyphone run` before starting the service. Both modes ow
 ~/.local/bin/linkmyphone service disable
 ```
 
-`start` and `restart` import the current graphical-session environment, clear failed/start-limit state, and then invoke `systemctl --user`. `service install` imports the environment before daemon reload as well.
+`start` and `restart` import the current graphical-session environment, clear failed/start-limit state, and invoke `systemctl --user`.
 
 To refresh environment values after a desktop session change:
 
@@ -57,7 +57,7 @@ To refresh environment values after a desktop session change:
 
 The imported variables are `WAYLAND_DISPLAY`, `DISPLAY`, `XAUTHORITY`, `XDG_SESSION_TYPE`, `XDG_CURRENT_DESKTOP`, `XDG_SESSION_DESKTOP`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, and `XDG_DATA_HOME`. `XDG_RUNTIME_DIR` is not imported; it belongs to the systemd user manager and login session.
 
-The unit is `Type=notify`. The runtime sends readiness only after the control socket, Phone Link host, desired feature loading, and live feature controller are ready. `systemctl start` therefore waits through host authentication, trust refresh, peer presence, SessionValidation, and module startup. While the unit is still activating, feature commands return `runtime is starting; retry the feature command`.
+The unit is `Type=notify`. Readiness waits for the control socket, Phone Link host, desired feature loading, and live feature controller. `systemctl start` waits through authentication, trust refresh, peer presence, SessionValidation, and module startup. Feature commands return `runtime is starting; retry the feature command` while the unit is activating.
 
 | Transition | Behavior |
 | --- | --- |
@@ -67,22 +67,6 @@ The unit is `Type=notify`. The runtime sends readiness only after the control so
 | Restart | Stop modules and watchers, then activate again. |
 | Explicit stop | Stop modules and watchers without an automatic restart. |
 
-<details>
-<summary>Readiness and restart state chart</summary>
-
-```mermaid
-stateDiagram-v2
-    [*] --> Activating: systemd start
-    Activating --> Ready: runtime sends readiness
-    Activating --> Failed: startup error or timeout
-    Ready --> Failed: runtime failure
-    Ready --> Stopping: stop or restart
-    Stopping --> Activating: restart after teardown
-    Stopping --> [*]: explicit stop after teardown
-    Failed --> Activating: automatic retry after 5s, within start limit
-```
-
-</details>
 
 The packaged unit has these lifecycle settings:
 
@@ -98,11 +82,11 @@ KillMode=mixed
 UMask=0077
 ```
 
-It is enabled under and joined to `graphical-session.target`. The main process receives the normal stop signal first; the runtime shuts down modules and the clipboard watcher, while systemd can terminate remaining cgroup processes if shutdown exceeds the timeout.
+The unit is enabled under and joined to `graphical-session.target`. The main process receives the normal stop signal and shuts down modules and the clipboard watcher. If shutdown exceeds the timeout, systemd can terminate remaining cgroup processes.
 
 ## Use a custom profile or phone target
 
-Service helpers do not remember options from a previous foreground `run`. The packaged `ExecStart` uses defaults. If you need a different account state, feature store, or phone selector, configure a systemd drop-in instead of editing the installed unit.
+Service helpers do not remember foreground `run` options. The packaged `ExecStart` uses defaults. To use another account state, feature store, or phone selector, configure a systemd drop-in rather than editing the installed unit.
 
 First prepare the enrollment and enabled feature record at the chosen paths, following [first-run setup](../getting-started/first-run.md) and [configuration](../reference/configuration.md). Then install without starting or enabling the default command:
 
@@ -111,7 +95,7 @@ First prepare the enrollment and enabled feature record at the chosen paths, fol
 systemctl --user edit linkmyphone.service
 ```
 
-For example, enter this drop-in for a test profile and a specific linked phone:
+Example drop-in for a test profile and a specific linked phone:
 
 ```ini
 [Service]
@@ -142,7 +126,7 @@ Service output goes to the user journal:
 journalctl --user -u linkmyphone.service --no-pager
 ```
 
-After you dismiss a notification on the desktop, the journal shows what happened at each step:
+Desktop notification dismissal produces journal entries for each step:
 
 ```text
 Dismissed notification #41 on desktop. Asking the phone to remove it.
@@ -150,7 +134,7 @@ Phone accepted dismissal of notification #41.
 Removed notification #41 after a phone update. 16 left.
 ```
 
-The number is temporary and changes when the service restarts. A button press or reply gets its own line. The log never includes notification text, keys or reply text. "Phone accepted" means Android accepted the request; check the receiving app to confirm delivery of a reply.
+Notification numbers are temporary and change after a service restart. Button presses and replies have their own entries. Logs never include notification text, keys or reply text. "Phone accepted" means Android accepted the request; check the receiving app to confirm reply delivery.
 
 `service install`, `service start`, and `service restart` call `systemctl --user reset-failed` before launching. If you use `systemctl` directly after repeated failures, clear the rate limit first:
 
@@ -160,7 +144,7 @@ systemctl --user reset-failed linkmyphone.service
 ~/.local/bin/linkmyphone service start
 ```
 
-Common startup causes are a missing enrollment file, no linked target, an unavailable clipboard provider, missing graphical-session variables, or a feature configuration that fails validation. Read the first failure stage in the journal before changing state. See [troubleshooting](troubleshooting.md).
+Common startup failures include a missing enrollment file, no linked target, an unavailable clipboard provider, missing graphical-session variables, or invalid feature configuration. Read the first failure stage in the journal before changing state. See [troubleshooting](troubleshooting.md).
 
 ## Uninstall and persistence
 
@@ -178,21 +162,21 @@ Uninstall does not remove `state.json`, `features.json`, or other authentication
 
 Custom systemd drop-ins are also retained. Review any `linkmyphone.service.d/` directory under your user unit configuration before reinstalling; remove only overrides you intentionally want to discard.
 
-## Validation record and open limits
+## Validation and recovery limits
 
 Installation, readiness, restart, logout/login, clipboard watchers and live feature control have been tested on CachyOS/Wayland. The commands and results are in [validation](../research/validation.md).
 
 Temporary cloud or phone failures recover in the same process. systemd restarts the process after a terminal failure. `TimeoutStartSec=infinity` lets offline startup keep retrying; each session attempt still has a two-minute default timeout. Use `systemctl --user --no-block start linkmyphone.service` to start without waiting for readiness. See [session recovery](session-recovery.md) for interruption tests.
 
-The unit source is [`packaging/systemd/linkmyphone.service`](../../packaging/systemd/linkmyphone.service); installer behavior is implemented in [`cmd/linkmyphone/service.go`](../../cmd/linkmyphone/service.go) and covered by [`cmd/linkmyphone/service_test.go`](../../cmd/linkmyphone/service_test.go).
+See the [source map](../developer/source-map.md) for implementation ownership.
 
 ## Updating an older phonelink-linux installation
 
-The old executable and user unit may still be named `phonelink-linux` and `phonelink-linux.service`. A newly built `linkmyphone service stop` targets `linkmyphone.service`; it does not stop the old unit. Stop the actual old unit before running the new foreground binary:
+Older installations may use `phonelink-linux` and `phonelink-linux.service`. `linkmyphone service stop` targets only `linkmyphone.service`. Stop the old unit before running the new foreground binary:
 
 ```bash
 systemctl --user stop phonelink-linux.service
 ./linkmyphone clipboard-sync --state "$HOME/.config/phonelink-linux/state.json"
 ```
 
-This reuses existing enrollment and starts the current clipboard module without editing the feature registry. For a permanent update, stop the foreground process and configure the new unit's state path before installing/starting it. Keep only one clipboard runtime active; see the custom-profile instructions above.
+This reuses the enrollment and starts the current clipboard module without editing the feature registry. For a permanent update, stop the foreground process and configure the new unit's state path before installing/starting it. Keep only one clipboard runtime active; see the custom-profile instructions above.

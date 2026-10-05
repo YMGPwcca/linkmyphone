@@ -2,27 +2,8 @@
 
 [Documentation index](../README.md)
 
-Start with the first failing stage. A later clipboard error can be a symptom of an earlier authentication, target, relay, or native-provider failure.
+Check the first failing stage in this order: **state → target → relay and session → clipboard module**. A clipboard error may be caused by an earlier failure. Use the symptom table below to find the matching action.
 
-Check in order: **state → target → relay and session → clipboard module**. Stop at the first failed boundary; the symptom table below gives the matching action.
-
-<details>
-<summary>Diagnostic decision tree</summary>
-
-```mermaid
-flowchart TD
-    A[Observe first error] --> B{State loads?}
-    B -- No --> C[Use the same state path; recover or make a deliberate profile]
-    B -- Yes --> D{Linked target selected?}
-    D -- No --> E[Check linked devices or use an unambiguous --target]
-    D -- Yes --> F{Relay and SessionValidation ready?}
-    F -- No --> G[Inspect SignalR, wake, and SessionValidation stage]
-    F -- Yes --> H{Clipboard module ready?}
-    H -- No --> I[Check feature record, provider, and graphical environment]
-    H -- Yes --> J[Reproduce and report only redacted stage evidence]
-```
-
-</details>
 
 ## Find the failing stage
 
@@ -55,13 +36,13 @@ flowchart TD
 
 ## Inspect an interactive run
 
-Start the runtime in the foreground so its stage and module events remain visible:
+Run in the foreground to see host stages and module events:
 
 ```bash
 linkmyphone run
 ```
 
-The runtime prints the selected target, host stages, module state, live capabilities, and the control socket path. It does not print clipboard contents. Stop it with Ctrl+C and read the final shutdown messages.
+The runtime prints the selected target, host stages, module state, live capabilities, and control socket path, but not clipboard contents. Stop with Ctrl+C and check the shutdown messages.
 
 Use a separate terminal for live feature state:
 
@@ -80,7 +61,7 @@ If you use a non-default registry, pass the same `--state` to both feature comma
 ~/.local/bin/linkmyphone service logs --follow
 ```
 
-Check the first error before trying repeated restarts. The unit is rate-limited to five starts in 60 seconds. The service helpers reset failed/start-limit state before `install`, `start`, and `restart`; when using `systemctl` directly, recover with:
+Check the first error before restarting repeatedly. The unit allows five starts in 60 seconds. Service helpers reset failed/start-limit state before `install`, `start`, and `restart`. When using `systemctl` directly, recover with:
 
 ```bash
 systemctl --user reset-failed linkmyphone.service
@@ -88,11 +69,11 @@ systemctl --user reset-failed linkmyphone.service
 ~/.local/bin/linkmyphone service start
 ```
 
-If startup is stuck in `activating`, wait for or inspect the host stages. `Type=notify` is designed to stay activating until the control plane and enabled modules are ready. Feature calls during that window return an explicit retry response.
+If startup remains `activating`, inspect the host stages. With `Type=notify`, the unit waits until the control plane and enabled modules are ready. Feature commands return a retry response during startup.
 
 ## Report a bug safely
 
-Use the smallest reproducer that identifies the stage. Include the command name and flags, operating system and desktop session type, selected provider (`wl-clipboard`, `xclip`, or `xsel`), and the exact non-secret error text. Include relevant source paths and versions when reporting a code-level issue.
+Include the smallest reproducer that identifies the failure stage, the command and flags, operating system, desktop session type, selected provider (`wl-clipboard`, `xclip`, or `xsel`), and exact non-secret error text. For code-level issues, include relevant source paths and versions.
 
 For service problems, attach a redacted excerpt from `journalctl --user -u linkmyphone.service`. Remove:
 
@@ -101,4 +82,4 @@ For service problems, attach a redacted excerpt from `journalctl --user -u linkm
 - device IDs, peer names, account identifiers, hostnames, usernames, custom paths, and environment values when they identify you;
 - clipboard text. Logs should report byte counts and shortened correlation IDs, but redact any copied text if another tool included it.
 
-Never run a report command that prints the state file. If a maintainer needs state for a specific parser bug, make a copy, remove every credential and identifying value, and confirm the result cannot be used to authenticate.
+Never run a report command that prints the state file. For a state-parser bug, share only a separate copy with every credential and identifying value removed, and verify that it cannot authenticate.

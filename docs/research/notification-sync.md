@@ -4,15 +4,15 @@
 
 Research date: 2026-10-03. Repository baseline: `299248d87cc383e57ebce4b6c11048893d83ddb2`, the session-resilience merge on `main`. Work branch: `feature/notification-sync`.
 
-**Status: source investigation plus analysis of owner-supplied Android runtime logs.** No notification implementation has been added. The owner performed the two-post phone experiment; this work analyzes the resulting files. Source findings describe the supplied snapshots, and the runtime section records the observed delivery boundaries. LinkMyPhone's own notification compatibility remains unverified.
+**Historical scope:** source investigation and analysis of owner-supplied Android runtime logs. No notification implementation existed at this baseline, and LinkMyPhone notification compatibility was unverified. The owner performed the two-post phone experiment; the runtime section analyzes those files. Source findings describe the supplied snapshots. Later source and implementation updates are identified below; [validation](validation.md#notification-desktop-actions-on-unified-enrollment-2026-10-05) records the subsequent S23/CachyOS/Wayland support result.
 
 ## Main findings
 
 The Android snapshot contains two separate notification contracts. Phone Link's full contract pushes changes and accepts dismissal, resync and notification actions. The CrossDevice contract returns a protobuf snapshot through DeviceResourceManager and defines only GET. Their shared `/notifications` spelling does not make their envelopes interchangeable.
 
-The main compatibility question is recipient selection. Full notification publication starts from Phone Link clients (`PL`). Connection sharing can redirect a paired PL client's traffic to a CrossDevice client (`WEA`) for the same `distinguishedDeviceId`. LinkMyPhone currently enrolls as WEA. The owner-supplied runtime capture now shows full notification APP delivery to a WEA peer in a sharing-enabled setup, with successful application responses. Standalone WEA push support and the identity of that peer as the Linux client remain unverified.
+Recipient selection was the main compatibility question. Full notification publication starts from Phone Link clients (`PL`). Connection sharing can redirect a paired PL client's traffic to a CrossDevice client (`WEA`) with the same `distinguishedDeviceId`. LinkMyPhone enrolled as WEA at the baseline. The owner-supplied runtime capture shows full notification APP delivery to a WEA peer in a sharing-enabled setup, with successful application responses. That capture does not establish standalone WEA push support or identify the peer as the Linux client.
 
-The Windows archive supplies common transport/SDK code, but no notification feature assembly or UI implementation was found. Android-side behavior is much better evidenced than Windows toast creation, storage, suppression, or action handling.
+The initial Windows archive supplied common transport/SDK code, but no notification feature assembly or UI implementation was found. At that stage, Android behavior was better evidenced than Windows toast creation, storage, suppression or action handling. The [later Windows corpus](#windows-evidence-and-transport-cautions) closed the source gap.
 
 ## Two contracts
 
@@ -32,7 +32,7 @@ Sources: A1-A8, A12-A14 below. The two numeric transport values are Hub Relay va
 
 `PhoneNotificationsListenerService` extends Android `NotificationListenerService`. Android notification access allows it to observe other apps' notifications. The manifest's `BIND_NOTIFICATION_LISTENER_SERVICE` declaration is distinct from `POST_NOTIFICATIONS`, which concerns posting the app's own notifications.
 
-The source path is:
+The source shows this delivery path:
 
 1. `onNotificationPosted` filters a `StatusBarNotification`, caches any reply action, and queues operation `1` with its notification data.
 2. `onNotificationRemoved` queues operation `2` with its key and no notification body.
@@ -76,7 +76,7 @@ Each exported action includes `actionName`, `isActionInlineReply` and `actionInd
 
 Requests use `contentType=notifications`. APP request headers carry `_requestId`; responses use `_route=/internal/response` and `_originalRequestId`. AppService response maps include `result` (`0` success, `1` failure, `7` notification permission needed). The handler, rather than the incomplete operation-name helper, establishes operation `5`. Media control is handled separately by the audio-command route; the helper's name for operation `6` does not establish an additional operation supported by this notification handler. Sources: A6, A8.
 
-Dismissal and inline-reply requests can receive a success response immediately after dispatch to the listener. This acknowledges that stage, not the final disappearance of the notification or delivery of a message to its recipient. For a future client, confirm dismissal through the later remove event or reconciliation. Avoid interpreting transport ACKs as action outcomes.
+Dismissal and inline-reply requests can receive a success response immediately after dispatch to the listener. This acknowledges dispatch, not the final disappearance of the notification or delivery of a message to its recipient. Confirm dismissal through the later remove event or reconciliation. Transport ACKs are not action outcomes.
 
 Inline reply uses the selected Android action's free-form `RemoteInput`, adds the reply to an Intent, and sends its `PendingIntent`. It is not a separate SMS or chat-service API. A bounded reply-action cache can retain a removed notification's action (default five-minute TTL, 100 entries), but a cached PendingIntent may still fail. General actions and opening notifications have additional Android launch/permission behavior; their success cannot be inferred from inline-reply support. Sources: A1, A5-A7.
 
@@ -94,7 +94,7 @@ Filtering occurs at several boundaries:
 - Full publication applies package-level notification preferences; unknown packages default to enabled in the inspected app filter. Reconciliation receives the disabled-package list.
 - Snapshot GET uses the listener's publishable list. Its inspected handler does not invoke the full path's package-preference filter, so identical per-app mute behavior is not established.
 
-These rules are not a guarantee to mirror every entry in Android's notification shade. Source: A10.
+These rules do not guarantee that every entry in Android's notification shade will be mirrored. Source: A10.
 
 ## CrossDevice GET contract
 
@@ -110,9 +110,9 @@ An empty `keys` request takes the straightforward snapshot path and sorts items 
 
 `SyncExecutor.executeMulticastAsync` asks for `getActiveRemoteApps(PL)`. Without connection sharing, this selects active PL remote apps. With sharing, `RemoteDeviceManager` starts from PL remote apps that are active considering sharing, then can substitute a WEA remote app with the same `distinguishedDeviceId`. `RemoteAppClient.sendMessageWithMessage` also resolves the shared target before sending. Source: A11.
 
-This leaves two cases to distinguish experimentally: a genuine PL peer/session, and PL traffic carried through its associated WEA connection. WEA alone is not shown to be a full-notification recipient. Conversely, the source does not justify concluding that a second OAuth login or changing the app ID is always necessary. `RemoteAppUtil` reads `clientType` and device association from trusted-peer metadata; changing a request body is not proof of changed enrollment classification.
+Two cases need separate evidence: a genuine PL peer/session, and PL traffic carried through its associated WEA connection. WEA alone is not shown to be a full-notification recipient. The source also does not establish that a second OAuth login or an app-ID change is always necessary. `RemoteAppUtil` reads `clientType` and device association from trusted-peer metadata; changing a request body does not prove that enrollment classification changed.
 
-At the time of this investigation, first-run bootstrap enrolled only `ClientType=WEA` with `CLIPBOARD` and the CrossDevice app ID. The implementation now exposes [`MetadataForPC`](../../services/dcg/client.go) and a persisted, isolated `phonelink` profile. This preserves existing CrossDevice state instead of reclassifying it; codec support alone still does not establish live push eligibility. Both the trusted metadata/association and the APP connection contract needed investigation before assuming full push works through this session.
+First-run bootstrap at the baseline enrolled only `ClientType=WEA` with `CLIPBOARD` and the CrossDevice app ID. Subsequent work exposed [`MetadataForPC`](../../services/dcg/client.go) and a persisted, isolated `phonelink` profile, preserving existing CrossDevice state rather than reclassifying it. Codec support alone did not establish live push eligibility: trusted metadata/association and the APP connection contract both needed verification. The later [unified PL enrollment tests](validation.md#unified-pl-enrollment-2026-10-05) record the implemented path.
 
 ## Windows evidence and transport cautions
 
@@ -124,7 +124,9 @@ The earlier, limited Windows corpus lacked notification implementation/UI assemb
 
 Microsoft's public support documentation describes enabling notification access, per-app selection, dismissal on either device and actions/replies when the app supports them. It also documents restrictions for sensitive notifications on Android 15+. These public behaviors support the intended product experience, but do not specify the private wire contracts or prove Linux compatibility; see the references below.
 
-## Implications for LinkMyPhone
+## Implementation implications at the baseline
+
+This table and the recommendations below record the investigation's starting point, not the current feature set.
 
 | Existing component | Reuse or remaining work |
 | --- | --- |
@@ -136,13 +138,13 @@ Microsoft's public support documentation describes enabling notification access,
 | Feature catalog | Clipboard only at the baseline; no notification module, state store, native desktop backend or reply bridge |
 | Full notification APP contract | Needs PBValueSet handling, request/response dispatch, verified connection setup and notification-specific state |
 
-**Recommended order for later work, not an implementation plan already executed:** first establish the reachable contract and recipient identity, then independently validate snapshot/delta bytes, then state reconciliation, then desktop display, then dismissal and reply. Polling GET could provide a limited snapshot experiment; it must not be presented as full Phone Link synchronization or as a contract offering remote actions.
+The investigation recommended establishing the reachable contract and recipient identity first, followed by independent snapshot/delta validation, state reconciliation, desktop display, dismissal and reply. Polling GET could support a limited snapshot experiment, but not full Phone Link synchronization or remote actions.
 
-A future module should own notification state and use the shared Session subscription rather than reading the relay channel directly or adding notification rules to the kernel/clipboard feature. Scope keys by phone and Android notification key, use post time as reconciliation metadata, keep action indices unchanged, and distinguish existing-item refresh from a new-alert policy. Those are design recommendations; Windows's exact alert policy is not established here.
+The recommended module boundary was notification-owned state on the shared Session subscription, not direct relay reads or notification rules in the kernel/clipboard feature. Keys should be scoped by phone and Android notification key, post time retained as reconciliation metadata, and action indices left unchanged. Existing-item refresh and new-alert policy should remain distinct. These were design recommendations; Windows's exact alert policy was not established by the initial corpus.
 
 ## Runtime capture: 2026-10-04
 
-The owner supplied two Android file logs after posting `STEP1` and `STEP2` with the same shell notification tag, `ltw-research-001`, and title `LTW-TEST`. This analysis reads those supplied logs; it does not execute ADB or connect to the phone. Owner-provided device output identifies a rooted Samsung SM-S911B on Android 16, active LTW version `1.26082.130.0` (`8200516`, target SDK 36), and an enabled `PhoneNotificationsListenerService`. The active version matches the earlier Microsoft-Active source snapshot. A second version entry in package output is not treated as proof of two simultaneously running installations.
+The owner supplied two Android file logs after posting `STEP1` and `STEP2` with the same shell notification tag, `ltw-research-001`, and title `LTW-TEST`. No ADB or phone connection was used for this analysis. Owner-provided device output identifies a rooted Samsung SM-S911B on Android 16, active LTW version `1.26082.130.0` (`8200516`, target SDK 36), and an enabled `PhoneNotificationsListenerService`. The active version matches the earlier Microsoft-Active source snapshot. A second version entry in package output does not prove two simultaneously running installations.
 
 | Capture | Bytes / lines | Timestamp range as logged | SHA-256 |
 | --- | --- | --- | --- |
@@ -173,9 +175,9 @@ The application response is distinct from fragment/hub acknowledgement. `SendMes
 
 The pnsvc capture ends at the second post. There is no subsequent removal event for the test in the supplied files. Removal, reconnect reconciliation, full-sync operation 3, permission-denied behavior, DRM notification GET, dismissal, reply and desktop display remain unverified by this experiment.
 
-The next check can read only `identity.id` from the existing Linux state file, whose schema and default path are defined in [auth/state/store.go](../../auth/state/store.go). Comparing that identity with peer A requires no service restart, login, token refresh or enrollment change. Use the running session's selected state path if it overrides the default; do not publish the full state file.
+The proposed identity check was to read only `identity.id` from the existing Linux state file, whose schema and default path are defined in [auth/state/store.go](../../auth/state/store.go), and compare it with peer A. This needs no service restart, login, token refresh or enrollment change. Use the running session's selected state path if it overrides the default; do not publish the full state file.
 
-## Follow-up validation questions
+## Follow-up questions from this investigation
 
 | Question | Evidence needed |
 | --- | --- |
@@ -189,11 +191,11 @@ The next check can read only `identity.id` from the existing Linux state file, w
 | Are dismiss and replies complete? | Correlate request response, subsequent removal or app reply result; distinguish cached-action, expired and canceled-intent cases |
 | What does Windows render? | Notification-specific assemblies or a direct Windows test of initial sync, updates, dismiss and actions |
 
-The owner performed the two-post experiment recorded above; no additional device or Microsoft-service probes were executed here. Use the existing [research method](method.md) for subsequent experiments and record their acknowledgement boundaries. Keep credentials, private notification contents and raw captures outside the repository.
+No additional device or Microsoft-service probes were executed for this investigation. Use the [research method](method.md) for subsequent experiments and record acknowledgement boundaries. Keep credentials, private notification contents and raw captures outside the repository.
 
 ## Provenance and source map
 
-The user supplied both archives. SHA-256 identifies the ZIP itself, including its supplied extraction contents; it does not attest the extraction tool's correctness. This investigation read selected JADX Java, resource schemas/manifest and Windows C# files. The Android archive also contains APKs; the original bytecode was not disassembled in this pass. No third-party source corpus or binary is imported into this repository.
+The owner supplied both archives. SHA-256 identifies each ZIP, including its supplied extraction contents; it does not attest the extraction tool's correctness. The investigation inspected selected JADX Java, resource schemas/manifest and Windows C# files. The Android archive also contains APKs; their bytecode was not disassembled in this pass. No third-party source corpus or binary is imported into this repository.
 
 | Archive | SHA-256 | Version evidence |
 | --- | --- | --- |

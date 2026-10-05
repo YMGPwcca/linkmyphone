@@ -2,9 +2,9 @@
 
 [Documentation index](../README.md)
 
-The executable is `linkmyphone`. Go's standard flag parser is used for each command, so put flags before positional IDs, for example `feature get --state PATH ID` and `feature update --enabled true ID`.
+The executable is `linkmyphone`. Each command uses Go's standard flag parser: put flags before positional IDs, as in `feature get --state PATH ID` and `feature update --enabled true ID`.
 
-Run `linkmyphone help` for the top-level list. Commands return a non-zero status on invalid arguments or an operational failure. Secrets and clipboard contents are intentionally omitted from probe output.
+Run `linkmyphone help` for the command list. Invalid arguments and operational failures return a non-zero status. Probe output omits secrets and clipboard contents.
 
 ## Choose a command
 
@@ -53,13 +53,13 @@ All duration and TTL values must be positive. Probe flags must precede any comma
 
 ## Feature registry
 
-The default feature registry path is `~/.config/linkmyphone/features.json` through the platform user config directory. This `--state` is separate from the authentication state path used by `run` and the probes.
+The default registry is `~/.config/linkmyphone/features.json` under the platform user config directory. For `feature` commands, `--state` selects this registry, not the authentication state used by `run` and probes.
 
 | Flag | Default | Effect |
 | --- | --- | --- |
 | `--state PATH` | Platform user config plus `linkmyphone/features.json` | Feature registry path. |
 
-Use these forms:
+Command forms:
 
 ```text
 linkmyphone feature list [--state PATH]
@@ -101,7 +101,7 @@ A live command uses the Unix control socket. If the socket is absent, refused, o
 | `--session-open-timeout DURATION` | `2m` | Deadline for one complete auth/trust/relay/wake/SessionValidation attempt. |
 | `--refresh-margin DURATION` | `2m` | Renew before earliest token expiry; capped at 20% of token lifetime. |
 
-Timeout, TTL and recovery values must be positive, and the maximum backoff must be at least the minimum. At startup, `run` reserves the feature store's control socket, opens the host and starts enabled modules before reporting readiness. Both `run` and `clipboard-sync` use [automatic recovery](../operations/session-recovery.md). Use one runtime per feature store.
+Timeout, TTL, and recovery values must be positive; maximum backoff must be at least the minimum. At startup, `run` reserves the feature store's control socket, opens the host, and starts enabled modules before reporting readiness. Both `run` and `clipboard-sync` use [automatic recovery](../operations/session-recovery.md). Run one runtime per feature store.
 
 ## Compatibility clipboard command
 
@@ -112,7 +112,7 @@ Timeout, TTL and recovery values must be positive, and the maximum backoff must 
 | `--poll-interval DURATION` | `500ms` | MIME observation interval on rich providers; fallback polling interval on text-only providers. It must be between `50ms` and `60s`. |
 | `--publish-initial` | `false` | Publishes the current Linux clipboard on each module start, including after recovery. |
 
-The host flags are `--state`, `--app-version`, `--ring`, `--os-version`, `--target`, `--signalr-timeout`, `--wake-timeout`, `--wake-ttl`, `--request-timeout`, `--reconnect-min-delay`, `--reconnect-max-delay`, `--session-open-timeout`, and `--refresh-margin`, with the `run` defaults above.
+The inherited host flags are `--state`, `--app-version`, `--ring`, `--os-version`, `--target`, `--signalr-timeout`, `--wake-timeout`, `--wake-ttl`, `--request-timeout`, `--reconnect-min-delay`, `--reconnect-max-delay`, `--session-open-timeout`, and `--refresh-margin`, with the `run` defaults above.
 
 Unlike `run`, `clipboard-sync` also copies `--request-timeout` into its in-memory clipboard configuration. That value must satisfy the module's 100 through 120000 millisecond range.
 
