@@ -153,6 +153,28 @@ func TestDecoderPreservesEmptyTypedArrays(t *testing.T) {
 	}
 }
 
+func TestPeekStringSkipsForeignImageAndUsesLastContentType(t *testing.T) {
+	foreign := variantWithField(tUInt8Array, appendBytesField(nil, 21, make([]byte, maxArray+1)))
+	payload := appMapEntry("image_bytes", foreign)
+	for _, kind := range []string{"notifications", "copypaste_metadata"} {
+		value, err := Marshal(ValueSet{"contentType": kind})
+		if err != nil {
+			t.Fatal(err)
+		}
+		payload = append(payload, value...)
+	}
+	kind, found, err := PeekString(payload, "contentType")
+	if err != nil || !found || kind != "copypaste_metadata" {
+		t.Fatalf("peek kind=%q found=%t error=%v", kind, found, err)
+	}
+	if _, err := Unmarshal(payload); !errors.Is(err, ErrMalformed) {
+		t.Fatalf("full decode accepted oversized binary field: %v", err)
+	}
+	if _, _, err := PeekString([]byte{0x0a}, "contentType"); !errors.Is(err, ErrMalformed) {
+		t.Fatalf("truncated metadata accepted: %v", err)
+	}
+}
+
 func FuzzUnmarshalBounded(f *testing.F) {
 	f.Add([]byte(nil))
 	f.Add([]byte{0x0a, 0x00})

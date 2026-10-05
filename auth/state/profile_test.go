@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-func TestLegacyStateKeepsCrossDeviceAndPhoneLinkPersists(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "state.json")
+func TestLegacyMissingProfileRemainsCrossDevice(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.json")
 	if err := os.WriteFile(path, []byte(`{"version":1,"logicalDeviceId":"old"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -18,17 +18,6 @@ func TestLegacyStateKeepsCrossDeviceAndPhoneLinkPersists(t *testing.T) {
 	}
 	if legacy.ClientProfile != dcgheaders.ProfileCrossDevice || legacy.LogicalDeviceID != "old" {
 		t.Fatalf("legacy identity changed: %#v", legacy)
-	}
-	legacy.ClientProfile = dcgheaders.ProfilePhoneLink
-	if err := Save(path, legacy); err != nil {
-		t.Fatal(err)
-	}
-	resumed, err := Load(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resumed.ClientProfile != dcgheaders.ProfilePhoneLink || resumed.LogicalDeviceID != "old" {
-		t.Fatalf("resume changed enrollment: %#v", resumed)
 	}
 }
 

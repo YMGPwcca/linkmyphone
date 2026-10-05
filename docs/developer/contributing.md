@@ -4,7 +4,7 @@
 
 This page is the short path from an observed behavior to an owner, a focused change, and a reviewable pull request.
 
-The project goal is an independent, unofficial Phone Link client for Linux with broader phone–PC integration. Clipboard synchronization is the first implemented feature, not a restriction on contributions. Additional features should use the shared host and module contracts described below. Keep proposed functionality separate from implemented and validated support; see [current support and broader scope](../../README.md#current-support-and-broader-scope).
+LinkMyPhone is an independent, unofficial Phone Link client for Linux. Clipboard and Notifications are shipped modules. Add new features through the shared host and module contracts below, and describe untested behavior accurately in [current support](../../README.md#current-support-and-broader-scope).
 
 LinkMyPhone targets Linux with Go 1.23 or newer. Microsoft cloud services are part of the runtime path. Native clipboard synchronization also needs a supported desktop utility, such as `wl-paste` and `wl-copy` on Wayland, or `xclip` or `xsel` on X11.
 
@@ -28,7 +28,7 @@ The project is licensed under the [MIT License](../../LICENSE). There is no conf
 | Local JSON-over-Unix-socket requests and responses | `runtime/controlplane` | Microsoft or Hub Relay protocol |
 | Persistence plus live registry transactions | `cmd/linkmyphone/runtime_control.go` | Feature-domain behavior |
 | Builtin composition | `features/catalog.go` | Feature implementation details |
-| A feature's protocol, native resources, workers, matchers, queues, configuration, or diagnostics | The feature package, currently `features/clipboard` | Direct reads from `transport/relay.Client.Received()` |
+| A feature's protocol, native resources, workers, matchers, queues, configuration, or diagnostics | `features/clipboard` or `features/notifications` | Direct reads from `transport/relay.Client.Received()` |
 | Wire codecs | `protocol/` | Lifecycle or feature ownership |
 | WebSocket, SignalR, or relay transport | `transport/` | Feature routing decisions |
 | Identity, trust, state, or cloud startup | `auth/` and `bootstrap/` | Clipboard behavior |

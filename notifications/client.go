@@ -133,17 +133,43 @@ func (c *Client) Run(ctx context.Context) error {
 			if received.Source != c.cfg.Target || received.TransportMessageType != dcg.TransportMessageTypeApp {
 				continue
 			}
-			message, err := app.UnmarshalMessage(received.Payload)
+			envelope, err := app.UnmarshalEnvelope(received.Payload)
 			if err != nil {
-				c.event("malformed APP envelope", nil)
+				c.event("malformed APP envelope", map[string]string{"stage": "frame", "reason": err.Error()})
 				continue
 			}
-			route, _ := message.Header(platform.HeaderRoute)
+			route, _ := envelope.Header(platform.HeaderRoute)
 			if route == platform.RouteInternalResponse {
-				id, _ := message.Header(platform.HeaderOriginalRequestID)
-				c.complete(id, requestResult{values: message.Values})
-			} else if route == wire.RoutePhoneContent && message.Values["contentType"] == wire.ContentType {
-				if err := c.handleBatch(runCtx, received, message); err != nil {
+				id, _ := envelope.Header(platform.HeaderOriginalRequestID)
+				c.pendingMu.Lock()
+				_, pending := c.pending[id]
+				c.pendingMu.Unlock()
+				if !pending {
+					continue
+				}
+			} else if route != wire.RoutePhoneContent {
+				continue
+			}
+			if route == wire.RoutePhoneContent {
+				contentType, _, err := app.PeekString(envelope.Payload, "contentType")
+				if err != nil {
+					c.event("malformed APP envelope", map[string]string{"stage": "contentType", "reason": err.Error()})
+					continue
+				}
+				if contentType != wire.ContentType {
+					continue
+				}
+			}
+			values, err := app.Unmarshal(envelope.Payload)
+			if err != nil {
+				c.event("malformed APP envelope", map[string]string{"stage": "values", "reason": err.Error()})
+				continue
+			}
+			if route == platform.RouteInternalResponse {
+				id, _ := envelope.Header(platform.HeaderOriginalRequestID)
+				c.complete(id, requestResult{values: values})
+			} else if values["contentType"] == wire.ContentType {
+				if err := c.handleBatch(runCtx, received, app.Message{Headers: envelope.Headers, Values: values}); err != nil {
 					return err
 				}
 			}

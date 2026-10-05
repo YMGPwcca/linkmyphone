@@ -2,9 +2,7 @@
 
 [Documentation index](../README.md)
 
-LinkMyPhone aims to bring the Phone Link experience to Linux. This guide exercises its first implemented feature: clipboard synchronization, using the shared account, enrollment, and phone-session setup.
-
-Use this guide to create the Linux identity, select the linked phone, and start clipboard sync. The phone and Windows PC must already be linked in Microsoft Link to Windows / Phone Link under the Microsoft account you will use. The Linux host also needs a working network connection and, for clipboard sync, a graphical clipboard provider.
+LinkMyPhone uses one Phone Link (`phonelink` / PL) enrollment and one Microsoft device-code sign-in for clipboard and notifications on a fresh install. The phone must already be linked in Link to Windows under that account. Clipboard sync needs a graphical clipboard provider; notifications need Android notification access and a desktop notification service.
 
 LinkMyPhone does not discover or pair a new phone. It enrolls a Linux DCG identity, asks Microsoft for devices already linked to the account, and selects one of those peers.
 
@@ -42,7 +40,7 @@ Run the probe from the repository, or replace it with the installed binary:
 linkmyphone bootstrap-probe
 ```
 
-On a new state path, the command prints a Microsoft device-code verification URL and a one-time code. Open the URL in a browser, sign in with the account that owns the existing Link to Windows relationship, and wait for the command to continue. It then:
+On a new state path, the command prints a Microsoft device-code verification URL and a one-time code. Open the URL in a browser, sign in with the account that owns the existing Link to Windows relationship, and wait for the command to continue. The new enrollment uses PL, so clipboard and notifications can share the saved identity. It then:
 
 1. enrolls the Linux DCG device;
 2. saves the new identity and refresh credentials;
@@ -61,33 +59,19 @@ linkmyphone bootstrap-probe --state "$HOME/.config/linkmyphone-test/state.json"
 
 The other bootstrap flags are documented in the [CLI reference](../reference/cli.md). They change compatibility metadata sent to Microsoft's service. Keep their defaults unless a deployment-specific requirement gives you a reason to change them.
 
-### Separate Phone Link enrollment
+### Existing CrossDevice and trial Phone Link enrollments
 
-The default `crossdevice` profile preserves the existing WEA/clipboard identity. Full notification push uses a genuine `phonelink` (PL) enrollment, not a changed request body on an unrelated WEA identity:
+Old `state.json` files without `clientProfile` and explicitly enrolled `crossdevice` (WEA) states remain WEA. Resume never changes their identity or keys. They still support clipboard, but cannot receive full notification push. **Do not edit `clientProfile` or overwrite a WEA state with PL keys.**
 
-```bash
-linkmyphone bootstrap-probe --profile phonelink \
-  --state "$HOME/.config/linkmyphone-notifications/state.json"
-```
+If a PL trial state already exists, reuse its `--state` path for `bootstrap-probe` and `run` and enable **both** feature records in the same feature store. No second Microsoft sign-in or device enrollment is needed. Keep the old WEA state as a backup until clipboard and notifications on PL work for your phone; stop the old clipboard service before starting the combined runtime so two processes do not race to synchronize the clipboard. The feature store is independent of authentication: use `feature create`/`feature enable` against the store selected by `run --features-state`.
 
-Use a **new state path**. The CLI refuses to change the profile of an existing enrollment and requires an explicit state path for a new PL enrollment. The chosen profile is saved with its identity and determines the Microsoft OAuth client ID, DCG app ID and enrollment client type on every resume. Old state without `clientProfile` remains CrossDevice. Keep any working clipboard service and state separate during a notification trial; a new enrollment changes the account's device/trust list.
+If you have only a WEA enrollment, leave it intact. Full notifications require a *new* PL enrollment on another `--state` path (and one new device-code sign-in for that upgrade); one PL enrollment then serves both features on subsequent runs. New installations use PL without an extra sign-in. This is not an in-place upgrade of WEA trust or OAuth credentials.
 
-After enrollment, create a **separate** feature store and run the notification module with that PL state:
+Grant Link to Windows notification access on the phone and run a desktop notification service on Linux. If either is missing, or the phone connection fails, Notifications will not report Ready. New phone items update the matching desktop notification; phone removals close it. Items that were already on the phone stay quiet when the app starts unless you change `show_existing`.
 
-```bash
-linkmyphone feature create \
-  --state "$HOME/.config/linkmyphone-notifications/features.json" \
-  --enabled --config '{"remote_actions":false}' linkmyphone.notifications
-linkmyphone run \
-  --state "$HOME/.config/linkmyphone-notifications/state.json" \
-  --features-state "$HOME/.config/linkmyphone-notifications/features.json"
-```
+Set `remote_actions=true` if you want desktop dismissal, app buttons and confirmed replies to affect the phone. With it off, notifications are receive-only. Timeout and programmatic closes do not dismiss phone notifications. Reply needs Python GI/GTK4 and sends text only after you confirm it. A successful phone response means Android accepted the request; it does not prove a message reached its recipient. See [notification settings](../reference/configuration.md#notification-configuration) and [privacy](../operations/privacy-and-state.md#notifications).
 
-The initial trial is receive-only. The module requires a session D-Bus notification service and notification access granted to Link to Windows on the phone. Start fails rather than claiming Ready when the PL profile, permissions, typed APP connect or reconcile is unavailable. New items replace their desktop counterpart; phone removals close it. Existing/reconciled items are cached without startup alerts by default.
-
-Enable `remote_actions` only when you want desktop user dismissals and Android buttons/replies to affect the phone. Desktop expiry and programmatic close never dismiss the phone. Replies require Python GI/GTK4; the module exposes them only when available and submits only explicitly confirmed text. APP success for a launch/reply means Android accepted dispatch, not delivery to the recipient. See [notification configuration](../reference/configuration.md#notification-configuration) and [privacy](../operations/privacy-and-state.md#notifications).
-
-**Verification limit:** isolated PL enrollment, APP connect and S23 receive/reconcile passed. An authorized Android fixture verified phone dismissal, explicit-key clear, launch, action and Unicode/multiline reply. Real Messenger reply from the Quickshell/native GTK UI reached the user's second account with exact text. Restart recovered notifications created/updated while disconnected. Live permission revocation, forced network loss and prolonged recovery remain unverified.
+The owner signed in once on S23 and ran both modules together. Clipboard text moved in both directions; phone-to-Linux HTML and image copies also appeared in the runtime log. Phone notifications arrived on the desktop, and Like, reply and dismiss worked in the owner's Messenger test. The journal matched each desktop action with Android's response and the later notification removal. [Test results](../research/validation.md#notification-desktop-actions-on-unified-enrollment-2026-10-05) also list what has not been checked: permission revocation, forced network loss, long-running recovery and other phones.
 
 
 ## 2. Resume an existing enrollment
@@ -110,18 +94,17 @@ The selector applies only to devices returned by Microsoft's `DeviceInfoList`; i
 
 An explicit selector can match any linked peer returned by the service, including a non-Android device. That is selection behavior, not a compatibility guarantee. The recorded clipboard checks used an S23; other peer types are unvalidated.
 
-## 4. Create and run clipboard sync
+## 4. Enable clipboard and notifications in one runtime
 
-The modular runtime reads desired feature records from `features.json`. Create the built-in clipboard feature and request that it start:
+Create both built-in feature records in the **same** feature store, then run once with the **same** PL state:
 
 ```bash
 linkmyphone feature create --enabled linkmyphone.clipboard
+linkmyphone feature create --enabled --config '{"remote_actions":false}' linkmyphone.notifications
 linkmyphone run
 ```
 
-The option appears before the positional feature ID because the CLI uses Go's standard flag parser. `feature create` defaults to disabled when `--enabled` is omitted. `run` starts every enabled, available feature in the registry and keeps one shared Phone Link host session open.
-
-If the record already exists, inspect it with `feature get linkmyphone.clipboard` and enable it with `feature enable linkmyphone.clipboard` instead of creating it again.
+The option appears before the positional feature ID because the CLI uses Go's standard flag parser. `feature create` defaults to disabled when `--enabled` is omitted. `run` starts both modules on one shared Phone Link host session. If a record already exists, inspect it with `feature get ID` and enable it with `feature enable ID` instead of creating it again. For an existing PL state at another path, pass its path to `run --state PATH`; pass the same `--state FEATURE_PATH` to both feature commands and `--features-state FEATURE_PATH` to `run`.
 
 Check desired and live state from another terminal while the runtime is ready:
 

@@ -142,6 +142,16 @@ Service output goes to the user journal:
 journalctl --user -u linkmyphone.service --no-pager
 ```
 
+After you dismiss a notification on the desktop, the journal shows what happened at each step:
+
+```text
+Dismissed notification #41 on desktop. Asking the phone to remove it.
+Phone accepted dismissal of notification #41.
+Removed notification #41 after a phone update. 16 left.
+```
+
+The number is temporary and changes when the service restarts. A button press or reply gets its own line. The log never includes notification text, keys or reply text. "Phone accepted" means Android accepted the request; check the receiving app to confirm delivery of a reply.
+
 `service install`, `service start`, and `service restart` call `systemctl --user reset-failed` before launching. If you use `systemctl` directly after repeated failures, clear the rate limit first:
 
 ```bash

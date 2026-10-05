@@ -73,7 +73,7 @@ The state implementation and permission tests are [`auth/state/store.go`](../../
 
 Android notification text, icons and action descriptors arrive through Microsoft's relay and are held in a bounded in-memory cache. LinkMyPhone does not persist notification history or log notification bodies, keys, icons or reply text. The desktop notification server, accessibility tools, receiving applications and crash handlers may retain their own copies.
 
-Desktop dismissal and confirmed replies can affect the phone when `remote_actions` is true; a receive-only trial sets it false. An isolated PL enrollment changes the Microsoft account's device/trust list but must not replace working CrossDevice state. Turning the feature off closes its local notifications and cancels requests/windows; it never clears phone notifications.
+Desktop dismissal and confirmed replies can affect the phone when `remote_actions` is true; a receive-only trial sets it false. Fresh PL enrollment adds one Microsoft account device/trust entry for both clipboard and notifications. An existing WEA identity must be preserved during a separate PL upgrade; changing `clientProfile` does not migrate it. Turning the feature off closes its local notifications and cancels requests/windows; it never clears phone notifications.
 
 
 ### Clipboard

@@ -19,7 +19,7 @@ linkmyphone run \
   --features-state "$HOME/.config/linkmyphone/features.json"
 ```
 
-Keep each profile in its own directory. Saving authentication state changes its parent directory to `0700`, including an existing directory. Avoid placing a custom state file in a shared directory.
+Keep each separately enrolled identity in its own directory. Saving authentication state changes its parent directory to `0700`, including an existing directory. Avoid placing a custom state file in a shared directory. A fresh installation enrolls PL at the default path; an existing WEA state remains WEA and must not be relabeled. The same PL state and one feature store can serve clipboard and notifications.
 
 ## Authentication state
 
@@ -145,7 +145,7 @@ The compatibility command's `--poll-interval` and `--publish-initial` flags cons
 
 ## Notification configuration
 
-`linkmyphone.notifications` requires an isolated `phonelink` enrollment, granted phone notification permission and a desktop session bus service implementing `org.freedesktop.Notifications`.
+`linkmyphone.notifications` requires a genuine `phonelink` enrollment, granted phone notification permission and a desktop session bus service implementing `org.freedesktop.Notifications`. It can share the PL host session with `linkmyphone.clipboard`; legacy WEA state is preserved for clipboard-only operation.
 
 | Property | Type and range | Default | Effect |
 | --- | --- | --- | --- |

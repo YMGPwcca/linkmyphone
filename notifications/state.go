@@ -44,6 +44,8 @@ func (c *Client) reconcileState() ([]string, []int64) {
 func (c *Client) applyBatch(ctx context.Context, batch wire.Batch) error {
 	c.stateMu.Lock()
 	defer c.stateMu.Unlock()
+	removedCount := 0
+	var removedRef uint64
 	for _, operation := range batch.Operations {
 		switch operation.Type {
 		case wire.OperationNew, wire.OperationExisting:
@@ -51,22 +53,35 @@ func (c *Client) applyBatch(ctx context.Context, batch wire.Batch) error {
 				return err
 			}
 		case wire.OperationRemove:
+			if record := c.records[operation.Key]; record != nil {
+				removedCount++
+				removedRef = record.revision
+			}
 			if err := c.remove(ctx, operation.Key); err != nil {
 				return err
 			}
 		case wire.OperationSessionChange:
 			// Android keys contain the notification-listener session identifier.
 			// Windows removes entries whose keys do not contain the announced session.
-			for key := range c.records {
+			for key, record := range c.records {
 				if !strings.Contains(key, operation.Key) {
 					if err := c.remove(ctx, key); err != nil {
 						return err
 					}
+					removedCount++
+					removedRef = record.revision
 				}
 			}
 		}
 	}
-	c.event("notification state synchronized", map[string]string{"operations": strconv.Itoa(len(batch.Operations)), "items": strconv.Itoa(len(c.records))})
+	fields := map[string]string{"operations": strconv.Itoa(len(batch.Operations)), "items": strconv.Itoa(len(c.records))}
+	if removedCount > 0 {
+		fields["removed"] = strconv.Itoa(removedCount)
+		if removedCount == 1 {
+			fields["removed_record_ref"] = strconv.FormatUint(removedRef, 10)
+		}
+	}
+	c.event("notification state synchronized", fields)
 	return nil
 }
 
@@ -240,7 +255,7 @@ func (c *Client) resetDesktop(ctx context.Context, available bool) error {
 			}
 		}
 	}
-	c.event("desktop notification service reset", nil)
+	c.event("desktop notification service reset", map[string]string{"available": strconv.FormatBool(available)})
 	return nil
 }
 

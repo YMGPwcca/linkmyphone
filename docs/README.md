@@ -2,22 +2,23 @@
 
 [LinkMyPhone](../README.md) · [CLI reference](reference/cli.md) · [Troubleshooting](operations/troubleshooting.md)
 
-LinkMyPhone is an independent, unofficial Phone Link client for Linux. The project aims for broader phone–PC integration; clipboard synchronization is its first implemented feature, not its full scope.
+LinkMyPhone is an independent, unofficial Phone Link client for Linux. It syncs clipboard text, HTML and images and shows phone notifications on the desktop.
 
-The usage guides cover what works today: a command-line client with bidirectional plain-text, HTML and image clipboard synchronization. See [current support and broader scope](../README.md#current-support-and-broader-scope) for the distinction between the project goal and available features.
+These guides cover sign-in, clipboard transfers and notification actions and replies. See [current support](../README.md#current-support-and-broader-scope) for features that are not yet implemented.
 
 ## Start with your task
 
 | You want to… | Start here | Continue with |
 | --- | --- | --- |
 | Understand the project goal and current support | [Project overview](../README.md) | [Architecture](architecture/overview.md) |
-| Sync your first clipboard | [Installation](getting-started/installation.md) | [First run](getting-started/first-run.md) |
-| Run it every day | [Session recovery](operations/session-recovery.md) | Reconnect, token renewal, interruption behavior and remaining live checks. |
-| [systemd service](operations/systemd.md) | [Clipboard behavior](user-guide/clipboard.md) |
+| Set up clipboard and notifications | [Installation](getting-started/installation.md) | [First run](getting-started/first-run.md) |
+| Keep it running in the background | [systemd service](operations/systemd.md) | [Session recovery](operations/session-recovery.md) |
+| Check clipboard formats | [Clipboard behavior](user-guide/clipboard.md) | [Privacy and local state](operations/privacy-and-state.md) |
+| Set up notification actions and replies | [First run](getting-started/first-run.md#4-enable-clipboard-and-notifications-in-one-runtime) | [Notification settings](reference/configuration.md#notification-configuration) |
 | Change the client | [Source map](developer/source-map.md) | [Contributing](developer/contributing.md) |
 | Understand the protocol | [Authentication](protocol/authentication.md) | [Transport](protocol/transport.md) · [Clipboard messages](protocol/clipboard.md) |
 
-Need one option? Use [CLI](reference/cli.md) or [configuration](reference/configuration.md). Check the [glossary](reference/glossary.md) for unfamiliar terms.
+For commands and options, see the [CLI reference](reference/cli.md) and [configuration](reference/configuration.md). The [glossary](reference/glossary.md) explains unfamiliar terms.
 
 ## Browse the library
 

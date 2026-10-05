@@ -2,9 +2,11 @@ package notifications
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -243,14 +245,130 @@ func TestOldDesktopActionAndRemovedReplyCannotMutateUpdatedPhoneItem(t *testing.
 	}
 }
 
+func TestPhoneMutationAcknowledgementsIdentifyOperationWithoutContent(t *testing.T) {
+	c, native, transport := newFixtureClient(t)
+	c.ready = true
+	apply(t, c, wire.OperationNew, item("secret-conversation-a", "text", 10))
+	second := item("secret-conversation-b", "text", 20)
+	second.Actions = append(second.Actions, wire.Action{Name: "Like", Index: 1})
+	apply(t, c, wire.OperationNew, second)
+	events := make(chan map[string]string, 8)
+	desktop := make(chan map[string]string, 1)
+	removals := make(chan map[string]string, 1)
+	c.cfg.OnEvent = func(_ string, fields map[string]string) {
+		if fields["operation"] != "" {
+			events <- fields
+		}
+		if fields["remote_request"] != "" {
+			desktop <- fields
+		}
+		if fields["removed_record_ref"] != "" {
+			removals <- fields
+		}
+	}
+	cancel, done := startClient(t, c)
+	defer stopClient(t, cancel, done)
+
+	checkAccepted := func(expected string) map[string]string {
+		t.Helper()
+		select {
+		case fields := <-events:
+			if fields["operation"] != expected || fields["outcome"] != "accepted" {
+				t.Fatalf("accepted operation=%#v, want %q", fields, expected)
+			}
+			for _, value := range fields {
+				if strings.Contains(value, "secret") {
+					t.Fatal("notification identity or reply text leaked to event fields")
+				}
+			}
+			return fields
+		case <-time.After(time.Second):
+			t.Fatalf("accepted %s request was not reported", expected)
+			return nil
+		}
+	}
+	ack := func(expected string, invoke func() error) {
+		t.Helper()
+		result := make(chan error, 1)
+		go func() { result <- invoke() }()
+		respond(t, transport, sentWithin(t, transport), app.ValueSet{"result": int32(0)})
+		select {
+		case err := <-result:
+			if err != nil {
+				t.Fatalf("%s request: %v", expected, err)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("%s request did not finish", expected)
+		}
+		checkAccepted(expected)
+	}
+
+	native.events <- NativeEvent{Kind: NativeClosed, ID: 1, Reason: 2}
+	request := sentWithin(t, transport)
+	var local map[string]string
+	select {
+	case local = <-desktop:
+		if local["remote_request"] != "true" || local["record_ref"] == "" {
+			t.Fatalf("desktop dismissal intent not traceable: %#v", local)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("desktop dismissal intent was not reported")
+	}
+	respond(t, transport, request, app.ValueSet{"result": int32(0)})
+	dismissed := checkAccepted("dismiss")
+	if dismissed["record_ref"] != local["record_ref"] {
+		t.Fatalf("desktop request and phone acknowledgement are not correlated: %#v %#v", local, dismissed)
+	}
+	if dismissed["record_ref"] == "" {
+		t.Fatal("dismissal cannot be correlated with phone removal")
+	}
+	if err := c.applyBatch(context.Background(), wire.Batch{Operations: []wire.Operation{{
+		Type: wire.OperationRemove, Key: "secret-conversation-a",
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case fields := <-removals:
+		if fields["removed"] != "1" || fields["removed_record_ref"] != dismissed["record_ref"] {
+			t.Fatalf("phone removal does not correlate with dismissed notification: %#v", fields)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("phone removal was not reported")
+	}
+	ack("clear", func() error { return c.Clear(context.Background(), []string{"secret-conversation-b"}) })
+	ack("launch", func() error { return c.Action(context.Background(), "secret-conversation-b", -1, nil) })
+	ack("button", func() error { return c.Action(context.Background(), "secret-conversation-b", 1, nil) })
+	reply := "secret-message"
+	ack("reply", func() error { return c.Action(context.Background(), "secret-conversation-b", 4, &reply) })
+
+	rejected := make(chan error, 1)
+	go func() { rejected <- c.Dismiss(context.Background(), "secret-conversation-b") }()
+	respond(t, transport, sentWithin(t, transport), app.ValueSet{"result": int32(1)})
+	if err := <-rejected; err == nil {
+		t.Fatal("phone rejection was treated as successful dismissal")
+	}
+	select {
+	case fields := <-events:
+		t.Fatalf("phone rejection produced success event: %#v", fields)
+	default:
+	}
+}
+
 func TestExpirationAndProgrammaticCloseNeverDismissPhone(t *testing.T) {
 	for _, reason := range []uint32{1, 3} {
 		t.Run(fmt.Sprint(reason), func(t *testing.T) {
 			c, _, transport := newFixtureClient(t)
 			c.ready = true
 			apply(t, c, wire.OperationNew, item("one", "text", 10))
+			dismissLogged := false
+			c.cfg.OnEvent = func(_ string, fields map[string]string) {
+				dismissLogged = dismissLogged || fields["remote_request"] != ""
+			}
 			if err := c.handleNative(context.Background(), NativeEvent{Kind: NativeClosed, ID: 1, Reason: reason}); err != nil {
 				t.Fatal(err)
+			}
+			if dismissLogged {
+				t.Fatal("non-user close was reported as a desktop dismissal")
 			}
 			keys, _ := c.reconcileState()
 			if len(keys) != 1 || keys[0] != "one" {
@@ -282,6 +400,151 @@ func TestReceiveOnlyAndOngoingCannotSendPhoneMutations(t *testing.T) {
 	case mutation := <-transport.sent:
 		t.Fatalf("forbidden mutation sent: %#v", mutation)
 	default:
+	}
+}
+
+func TestOtherAPPRouteDoesNotMasqueradeAsMalformedNotification(t *testing.T) {
+	c, native, transport := newFixtureClient(t)
+	events := make(chan string, 8)
+	c.cfg.OnEvent = func(message string, _ map[string]string) { events <- message }
+	cancel, done := startClient(t, c)
+	defer stopClient(t, cancel, done)
+
+	// DeviceProxyMessageReceiver accepts JSON on this APP route, not PBValueSet.
+	other, err := platform.MarshalWithHeaderCount(platform.Message{
+		Headers: []platform.Header{{Key: platform.HeaderRoute, Value: "/DeviceProxyClient/TransportMiddleware"}},
+		Payload: []byte(`{"parameters":{"commandContent":"open"}}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport.received <- relay.Received{Source: "phone", TransportMessageType: dcg.TransportMessageTypeApp, Payload: other}
+
+	value := item("one", "text", 10)
+	body, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := app.MarshalMessage(app.NewRequest(wire.RoutePhoneContent, "push", app.ValueSet{
+		"contentType": "notifications", "notificationKeys": []string{"one"},
+		"operations": []int32{wire.OperationNew}, "notifications": []string{string(body)},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport.received <- relay.Received{Source: "phone", TransportMessageType: dcg.TransportMessageTypeApp, Payload: payload}
+	if response := sentWithin(t, transport); response.message.Values["result"] != int32(0) {
+		t.Fatalf("notification after unrelated APP message rejected: %#v", response)
+	}
+	native.mu.Lock()
+	rendered := native.renderCount
+	native.mu.Unlock()
+	if rendered != 1 {
+		t.Fatalf("following notification rendered %d times", rendered)
+	}
+	for {
+		select {
+		case event := <-events:
+			if event == "malformed APP envelope" {
+				t.Fatal("non-notification APP route logged as malformed notification")
+			}
+		default:
+			return
+		}
+	}
+}
+
+func TestSharedPhoneContentRouteSkipsLargeClipboardImage(t *testing.T) {
+	c, native, transport := newFixtureClient(t)
+	events := make(chan string, 8)
+	c.cfg.OnEvent = func(message string, _ map[string]string) { events <- message }
+	cancel, done := startClient(t, c)
+	defer stopClient(t, cancel, done)
+
+	// Android's copy metadata has image_bytes on the same route as
+	// notifications. Put it before contentType to cover unordered map entries.
+	variant := binary.AppendUvarint(nil, 8)     // PBVariant type field
+	variant = binary.AppendUvarint(variant, 18) // UInt8Array
+	variant = appendPBBytes(variant, 21, make([]byte, 4097))
+	entry := appendPBBytes(nil, 1, []byte("image_bytes"))
+	entry = appendPBBytes(entry, 2, variant)
+	body := appendPBBytes(nil, 1, entry)
+	kind, err := app.Marshal(app.ValueSet{"contentType": "copypaste_metadata"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = append(body, kind...)
+	frame, err := platform.MarshalWithHeaderCount(platform.Message{
+		Headers: []platform.Header{{Key: platform.HeaderRoute, Value: wire.RoutePhoneContent}},
+		Payload: body,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport.received <- relay.Received{Source: "phone", TransportMessageType: dcg.TransportMessageTypeApp, Payload: frame}
+	pushBatch(t, transport, "notification", "", item("one", "text", 10))
+	if response := sentWithin(t, transport); response.message.Values["result"] != int32(0) {
+		t.Fatalf("notification after clipboard image rejected: %#v", response)
+	}
+	native.mu.Lock()
+	rendered := native.renderCount
+	native.mu.Unlock()
+	if rendered != 1 {
+		t.Fatalf("subsequent notification rendered %d times", rendered)
+	}
+	for {
+		select {
+		case event := <-events:
+			if event == "malformed APP envelope" {
+				t.Fatal("clipboard image on shared APP route logged as malformed notification")
+			}
+		default:
+			return
+		}
+	}
+}
+
+func appendPBBytes(dst []byte, field uint64, value []byte) []byte {
+	dst = binary.AppendUvarint(dst, field<<3|2)
+	dst = binary.AppendUvarint(dst, uint64(len(value)))
+	return append(dst, value...)
+}
+
+func TestMalformedNotificationAPPReportsDecodeStage(t *testing.T) {
+	c, _, transport := newFixtureClient(t)
+	events := make(chan map[string]string, 1)
+	c.cfg.OnEvent = func(message string, fields map[string]string) {
+		if message == "malformed APP envelope" {
+			events <- fields
+		}
+	}
+	cancel, done := startClient(t, c)
+	defer stopClient(t, cancel, done)
+	body, err := app.Marshal(app.ValueSet{"contentType": wire.ContentType})
+	if err != nil {
+		t.Fatal(err)
+	}
+	variant := binary.AppendUvarint(nil, 8)
+	variant = binary.AppendUvarint(variant, 18)
+	variant = appendPBBytes(variant, 21, make([]byte, 4097))
+	entry := appendPBBytes(nil, 1, []byte("invalid_image"))
+	entry = appendPBBytes(entry, 2, variant)
+	body = appendPBBytes(body, 1, entry)
+	payload, err := platform.MarshalWithHeaderCount(platform.Message{
+		Headers: []platform.Header{{Key: platform.HeaderRoute, Value: wire.RoutePhoneContent}},
+		Payload: body,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport.received <- relay.Received{Source: "phone", TransportMessageType: dcg.TransportMessageTypeApp, Payload: payload}
+	select {
+	case fields := <-events:
+		if fields["stage"] != "values" || fields["reason"] == "" {
+			t.Fatalf("malformed notification lacks diagnostic stage: %#v", fields)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("malformed notification payload was silently ignored")
 	}
 }
 

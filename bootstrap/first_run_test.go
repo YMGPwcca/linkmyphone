@@ -14,9 +14,9 @@ import (
 	"github.com/YMGPwcca/linkmyphone/auth/msa"
 	authstate "github.com/YMGPwcca/linkmyphone/auth/state"
 	"github.com/YMGPwcca/linkmyphone/dcgheaders"
+	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
 	"github.com/YMGPwcca/linkmyphone/transport/relay"
 	signalrtransport "github.com/YMGPwcca/linkmyphone/transport/signalr"
-	servicedcg "github.com/YMGPwcca/linkmyphone/services/dcg"
 )
 
 func TestBootstrapFirstRunStagesOneThroughFour(t *testing.T) {
@@ -53,6 +53,16 @@ func TestBootstrapFirstRunStagesOneThroughFour(t *testing.T) {
 			})
 
 		case "/DeviceAuthProxy/EnrollDevice":
+			if r.Header.Get("DCG-AppId") != dcgheaders.PhoneLinkAppID {
+				t.Fatalf("enrollment app id=%q", r.Header.Get("DCG-AppId"))
+			}
+			var request servicedcg.EnrollRequest
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Fatal(err)
+			}
+			if request.Metadata.ClientType != "PL" {
+				t.Fatalf("enrollment client type=%q", request.Metadata.ClientType)
+			}
 			if r.Header.Get("Dcg-Token") != "dcg-general" {
 				t.Fatalf("Dcg-Token=%q", r.Header.Get("Dcg-Token"))
 			}
@@ -132,7 +142,8 @@ func TestBootstrapFirstRunStagesOneThroughFour(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.MSARefreshToken != "msa-refresh" ||
+	if saved.ClientProfile != dcgheaders.ProfilePhoneLink ||
+		saved.MSARefreshToken != "msa-refresh" ||
 		saved.ServicesToken.Token != "dcg-general" ||
 		len(saved.TrustRelationships) != 2 ||
 		saved.LogicalDeviceID == "" {

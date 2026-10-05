@@ -4,7 +4,7 @@
 
 Use this page when you are adding, changing, or removing a builtin. It covers the manifest and configuration contract, lifecycle states, dependency rules, capability publication, and the ownership expected from a feature package.
 
-The feature runtime is an in-process registry around a small, business-agnostic kernel. Shipped definitions are `linkmyphone.clipboard` and experimental `linkmyphone.notifications`, registered by [`features/catalog.go`](../../features/catalog.go). A feature package owns its domain behavior. The kernel must not gain feature-specific routes, and feature packages must not import one another directly.
+The feature runtime is an in-process registry around a small, business-agnostic kernel. Shipped definitions are `linkmyphone.clipboard` and `linkmyphone.notifications`, registered by [`features/catalog.go`](../../features/catalog.go). A feature package owns its domain behavior. The kernel must not gain feature-specific routes, and feature packages must not import one another directly.
 
 ## Contract at a glance
 

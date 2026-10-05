@@ -89,21 +89,32 @@ func MarshalMessage(m Message) ([]byte, error) {
 	return platform.MarshalWithHeaderCount(platform.Message{Version: platform.Version1, Headers: m.Headers, Payload: payload})
 }
 
-func UnmarshalMessage(wire []byte) (Message, error) {
+// UnmarshalEnvelope validates APP framing and headers without assuming that
+// every APP route carries PBValueSet. The returned payload belongs to the
+// decoded frame; callers select a route before decoding its body.
+func UnmarshalEnvelope(wire []byte) (platform.Message, error) {
 	if len(wire) > maxWire+maxHeader*2*maxHeaderText+maxHeader*8+17 {
-		return Message{}, fmt.Errorf("%w: envelope too large", ErrMalformed)
+		return platform.Message{}, fmt.Errorf("%w: envelope too large", ErrMalformed)
 	}
 	outer, err := platform.Unmarshal(wire)
 	if err != nil {
-		return Message{}, fmt.Errorf("%w: envelope: %v", ErrMalformed, err)
+		return platform.Message{}, fmt.Errorf("%w: envelope: %v", ErrMalformed, err)
 	}
 	if len(outer.Headers) > maxHeader {
-		return Message{}, fmt.Errorf("%w: too many headers", ErrMalformed)
+		return platform.Message{}, fmt.Errorf("%w: too many headers", ErrMalformed)
 	}
 	for _, h := range outer.Headers {
 		if len(h.Key) > maxHeaderText || len(h.Value) > maxHeaderText {
-			return Message{}, fmt.Errorf("%w: header too large", ErrMalformed)
+			return platform.Message{}, fmt.Errorf("%w: header too large", ErrMalformed)
 		}
+	}
+	return outer, nil
+}
+
+func UnmarshalMessage(wire []byte) (Message, error) {
+	outer, err := UnmarshalEnvelope(wire)
+	if err != nil {
+		return Message{}, err
 	}
 	values, err := Unmarshal(outer.Payload)
 	if err != nil {
@@ -151,6 +162,60 @@ func Unmarshal(wire []byte) (ValueSet, error) {
 	return unmarshalSet(wire, 0)
 }
 
+// PeekString inspects one top-level PBValueSet string without decoding the
+// other values. APP routes can share a PBValueSet envelope while carrying
+// large binary content belonging to another feature.
+func PeekString(wire []byte, key string) (string, bool, error) {
+	if len(wire) > maxWire {
+		return "", false, fmt.Errorf("%w: payload too large", ErrMalformed)
+	}
+	var result string
+	found := false
+	for off, entries := 0, 0; off < len(wire); entries++ {
+		if entries >= maxEntries {
+			return "", false, fmt.Errorf("%w: too many entries", ErrMalformed)
+		}
+		tag, n, err := readVarint(wire, off)
+		if err != nil {
+			return "", false, err
+		}
+		off += n
+		field, wt := int(tag>>3), int(tag&7)
+		if field == 0 {
+			return "", false, fmt.Errorf("%w: field zero", ErrMalformed)
+		}
+		if field != 1 {
+			skip, err := skipWire(wire, off, wt)
+			if err != nil {
+				return "", false, err
+			}
+			off += skip
+			continue
+		}
+		if wt != 2 {
+			return "", false, fmt.Errorf("%w: map entry wire type", ErrMalformed)
+		}
+		entry, used, err := readBytes(wire, off)
+		if err != nil {
+			return "", false, err
+		}
+		off += used
+		name, encoded, err := splitEntry(entry)
+		if err != nil {
+			return "", false, err
+		}
+		if string(name) != key {
+			continue
+		}
+		value, err := unmarshalVariant(encoded, 0)
+		if err != nil {
+			return "", false, err
+		}
+		result, found = value.(string)
+	}
+	return result, found, nil
+}
+
 func unmarshalSet(wire []byte, depth int) (ValueSet, error) {
 	if depth > maxDepth || len(wire) > maxWire {
 		return nil, fmt.Errorf("%w: depth or size limit", ErrMalformed)
@@ -196,52 +261,59 @@ func unmarshalSet(wire []byte, depth int) (ValueSet, error) {
 }
 
 func unmarshalEntry(wire []byte, depth int) (string, any, error) {
-	var key string
-	var value []byte
+	key, value, err := splitEntry(wire)
+	if err != nil {
+		return "", nil, err
+	}
+	v, err := unmarshalVariant(value, depth)
+	return string(key), v, err
+}
+
+func splitEntry(wire []byte) ([]byte, []byte, error) {
+	var key, value []byte
 	gotKey, gotValue := false, false
 	for off := 0; off < len(wire); {
 		tag, n, err := readVarint(wire, off)
 		if err != nil {
-			return "", nil, err
+			return nil, nil, err
 		}
 		off += n
 		switch int(tag >> 3) {
 		case 1:
 			if tag&7 != 2 {
-				return "", nil, fmt.Errorf("%w: map key wire type", ErrMalformed)
+				return nil, nil, fmt.Errorf("%w: map key wire type", ErrMalformed)
 			}
 			b, used, err := readBytes(wire, off)
 			if err != nil {
-				return "", nil, err
+				return nil, nil, err
 			}
 			off += used
 			if len(b) > maxString {
-				return "", nil, fmt.Errorf("%w: key too large", ErrMalformed)
+				return nil, nil, fmt.Errorf("%w: key too large", ErrMalformed)
 			}
-			key, gotKey = string(b), true
+			key, gotKey = b, true
 		case 2:
 			if tag&7 != 2 {
-				return "", nil, fmt.Errorf("%w: map value wire type", ErrMalformed)
+				return nil, nil, fmt.Errorf("%w: map value wire type", ErrMalformed)
 			}
 			b, used, err := readBytes(wire, off)
 			if err != nil {
-				return "", nil, err
+				return nil, nil, err
 			}
 			off += used
 			value, gotValue = b, true
 		default:
 			skip, err := skipWire(wire, off, int(tag&7))
 			if err != nil {
-				return "", nil, err
+				return nil, nil, err
 			}
 			off += skip
 		}
 	}
 	if !gotKey || !gotValue {
-		return "", nil, fmt.Errorf("%w: incomplete map entry", ErrMalformed)
+		return nil, nil, fmt.Errorf("%w: incomplete map entry", ErrMalformed)
 	}
-	v, err := unmarshalVariant(value, depth)
-	return key, v, err
+	return key, value, nil
 }
 
 const (
