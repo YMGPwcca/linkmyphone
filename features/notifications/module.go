@@ -63,7 +63,8 @@ func (m *Module) Start(ctx context.Context, raw json.RawMessage, reporter kernel
 		Info:           wire.LocalInfo{DisplayName: "LinkMyPhone", AppVersion: m.session.AppVersion, InstallationID: m.session.InstallationID, RingName: m.session.RingName},
 		RequestTimeout: cfg.RequestTimeout(), RemoteActions: cfg.RemoteActions, ShowExisting: cfg.ShowExisting, ReplyEnabled: reply,
 		OnEvent: func(message string, fields map[string]string) {
-			kernel.Report(reporter, kernel.Event{ModuleID: m.manifest.ID, Level: "info", Message: message, Fields: fields})
+			text, details := notificationLogText(message, fields)
+			kernel.Report(reporter, kernel.Event{ModuleID: m.manifest.ID, Level: "info", Message: text, Fields: details})
 		},
 	})
 	if err != nil {
@@ -99,8 +100,84 @@ func (m *Module) Start(ctx context.Context, raw json.RawMessage, reporter kernel
 		return nil, errors.New("notifications module: client stopped during startup")
 	default:
 	}
-	kernel.Report(reporter, kernel.Event{ModuleID: m.manifest.ID, Level: "info", Message: "notification APP session ready", Fields: map[string]string{"ecr": fmt.Sprint(status.ECR), "remote_actions": fmt.Sprint(cfg.RemoteActions), "reply": fmt.Sprint(reply)}})
+	mode := "Phone actions are off."
+	if cfg.RemoteActions {
+		mode = "You can dismiss them from the desktop."
+		if native.SupportsActions() {
+			mode = "You can dismiss them or use app buttons."
+		}
+		if reply {
+			mode = "You can dismiss them, use app buttons or reply."
+		}
+	}
+	readyMessage := "Connected to phone notifications. " + mode
+	if !status.ECR {
+		readyMessage += " Synced existing items."
+	}
+	kernel.Report(reporter, kernel.Event{ModuleID: m.manifest.ID, Level: "info", Message: readyMessage})
 	return instance, nil
+}
+
+// notificationLogText renders feature events for the journal. The client keeps
+// structured fields so callers can correlate a desktop action, phone response
+// and later removal without logging Android notification keys or reply text.
+func notificationLogText(message string, fields map[string]string) (string, map[string]string) {
+	ref := fields["record_ref"]
+	switch message {
+	case "desktop notification dismissed":
+		if fields["remote_request"] == "true" {
+			return fmt.Sprintf("Dismissed notification #%s on desktop. Asking the phone to remove it.", ref), nil
+		}
+		return fmt.Sprintf("Dismissed notification #%s on desktop. Nothing was sent to the phone.", ref), nil
+	case "phone accepted notification request":
+		switch fields["operation"] {
+		case "dismiss":
+			return fmt.Sprintf("Phone accepted dismissal of notification #%s.", ref), nil
+		case "clear":
+			if fields["count"] == "1" {
+				return "Phone accepted a request to clear one notification.", nil
+			}
+			return fmt.Sprintf("Phone accepted a request to clear %s notifications.", fields["count"]), nil
+		case "launch":
+			return fmt.Sprintf("Phone accepted a request to open notification #%s.", ref), nil
+		case "button":
+			return fmt.Sprintf("Phone accepted a button press on notification #%s.", ref), nil
+		case "reply":
+			return fmt.Sprintf("Phone accepted a reply to notification #%s.", ref), nil
+		}
+	case "notification state synchronized":
+		items := fields["items"]
+		if removedRef := fields["removed_record_ref"]; removedRef != "" {
+			return fmt.Sprintf("Removed notification #%s after a phone update. %s left.", removedRef, items), nil
+		}
+		if removed := fields["removed"]; removed != "" {
+			return fmt.Sprintf("Removed %s notifications after a phone update. %s left.", removed, items), nil
+		}
+		if fields["operations"] == "1" {
+			return fmt.Sprintf("Phone notifications updated. %s in sync.", items), nil
+		}
+		return fmt.Sprintf("Phone sent %s notification changes. %s in sync.", fields["operations"], items), nil
+	case "desktop notification action failed":
+		return "Could not complete a notification action: " + fields["reason"], nil
+	case "notification reply failed":
+		return "Could not send the reply: " + fields["reason"], nil
+	case "malformed APP envelope":
+		return "Could not read a phone message: " + fields["reason"], nil
+	case "notification push lacks request correlation":
+		return "Ignored a phone notification update without a request ID.", nil
+	case "malformed notification batch rejected":
+		return "Rejected a phone notification update with invalid data.", nil
+	case "notification batch failed":
+		return "Could not apply a phone notification update: " + fields["reason"], nil
+	case "notification state budget evicted oldest item":
+		return "Notification cache is full. Dropped the oldest item on Linux; the phone was not changed.", nil
+	case "desktop notification service reset":
+		if fields["available"] == "true" {
+			return "Desktop notifications are available again. Restored visible items.", nil
+		}
+		return "Desktop notifications are unavailable. Keeping phone items until they return.", nil
+	}
+	return message, fields
 }
 
 type instance struct {

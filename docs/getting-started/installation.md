@@ -4,7 +4,7 @@
 
 LinkMyPhone is an independent, unofficial Phone Link client for Linux, written in Go. It aims to bring the Phone Link experience to Linux through interoperability with Microsoft's Phone Link and Link to Windows ecosystem, rather than remain a clipboard-only tool.
 
-The current implementation is command-line based and uses Microsoft's cloud services. It includes bidirectional text, HTML and image clipboard synchronization and an experimental notification module. This guide installs their desktop prerequisites; it does not imply full Phone Link feature parity. See [current support and broader scope](../../README.md#current-support-and-broader-scope).
+LinkMyPhone runs from the command line and uses Microsoft's cloud services. It syncs clipboard text, HTML and images and shows phone notifications on the desktop. You can dismiss notifications, use app buttons and reply when the app allows it. This guide covers the desktop requirements. Other Phone Link features are still missing; see [current support](../../README.md#current-support-and-broader-scope).
 
 LinkMyPhone is independent and unofficial, with no Microsoft affiliation, endorsement, or sponsorship. Microsoft, Phone Link, and Link to Windows are trademarks of the Microsoft group of companies.
 
@@ -83,9 +83,9 @@ For received HTML to offer both rich formatting and plain text to applications, 
 sudo pacman -S --needed wl-clipboard gtk4 python-gobject
 ```
 
-Notification reception additionally needs a desktop session bus and a running `org.freedesktop.Notifications` service. Android actions require native action support; replies use the same Python GI/GTK4 packages. Missing GTK disables reply controls/capability without substituting a fake reply backend.
+Phone notifications need notification access for Link to Windows and a desktop service implementing `org.freedesktop.Notifications`. App buttons need action support from that service. Replies also need Python GI/GTK4; without it, notifications still arrive but reply buttons are unavailable.
 
-Fresh installs enroll once as Phone Link (PL) for clipboard and notifications. Existing CrossDevice (WEA) states remain unchanged; select an existing PL state or enroll a new PL identity on another path before enabling full notification push. See [one-login setup and safe cutover](first-run.md#existing-crossdevice-and-trial-phone-link-enrollments) and [validation limits](../research/validation.md#notification-validation-2026-10-04).
+Fresh installs sign in once as Phone Link (PL) for clipboard and notifications. Existing CrossDevice (WEA) state stays unchanged. To add notifications to an older installation, use an existing PL state or enroll a new one at a separate path. See [first-run steps](first-run.md#existing-crossdevice-and-trial-phone-link-enrollments) and [what was tested](../research/validation.md#notification-desktop-actions-on-unified-enrollment-2026-10-05).
 
 
 Existing `phonelink-linux` installations can reuse their enrollment through `--state "$HOME/.config/phonelink-linux/state.json"`. Stop `phonelink-linux.service` before starting a test binary, and invoke the newly built executable explicitly; running the old installed command does not test the new code. See [clipboard behavior](../user-guide/clipboard.md) for supported image codecs and limits.

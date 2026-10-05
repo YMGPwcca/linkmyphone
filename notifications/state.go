@@ -255,7 +255,7 @@ func (c *Client) resetDesktop(ctx context.Context, available bool) error {
 			}
 		}
 	}
-	c.event("desktop notification service reset", nil)
+	c.event("desktop notification service reset", map[string]string{"available": strconv.FormatBool(available)})
 	return nil
 }
 

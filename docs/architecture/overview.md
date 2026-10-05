@@ -4,7 +4,7 @@
 
 LinkMyPhone is an independent, unofficial Phone Link client for Linux, written in Go 1.23+. Its goal is broader phone–PC integration through interoperability with Microsoft Phone Link and Link to Windows, not a clipboard-only application.
 
-Microsoft cloud services provide authentication, device trust, signed peer wake, SignalR Hub Relay, and the PLATFORM/APP transports. The repository ships `linkmyphone.clipboard` and experimental `linkmyphone.notifications` modules on a shared host session. Fresh enrollment defaults to Phone Link (PL) so one device-code sign-in can start both; existing CrossDevice (WEA) states remain clipboard-only without identity reclassification. See [current support and broader scope](../../README.md#current-support-and-broader-scope) and [validation limits](../research/validation.md#unified-pl-enrollment-2026-10-05).
+The runtime shares one Phone Link session between Clipboard and Notifications. Microsoft cloud services handle sign-in, device trust, wake and relay traffic. New installations enroll as Phone Link (PL) after one device-code sign-in; existing CrossDevice (WEA) states still support Clipboard only. See [current support](../../README.md#current-support-and-broader-scope) and [test results](../research/validation.md#unified-pl-enrollment-2026-10-05).
 
 Use this page to answer three questions quickly:
 

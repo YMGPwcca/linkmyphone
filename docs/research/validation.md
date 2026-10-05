@@ -23,7 +23,7 @@ PR [#9](https://github.com/YMGPwcca/linkmyphone/pull/9) merged notification sync
 
 With the existing PL state, `session-probe --context-probe` reached S23 clipboard STATUS and CONTENT with matching correlation IDs. The probe answered FEATURE_ON and declined CONTENT, **sending no clipboard bytes**. In a separate combined runtime, both `linkmyphone.clipboard` and `linkmyphone.notifications` reached Ready in one host generation. Clipboard FEATURE_ON returned status 1; notifications APP connect reported `ecr=true` and reconciled six items with remote actions disabled. `feature get` reported both records Ready, epoch 1, and exposed clipboard text/HTML/image and notification receive capabilities.
 
-Linux `go test -race ./...`, `go vet ./...` and CLI build passed on the isolated build tree; focused bootstrap/CLI/state tests passed after the final test cleanup. Tests assert the fresh enrollment's `PL` metadata/app ID, persisted profile and refusal to reclassify an existing WEA path. No fresh Microsoft device-code login was performed for this change; the real run reused the existing PL identity.
+Linux `go test -race ./...`, `go vet ./...` and CLI build passed on the isolated build tree. Focused bootstrap/CLI/state tests passed after test cleanup. Those initial checks reused an existing PL identity rather than asking the owner to sign in again; the owner later completed a fresh single-login enrollment and tested the two modules together, as recorded below.
 
 Bidirectional plain-text delivery also passed while **both modules were Ready on the PL state** and the old WEA service was stopped. A temporary Android foreground fixture set a harmless test string; the PL runtime reported `phone -> Linux applied clipboard (bytes=28)` and the Linux selection's SHA-256 matched the fixture string. A second harmless Linux selection produced `Linux -> phone published clipboard (bytes=33)`; the foreground Android fixture compared the received clipboard to the expected value and logged `PC_TO_PHONE_MATCH` without printing it. This validates both directions on this S23 with its existing Windows pairing; HTML/image and other phones under PL remain untested. The earlier source concern remains a compatibility risk in other connection-sharing configurations, not a failure observed here.
 
@@ -40,9 +40,12 @@ On the next owner-run, copying an image on S23 produced `malformed APP envelope 
 
 ## Notification desktop actions on unified enrollment (2026-10-05)
 
-The owner exercised Like, a Messenger inline reply and desktop dismissal with remote actions enabled on the fresh one-login PL state. The owner supplied a screenshot showing the Like reaction and the sent reply, and confirmed that dismissal worked. The pre-fix journal contained two generic `phone accepted notification action dispatch` events and notification state removals but **no dismissal success event**; the absence of that event was a logging gap, not evidence that the owner's dismissal failed.
+On a fresh PL login, the S23 Messenger test showed a Like reaction, a reply and a dismissed notification. The tester confirmed all three and supplied screenshots. The old journal recorded two generic action acknowledgements and phone removals, but no successful dismiss line. Dismiss worked; the log was missing.
 
-An offline regression now verifies one desktop user-dismiss event, a successful typed Android result for dismiss, distinct success events for clear/launch/button/reply, and a following phone removal with the same per-process `record_ref`. Non-user closes and rejected phone results cannot produce a false success event. A throwaway in-process smoke emitted the three stages with only operation, outcome, record reference and removal count; no key or reply text. This change improves future observability; it cannot retroactively identify the previous journal entries.
+Journal lines now use a short number such as #41 to follow one notification. An offline test checks desktop dismissal, Android acceptance, phone removal, button presses and replies. A rejected request cannot appear as accepted. Notification keys and message text stay out of the log. Old journal lines remain unchanged.
+
+Notifications are marked **Supported** for the tested S23/CachyOS/Wayland setup. Receiving, Like, reply and dismissal passed there. Other phones, permission revocation, token expiry and long-running recovery have not been tested.
+
 
 ## Notification validation (2026-10-04)
 
@@ -73,7 +76,7 @@ Implementation on `feature/notification-sync`; source corpus: Phone Link 1.26072
 | Preserved device settings | Only the authorized fixture app/notification state was changed through ADB. Link to Windows notification-listener permission, phone network, account, Knox and bootloader were not modified. Permission loss remains an automated-test result. |
 | Cleanup | Temporary Android fixture was uninstalled after clearing only its own notifications. Test runtimes exited cleanly; diagnostic scripts/APK/key material were removed. Existing clipboard service remained active with its original identity digest. |
 
-Automation limits: the initial virtual-input prerequisite was resolved by starting a temporary daemon on a private user socket. Messenger reply mouse interaction and GTK Escape/Ctrl+Enter are now verified. Pointer-driven Quickshell dismissal remains distinct from the verified reply flow; global clear was not invoked because it would affect personal notifications. Notification status remains **Experimental**: live permission revocation, forced network loss, long-running recovery and broader device coverage remain unverified. Phone Wi-Fi was never disabled; ADB itself uses that connection.
+Automation limits for this 2026-10-04 run: the virtual-input prerequisite was resolved by starting a temporary daemon on a private user socket. Messenger reply mouse interaction and GTK Escape/Ctrl+Enter were verified; pointer-driven Quickshell dismissal was not yet verified at that date, but the later owner-run above confirms it. Global clear was not invoked because it would affect personal notifications. Live permission revocation, forced network loss, long-running recovery and broader device coverage remain unverified. Phone Wi-Fi was never disabled; ADB itself uses that connection.
 
 
 ## Clipboard validation (2026-10-03)

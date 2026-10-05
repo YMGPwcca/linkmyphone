@@ -2,7 +2,7 @@
 
 An independent, unofficial Phone Link client for Linux.
 
-LinkMyPhone connects Linux to an Android phone through Microsoft's Phone Link services. It implements clipboard sync for text, HTML and images, and an experimental notification module with desktop forwarding, dismissal, Android actions and native replies.
+LinkMyPhone connects Linux to an Android phone through Microsoft's Phone Link services. It supports clipboard sync for text, HTML and images, plus notification forwarding, dismissal, Android actions and native replies.
 
 [Get started](docs/getting-started/installation.md) · [Documentation](docs/README.md) · [Protocol and research](docs/research/README.md)
 
@@ -15,21 +15,22 @@ LinkMyPhone connects Linux to an Android phone through Microsoft's Phone Link se
 
 *Current clipboard sync path.*
 
-The current implementation is a reverse-engineered, command-line client supporting bidirectional text, HTML and image clipboard synchronization. A personal Microsoft account and an internet connection are required.
+The current implementation is a reverse-engineered, command-line client for bidirectional clipboard sync and desktop notifications. A personal Microsoft account and an internet connection are required.
 
 LinkMyPhone is an independent, unofficial project, not affiliated with, endorsed by, or sponsored by Microsoft. Microsoft, Phone Link, and Link to Windows are trademarks of the Microsoft group of companies.
 
 > [!NOTE]
 >
-> Experimental. Clipboard sync and recovery after network loss or suspend have been tested on a Samsung Galaxy S23 with CachyOS/Wayland. Testing across token expiry and several hours of use is still open. [Test results](docs/research/validation.md).
+> Tested on a Samsung Galaxy S23 with CachyOS/Wayland. Clipboard reconnects after network loss or suspend. Desktop Like, reply and dismissal were also verified. Token expiry, long runs and other phones have not been tested. [Test results](docs/research/validation.md).
 
-## Try the current clipboard feature
+## Try clipboard and notifications
 
 You need:
 
 - Linux, Git, and Go 1.23 or newer.
 - `wl-clipboard` on Wayland, or `xclip` on X11 (`xsel` is a text-only fallback).
-- Optional Python 3 with PyGObject and GTK4 for HTML offers with a plain-text fallback.
+- A desktop notification service and notification access for Link to Windows on the phone.
+- Optional Python 3 with PyGObject and GTK4 for HTML offers with a plain-text fallback and notification replies.
 - Link to Windows on an Android phone, signed into the same personal Microsoft account.
 
 ### 1. Build
@@ -54,31 +55,32 @@ Follow the device-code instructions printed in the terminal.
 
 > [!WARNING]
 >
-> Clipboard selections are sent through Microsoft's services, including any secrets you copy while sync is enabled. Keep `state.json` private: it contains refresh credentials and private keys. [Privacy and local state](docs/operations/privacy-and-state.md).
+> Clipboard selections are sent through Microsoft's services, including any secrets you copy while sync is enabled. Enabling notification actions also lets desktop dismissal and replies affect the phone. Keep `state.json` private: it contains refresh credentials and private keys. [Privacy and local state](docs/operations/privacy-and-state.md).
 
 ```bash
 ./linkmyphone feature create --enabled linkmyphone.clipboard
+./linkmyphone feature create --enabled linkmyphone.notifications
 ./linkmyphone run
 ```
 
-Wait for `Modular runtime is running`, then copy fresh, non-sensitive text, formatted HTML or an image and try pasting on the other device. The existing clipboard is not published at startup by default. Press Ctrl+C to stop.
+Wait for `Modular runtime is running`, then copy fresh, non-sensitive text, formatted HTML or an image and try pasting on the other device. New phone notifications appear on the desktop; existing items do not raise startup alerts by default. The existing clipboard is not published at startup by default. Press Ctrl+C to stop.
 
 <details>
 <summary>Already enrolled, or choosing a specific phone?</summary>
 
-Enable an existing clipboard feature record instead of creating it again. If several Android peers are linked, select one explicitly:
+Enable existing feature records instead of creating them again. If several Android peers are linked, select one explicitly:
 
 ```bash
 ./linkmyphone run --target "PHONE_NAME"
 ```
 
-The [first-run guide](docs/getting-started/first-run.md) covers resuming a profile, target selection, and checking both clipboard directions.
+The [first-run guide](docs/getting-started/first-run.md) covers resuming a profile, target selection, clipboard sync and notification setup.
 
 </details>
 
 ## Current support and broader scope
 
-The table tracks the current implementation. Clipboard is working; the other Phone Link features are listed below.
+The table tracks implemented features and distinguishes them from broader Phone Link capabilities.
 
 | Feature / Area | Status | Current implementation details |
 | :--- | :---: | :--- |
@@ -92,7 +94,7 @@ The table tracks the current implementation. Clipboard is working; the other Pho
 | **Rich text & HTML clipboard** | Supported | Bidirectional HTML fragments; optional GTK4 provider also offers plain text. Rich formatting is supported through HTML, not a separate RTF codec. |
 | **Image clipboard** | Supported | Bidirectional PNG transfer with JPEG/GIF/BMP input normalization. Incoming dimensions are preserved; only outbound images are resized to fit 1 MiB. |
 | **Session recovery & refresh** | Partial | Network-loss and suspend recovery tested. Token-expiry and extended operation still need [testing](docs/operations/session-recovery.md). |
-| **Notifications** | Experimental | APP push/reconcile, native D-Bus notifications, dismissal, Android actions and GTK4 replies. New installations use one PL login/session for clipboard and notifications; existing WEA state is preserved. S23 fixture mutations and real Messenger reply delivery verified. [Setup](docs/getting-started/first-run.md#existing-crossdevice-and-trial-phone-link-enrollments). |
+| **Notifications** | Supported | Shows Android notifications on the desktop. You can dismiss them, use app buttons and reply when the app allows it. One PL sign-in also runs Clipboard. Tested on S23/CachyOS/Wayland; other phones, permission revocation and long-running recovery remain untested. [Set up notifications](docs/getting-started/first-run.md#existing-crossdevice-and-trial-phone-link-enrollments) · [See test results](docs/research/validation.md#notification-desktop-actions-on-unified-enrollment-2026-10-05). |
 | **Messages (SMS / RCS)** | Not implemented | Reading SMS/RCS conversations, sending text messages, and MMS media attachments. |
 | **Calls & Audio** | Not implemented | Incoming/outgoing call notifications, dialer, and in-call Bluetooth/relay audio routing. |
 | **Photos & Media** | Not implemented | Android camera roll browsing, photo synchronization, and media caching. |
