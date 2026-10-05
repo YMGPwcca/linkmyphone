@@ -11,6 +11,7 @@ This page records manual device tests and automated checks. Older results come f
 | Sign-in, enrollment and device trust | Working with the linked S23. |
 | Relay, wake and SessionValidation | Passed on S23/Wayland. |
 | Text, HTML and image clipboard | Paste tested in both directions. |
+| Notification sync and one-login PL enrollment | **Supported** on S23/CachyOS/Wayland. Like, reply and desktop dismissal worked; [see the laptop test](#notification-desktop-actions-on-unified-enrollment-2026-10-05). |
 | Network loss and suspend | Recovery passed without restarting the process. |
 | Feature CRUD and systemd service | Lifecycle checks passed on CachyOS/Wayland. Recovery under the updated service unit still needs testing. |
 | Token renewal | Scheduling and persistence tests pass; a run across actual token expiry is still open. |
@@ -40,11 +41,11 @@ On the next owner-run, copying an image on S23 produced `malformed APP envelope 
 
 ## Notification desktop actions on unified enrollment (2026-10-05)
 
-On a fresh PL login, the S23 Messenger test showed a Like reaction, a reply and a dismissed notification. The tester confirmed all three and supplied screenshots. The old journal recorded two generic action acknowledgements and phone removals, but no successful dismiss line. Dismiss worked; the log was missing.
+The laptop enrolled as Phone Link (PL) after one Microsoft sign-in. Clipboard and Notifications both reached Ready in the same service. In the S23 Messenger test, the desktop Like button used notification #39, reply used #40 and dismissal used #41. Android accepted the requests and sent a removal for each notification. The chat screenshots and the tester's confirmation show the Like and reply appeared and dismissal worked.
 
 Journal lines now use a short number such as #41 to follow one notification. An offline test checks desktop dismissal, Android acceptance, phone removal, button presses and replies. A rejected request cannot appear as accepted. Notification keys and message text stay out of the log. Old journal lines remain unchanged.
 
-Notifications are marked **Supported** for the tested S23/CachyOS/Wayland setup. Receiving, Like, reply and dismissal passed there. Other phones, permission revocation, token expiry and long-running recovery have not been tested.
+Notification sync and one-login PL enrollment are **Supported** for the tested S23/CachyOS/Wayland setup. [PR #10](https://github.com/YMGPwcca/linkmyphone/pull/10) merged the work into `main`; [CI](https://github.com/YMGPwcca/linkmyphone/actions/runs/37276711700) passed vet, build, the full race suite and X11 clipboard checks. The updated laptop service stayed Ready, and the clipboard text survived its restart unchanged. Other phones, permission revocation, token expiry and long-running recovery have not been tested.
 
 
 ## Notification validation (2026-10-04)
