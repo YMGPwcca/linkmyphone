@@ -42,7 +42,7 @@ You need:
 - `wl-clipboard` on Wayland, or `xclip` on X11. `xsel` is a text-only fallback.
 - A desktop notification service and notification access for Link to Windows on the phone.
 - Link to Windows on an Android phone, signed in to the same personal Microsoft account.
-- Optional Python 3, PyGObject and GTK4 for rich HTML clipboard offers and notification replies; without them, HTML falls back to plain text.
+- Optional Python 3, PyGObject and GTK4 let incoming HTML offer both formatting and plain text to applications, and enable notification replies. Without them, HTML is offered as HTML only; text-only paste targets may not accept it.
 
 ### Build
 

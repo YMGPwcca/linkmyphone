@@ -11,7 +11,7 @@ The catalog registers two in-process modules: clipboard synchronization and Andr
 
 ## Catalog and module boundaries
 
-[`features/catalog.go`](catalog.go) builds a `kernel.Definition` for each module: its manifest, default configuration, validator and factory. The catalog resolves only implementations compiled into the program. Add or remove a catalog entry with its feature package; do not add feature-specific branches to the kernel or phone host.
+[`features/catalog.go`](catalog.go) builds a `features.Definition` for each module: its manifest, default configuration, validator and factory. The catalog resolves only implementations compiled into the program. Add or remove a catalog entry with its feature package; do not add feature-specific branches to the kernel or phone host.
 
 Each feature owns its protocol and native resources. Modules subscribe to the shared `phonehost.Session` through matcher-scoped endpoints; they do not read the raw relay stream. Manifests declare potential capabilities and requested permissions, but permissions are metadata—not authorization or sandboxing. The runtime does not isolate in-process modules.
 

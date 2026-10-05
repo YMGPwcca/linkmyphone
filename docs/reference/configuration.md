@@ -154,7 +154,7 @@ The compatibility command's `--poll-interval` and `--publish-initial` flags cons
 | `remote_actions` | Boolean | `true` | Permit explicit desktop dismissal, Android action buttons, launch and confirmed reply. Set false for a receive-only trial. |
 | `show_existing` | Boolean | `false` | Render existing/reconciled items with the suppress-sound hint; false avoids startup/recovery floods. The hint does not guarantee that a server hides its popup. |
 
-The [notification schema](../../features/notifications/config.schema.json) rejects unknown properties, non-object values, and trailing JSON. The optional reply UI uses Python GI/GTK4. Missing GTK or native action support removes reply capabilities/buttons, not notification reception. Each new host generation reconciles from fresh memory without replaying pending mutations.
+The [notification schema](../../features/notifications/config.schema.json) documents the accepted shape; the feature's Go validator rejects unknown properties, non-object values, trailing JSON and out-of-range timeouts. The optional reply UI uses Python GI/GTK4. Missing GTK or native action support removes reply capabilities/buttons, not notification reception. Each new host generation reconciles from fresh memory without replaying pending mutations.
 
 State is limited to 4096 items and 32 MiB of estimated retained content. When that budget is exhausted, the oldest item is evicted locally and reported in diagnostics; eviction never dismisses it on the phone. Desktop service loss invalidates native IDs and cancels replies. A new owner silently replays previously visible/pending items. See [`notifications/`](../../notifications/) and [`features/notifications/`](../../features/notifications/).
 
