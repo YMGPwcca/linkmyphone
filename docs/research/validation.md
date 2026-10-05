@@ -38,6 +38,12 @@ APP is multiplexed by `_route`. The supplied Windows `DeviceProxyMessageReceiver
 On the next owner-run, copying an image on S23 produced `malformed APP envelope (reason=malformed app values: byte array limit, stage=values)` after Notification had already reached Ready. This is separate from a malformed frame: Android's active `ContentTransferClipboardMessage` puts image bytes in `image_bytes` and identifies the legacy APP payload as `copypaste_metadata`; its PL multicast uses the shared `/legacy/phonecontent` route. The notification client still attempted full PBValueSet decode before checking `contentType`, so a valid clipboard byte array over its 4096-byte *notification decoder* limit triggered a false warning. A 4097-byte independent fixture on the shared route reproduced the warning before the fix and passes after bounded top-level `contentType` inspection. Only `notifications` content is fully decoded; the existing byte-array limit and error report remain for malformed notification payloads. The exact live image frame was not captured, and no phone copy was rerun for this verification.
 
 
+## Notification desktop actions on unified enrollment (2026-10-05)
+
+The owner exercised Like, a Messenger inline reply and desktop dismissal with remote actions enabled on the fresh one-login PL state. The owner supplied a screenshot showing the Like reaction and the sent reply, and confirmed that dismissal worked. The pre-fix journal contained two generic `phone accepted notification action dispatch` events and notification state removals but **no dismissal success event**; the absence of that event was a logging gap, not evidence that the owner's dismissal failed.
+
+An offline regression now verifies one desktop user-dismiss event, a successful typed Android result for dismiss, distinct success events for clear/launch/button/reply, and a following phone removal with the same per-process `record_ref`. Non-user closes and rejected phone results cannot produce a false success event. A throwaway in-process smoke emitted the three stages with only operation, outcome, record reference and removal count; no key or reply text. This change improves future observability; it cannot retroactively identify the previous journal entries.
+
 ## Notification validation (2026-10-04)
 
 Implementation on `feature/notification-sync`; source corpus: Phone Link 1.26072.257.0 and active Link to Windows 1.26082.130.0. No Microsoft source, application assemblies or captured personal notification payloads are tracked in the repository.

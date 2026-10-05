@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -244,14 +245,130 @@ func TestOldDesktopActionAndRemovedReplyCannotMutateUpdatedPhoneItem(t *testing.
 	}
 }
 
+func TestPhoneMutationAcknowledgementsIdentifyOperationWithoutContent(t *testing.T) {
+	c, native, transport := newFixtureClient(t)
+	c.ready = true
+	apply(t, c, wire.OperationNew, item("secret-conversation-a", "text", 10))
+	second := item("secret-conversation-b", "text", 20)
+	second.Actions = append(second.Actions, wire.Action{Name: "Like", Index: 1})
+	apply(t, c, wire.OperationNew, second)
+	events := make(chan map[string]string, 8)
+	desktop := make(chan map[string]string, 1)
+	removals := make(chan map[string]string, 1)
+	c.cfg.OnEvent = func(_ string, fields map[string]string) {
+		if fields["operation"] != "" {
+			events <- fields
+		}
+		if fields["remote_request"] != "" {
+			desktop <- fields
+		}
+		if fields["removed_record_ref"] != "" {
+			removals <- fields
+		}
+	}
+	cancel, done := startClient(t, c)
+	defer stopClient(t, cancel, done)
+
+	checkAccepted := func(expected string) map[string]string {
+		t.Helper()
+		select {
+		case fields := <-events:
+			if fields["operation"] != expected || fields["outcome"] != "accepted" {
+				t.Fatalf("accepted operation=%#v, want %q", fields, expected)
+			}
+			for _, value := range fields {
+				if strings.Contains(value, "secret") {
+					t.Fatal("notification identity or reply text leaked to event fields")
+				}
+			}
+			return fields
+		case <-time.After(time.Second):
+			t.Fatalf("accepted %s request was not reported", expected)
+			return nil
+		}
+	}
+	ack := func(expected string, invoke func() error) {
+		t.Helper()
+		result := make(chan error, 1)
+		go func() { result <- invoke() }()
+		respond(t, transport, sentWithin(t, transport), app.ValueSet{"result": int32(0)})
+		select {
+		case err := <-result:
+			if err != nil {
+				t.Fatalf("%s request: %v", expected, err)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("%s request did not finish", expected)
+		}
+		checkAccepted(expected)
+	}
+
+	native.events <- NativeEvent{Kind: NativeClosed, ID: 1, Reason: 2}
+	request := sentWithin(t, transport)
+	var local map[string]string
+	select {
+	case local = <-desktop:
+		if local["remote_request"] != "true" || local["record_ref"] == "" {
+			t.Fatalf("desktop dismissal intent not traceable: %#v", local)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("desktop dismissal intent was not reported")
+	}
+	respond(t, transport, request, app.ValueSet{"result": int32(0)})
+	dismissed := checkAccepted("dismiss")
+	if dismissed["record_ref"] != local["record_ref"] {
+		t.Fatalf("desktop request and phone acknowledgement are not correlated: %#v %#v", local, dismissed)
+	}
+	if dismissed["record_ref"] == "" {
+		t.Fatal("dismissal cannot be correlated with phone removal")
+	}
+	if err := c.applyBatch(context.Background(), wire.Batch{Operations: []wire.Operation{{
+		Type: wire.OperationRemove, Key: "secret-conversation-a",
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case fields := <-removals:
+		if fields["removed"] != "1" || fields["removed_record_ref"] != dismissed["record_ref"] {
+			t.Fatalf("phone removal does not correlate with dismissed notification: %#v", fields)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("phone removal was not reported")
+	}
+	ack("clear", func() error { return c.Clear(context.Background(), []string{"secret-conversation-b"}) })
+	ack("launch", func() error { return c.Action(context.Background(), "secret-conversation-b", -1, nil) })
+	ack("button", func() error { return c.Action(context.Background(), "secret-conversation-b", 1, nil) })
+	reply := "secret-message"
+	ack("reply", func() error { return c.Action(context.Background(), "secret-conversation-b", 4, &reply) })
+
+	rejected := make(chan error, 1)
+	go func() { rejected <- c.Dismiss(context.Background(), "secret-conversation-b") }()
+	respond(t, transport, sentWithin(t, transport), app.ValueSet{"result": int32(1)})
+	if err := <-rejected; err == nil {
+		t.Fatal("phone rejection was treated as successful dismissal")
+	}
+	select {
+	case fields := <-events:
+		t.Fatalf("phone rejection produced success event: %#v", fields)
+	default:
+	}
+}
+
 func TestExpirationAndProgrammaticCloseNeverDismissPhone(t *testing.T) {
 	for _, reason := range []uint32{1, 3} {
 		t.Run(fmt.Sprint(reason), func(t *testing.T) {
 			c, _, transport := newFixtureClient(t)
 			c.ready = true
 			apply(t, c, wire.OperationNew, item("one", "text", 10))
+			dismissLogged := false
+			c.cfg.OnEvent = func(_ string, fields map[string]string) {
+				dismissLogged = dismissLogged || fields["remote_request"] != ""
+			}
 			if err := c.handleNative(context.Background(), NativeEvent{Kind: NativeClosed, ID: 1, Reason: reason}); err != nil {
 				t.Fatal(err)
+			}
+			if dismissLogged {
+				t.Fatal("non-user close was reported as a desktop dismissal")
 			}
 			keys, _ := c.reconcileState()
 			if len(keys) != 1 || keys[0] != "one" {

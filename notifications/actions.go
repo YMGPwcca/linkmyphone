@@ -16,8 +16,10 @@ func (c *Client) Dismiss(ctx context.Context, key string) error {
 		err = errors.New("notifications: ongoing notification cannot be dismissed")
 	}
 	var guards []mutationGuard
+	var revision uint64
 	if err == nil {
-		guards = []mutationGuard{{key: key, revision: c.records[key].revision, clearable: true}}
+		revision = c.records[key].revision
+		guards = []mutationGuard{{key: key, revision: revision, clearable: true}}
 	}
 	c.stateMu.Unlock()
 	if err != nil {
@@ -32,6 +34,11 @@ func (c *Client) Dismiss(ctx context.Context, key string) error {
 		return err
 	}
 	_, err = c.request(ctx, wire.RouteNotifications, values, guards)
+	if err == nil {
+		c.event("phone accepted notification request", map[string]string{
+			"operation": "dismiss", "outcome": "accepted", "record_ref": strconv.FormatUint(revision, 10),
+		})
+	}
 	return err
 }
 
@@ -67,6 +74,11 @@ func (c *Client) Clear(ctx context.Context, keys []string) error {
 		return err
 	}
 	_, err = c.request(ctx, wire.RouteNotifications, values, guards)
+	if err == nil {
+		c.event("phone accepted notification request", map[string]string{
+			"operation": "clear", "outcome": "accepted", "count": strconv.Itoa(len(keys)),
+		})
+	}
 	return err
 }
 
@@ -113,7 +125,15 @@ func (c *Client) action(ctx context.Context, key string, revision uint64, index 
 	}
 	_, err = c.request(ctx, wire.RouteNotifications, values, []mutationGuard{{key: key, revision: revision}})
 	if err == nil {
-		c.event("phone accepted notification action dispatch", nil)
+		operation := "button"
+		if reply != nil {
+			operation = "reply"
+		} else if index < 0 {
+			operation = "launch"
+		}
+		c.event("phone accepted notification request", map[string]string{
+			"operation": operation, "outcome": "accepted", "record_ref": strconv.FormatUint(revision, 10),
+		})
 	}
 	return err
 }
@@ -162,7 +182,13 @@ func (c *Client) handleNative(ctx context.Context, event NativeEvent) error {
 		record.desktopID = 0
 		record.hidden = event.Reason == 2
 		forward := event.Reason == 2 && record.item.IsClearable && c.cfg.RemoteActions && c.ready
+		ref := strconv.FormatUint(record.revision, 10)
 		c.stateMu.Unlock()
+		if event.Reason == 2 {
+			c.event("desktop notification dismissed", map[string]string{
+				"record_ref": ref, "remote_request": strconv.FormatBool(forward),
+			})
+		}
 		if forward {
 			return c.Dismiss(ctx, key)
 		}

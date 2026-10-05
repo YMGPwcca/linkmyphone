@@ -142,6 +142,9 @@ Service output goes to the user journal:
 journalctl --user -u linkmyphone.service --no-pager
 ```
 
+With notification remote actions enabled, journal events distinguish the boundaries of a desktop mutation: `desktop notification dismissed` reports the local user-close signal and whether a phone request will be attempted; `phone accepted notification request` reports a correlated APP response with typed `result=0` and `operation=dismiss|clear|launch|button|reply`. A following `notification state synchronized` reports `removed` when a cached notification is removed after a phone push. For a single removal, `removed_record_ref` can be compared with the request's `record_ref`. These references are per-process, non-content ordinals; notification keys, bodies and reply text are not logged. Acceptance is **not** proof that a messaging app delivered a reply, and a matching removal alone does not establish causality. Rejected or timed-out requests do not emit a success event.
+
+
 `service install`, `service start`, and `service restart` call `systemctl --user reset-failed` before launching. If you use `systemctl` directly after repeated failures, clear the rate limit first:
 
 ```bash
