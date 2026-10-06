@@ -15,6 +15,7 @@ Use this map to find the package that owns a behavior. `cmd/linkmyphone/main.go`
 | Shared cloud session, peer selection, wake, SessionValidation, or feature subscriptions | [`runtime/phonehost`](../../runtime/phonehost) | [Architecture overview](../architecture/overview.md) |
 | Local JSON-over-Unix-socket protocol | [`runtime/controlplane`](../../runtime/controlplane) | [Control-plane contract](../architecture/control-plane.md) |
 | Clipboard behavior or Linux desktop integration | [`clipboard`](../../clipboard) and [`features/clipboard`](../../features/clipboard) | [Clipboard behavior](../user-guide/clipboard.md) |
+| Android notification state/actions, D-Bus initialization or reply windows | [`notifications`](../../notifications) and [`features/notifications`](../../features/notifications) | [Notification configuration](../reference/configuration.md#notification-configuration) |
 | Wire encoding or transport | [`protocol`](../../protocol) and [`transport`](../../transport) | [Transport and framing](../protocol/transport.md) |
 | Identity, trust, persisted credentials, or cloud bootstrap | [`auth`](../../auth) and [`bootstrap`](../../bootstrap) | [Authentication and bootstrap](../protocol/authentication.md) |
 
@@ -108,9 +109,10 @@ Tests sit beside their implementation:
 - [`runtime/kernel/*_test.go`](../../runtime/kernel) for manifests, persistence, dependencies, epochs, capability revocation, stale completion, and teardown;
 - [`runtime/phonehost/*_test.go`](../../runtime/phonehost) for routing, bounded endpoint overflow, cancellation, and session registration;
 - [`runtime/controlplane/controlplane_test.go`](../../runtime/controlplane/controlplane_test.go) for socket security, wire versioning, startup and shutdown switching, path hashing, handler isolation, and client behavior;
-- [`features/*_test.go`](../../features) and [`features/clipboard/*_test.go`](../../features/clipboard) for catalog, config, matcher, module stop, worker, and native observation contracts;
+- [`features/*_test.go`](../../features), [`features/clipboard/*_test.go`](../../features/clipboard), and [`features/notifications/*_test.go`](../../features/notifications) for catalog, config, matcher, module stop, worker, native observation and notification-startup contracts;
 - [`cmd/linkmyphone/*_test.go`](../../cmd/linkmyphone) for CLI CRUD and runtime orchestration;
 - [`clipboard/*_test.go`](../../clipboard) for native backend, watch framing, protocol client, generation ordering, echo suppression, and correlation snapshots;
+- [`notifications/*_test.go`](../../notifications) for notification state/actions, native bounds, stale replies and cancellation of stalled desktop-bus authentication;
 - [`protocol/**/*_test.go`](../../protocol) for wire codecs and framing;
 - [`transport/**/*_test.go`](../../transport) for WebSocket, SignalR, and relay behavior;
 - [`auth/**/*_test.go`](../../auth), [`bootstrap/**/*_test.go`](../../bootstrap), [`dcgheaders/**/*_test.go`](../../dcgheaders), and [`services/dcg/**/*_test.go`](../../services/dcg) for local authentication, state, headers, trust, bootstrap, and service contracts.

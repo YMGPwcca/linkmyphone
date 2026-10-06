@@ -37,7 +37,7 @@ Images received from the phone are converted to PNG without resizing. Their deco
 
 Incoming phone encodings and non-PNG native input are capped at 16 MiB. Desktop PNGs are capped at 128 MiB, and decoded dimensions at 33554432 pixels (32 Mi pixels). Valid native PNGs retain their exact bytes until outbound preparation.
 
-Published snapshots retain the advertised type, bytes and timestamp for two minutes, with at most 64 entries and 16 MiB in aggregate. A matching CONTENT request receives that snapshot, not an unrelated new selection. Newer phone/local generations suppress stale writes; superseded correlations are rejected. Format-aware hashes suppress reflected copies using the full desktop representation, before outbound resizing.
+Published snapshots retain the advertised type, bytes and timestamp for correlated CONTENT requests within two minutes, with at most 64 entries and 16 MiB in aggregate. Expired entries are pruned on the next local publication or CONTENT request; the TTL is not a guarantee that bytes leave RAM within two minutes. A matching request for an active snapshot receives that snapshot, not an unrelated new selection. Newer phone/local generations suppress stale writes; superseded correlations are rejected. Format-aware hashes suppress reflected copies using the full desktop representation, before outbound resizing.
 
 There is no clipboard history or secret filter. Clipboard contents pass through Microsoft services; stop synchronization before copying secrets.
 

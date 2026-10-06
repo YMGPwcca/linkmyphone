@@ -19,9 +19,9 @@ Given an MSA access token, `bootstrap.BootstrapFirstRun` performs these steps:
 | Relay | Obtain the assigned shard, connect `relayhub/`, and await `OnConnected`. |
 
 
-State is saved before relay connection, so a relay failure can resume without creating a second DCG identity. The public `bootstrap-probe` CLI saves after enrollment, synchronizes trust, saves again, then connects the account relay. This preserves new keys if trust discovery fails. See [`bootstrap/first_run.go`](../../bootstrap/first_run.go#L47-L165), [`bootstrap/enroll.go`](../../bootstrap/enroll.go#L25-L70), and [`cmd/linkmyphone/main.go`](../../cmd/linkmyphone/main.go#L160-L264).
+State is saved before relay connection, so a relay failure can resume without creating a second DCG identity. The public `bootstrap-probe` CLI saves after enrollment, synchronizes trust, saves again, then connects the account relay. This preserves new keys if trust discovery fails. See [`bootstrap/first_run.go`](../../bootstrap/first_run.go#L48-L174), [`bootstrap/enroll.go`](../../bootstrap/enroll.go#L25-L70), and [`cmd/linkmyphone/main.go`](../../cmd/linkmyphone/main.go#L173-L279).
 
-The production service base is `https://dcg.microsoft.com/`, with default Hub endpoint `relayhub/`. Compatibility metadata defaults to app version `1.26072.116.0`, ring `Public`, and advertised OS version `10.0.26100`. The OS value describes a Windows-compatible service profile, not the Linux host version. Defaults are in [`auth constants`](../../auth/dcgauth/constants.go#L5-L26) and [`phone-host defaults`](../../runtime/phonehost/session.go#L21-L24); the [CLI reference](../reference/cli.md) lists overrides.
+The production service base is `https://dcg.microsoft.com/`, with default Hub endpoint `relayhub/`. Compatibility metadata defaults to app version `1.26072.116.0`, ring `Public`, and advertised OS version `10.0.26100`. The OS value describes a Windows-compatible service profile, not the Linux host version. Defaults are in [`auth constants`](../../auth/dcgauth/constants.go#L5-L26) and [`phone-host defaults`](../../runtime/phonehost/session.go#L22-L26); the [CLI reference](../reference/cli.md) lists overrides.
 
 ## Contract at a glance
 
@@ -48,7 +48,7 @@ The runtime refreshes credentials and reopens interrupted sessions. See [session
 | Account trust | Enrollment response account certificate | A2D trust relationship for the account certificate | Certificate and relationship metadata |
 | Peer trust | Linked peer metadata from `GetDeviceInfoList` | AsyncD2D authentication of a linked device | Peer certificate and relationship metadata |
 
-`auth/dcgauth/identity.go` defines the auth identity; `auth/dcgauth/trust_identity.go` defines the separate trust identity. `bootstrap/wake.go` signs wake data with the trust identity. [`auth/state/store.go`](../../auth/state/store.go#L20-L50) stores both key pairs.
+`auth/dcgauth/identity.go` defines the auth identity; `auth/dcgauth/trust_identity.go` defines the separate trust identity. `bootstrap/wake.go` signs wake data with the trust identity. [`auth/state/store.go`](../../auth/state/store.go#L21-L52) stores both key pairs.
 
 ## Microsoft account acquisition
 
@@ -58,7 +58,7 @@ The Windows CrossDevice path uses Web Account Manager (WAM), with provider `http
 <scope>&api-version=2.0&clientid=<MSA app ID>
 ```
 
-That suffix is a WAM request format, not a generic OAuth v2 scope. Constants and formatting are in [`auth/msa/config.go`](../../auth/msa/config.go#L5-L25) and [`auth/dcgauth/constants.go`](../../auth/dcgauth/constants.go#L21-L46). The source findings report WAM statuses such as `UserInteractionRequired` and `AccountSwitch`; the decompiled YPP layer did not show an interactive sign-in fallback.
+That suffix is a WAM request format, not a generic OAuth v2 scope. Constants and formatting are in [`auth/msa/config.go`](../../auth/msa/config.go#L9-L29) and [`auth/dcgauth/constants.go`](../../auth/dcgauth/constants.go#L21-L46). The source findings report WAM statuses such as `UserInteractionRequired` and `AccountSwitch`; the decompiled YPP layer did not show an interactive sign-in fallback.
 
 Linux uses the Microsoft identity-platform device authorization grant with this migrated resource scope:
 
@@ -66,7 +66,7 @@ Linux uses the Microsoft identity-platform device authorization grant with this 
 https://dcg.microsoft.com/DCG.ReadWrite offline_access
 ```
 
-`auth/msa` posts `client_id` and `scope` to `/consumers/oauth2/v2.0/devicecode`, polls `/token` with the device-code grant, handles `authorization_pending` and `slow_down`, and refreshes saved refresh tokens. This is an interoperability experiment, not a source-confirmed replacement for WAM. See [`auth/msa/devicecode.go`](../../auth/msa/devicecode.go#L21-L24) and [`auth/msa/devicecode_test.go`](../../auth/msa/devicecode_test.go#L13-L123).
+`auth/msa` posts `client_id` and `scope` to `/consumers/oauth2/v2.0/devicecode`, polls `/token` with the device-code grant, handles `authorization_pending` and `slow_down`, and refreshes saved refresh tokens. This is an interoperability experiment, not a source-confirmed replacement for WAM. See [`auth/msa/devicecode.go`](../../auth/msa/devicecode.go#L21-L24) and [`auth/msa/devicecode_test.go`](../../auth/msa/devicecode_test.go#L31-L141).
 
 On a new state path, the default OAuth client is Phone Link (`8CF55838-E496-42C5-829B-F8D6945288F3`) and enrollment metadata uses `PL`. The one saved PL refresh credential and DCG identity serve both clipboard and notification modules. Explicit `--profile crossdevice` remains available for clipboard-only enrollment; existing WEA state resumes with its original CrossDevice OAuth client ID rather than changing profile.
 
@@ -110,7 +110,7 @@ All four auth routes use `api-version=1.1.0`:
 | `POST /Auth/SignIn` | `{"certificateJWT":"..."}` | A new DCG access token for the existing identity |
 | `POST /Auth/RotateKeys` | Modeled as a route constant; no public high-level method currently performs the operation | Key rotation endpoint compatibility |
 
-The client sends JSON plus `Authorization: Bearer <MSA token>`, `UserIdentityType: MSA`, `UserIdentityToken: <MSA token>`, and `Authorization-Type: MSA`. Source-compatible client headers come from `dcgheaders.ClientInfo`. See [`auth/dcgauth/client.go`](../../auth/dcgauth/client.go#L108-L145) and [`auth/dcgauth/client.go`](../../auth/dcgauth/client.go#L206-L260). Wire tests cover route bodies, token conversion, and device-ID mismatch rejection in [`auth/dcgauth/client_test.go`](../../auth/dcgauth/client_test.go#L13-L132).
+The client sends JSON plus `Authorization: Bearer <MSA token>`, `UserIdentityType: MSA`, `UserIdentityToken: <MSA token>`, and `Authorization-Type: MSA`. Source-compatible client headers come from `dcgheaders.ClientInfo`. See [`auth/dcgauth/client.go`](../../auth/dcgauth/client.go#L111-L148) and [`auth/dcgauth/client.go`](../../auth/dcgauth/client.go#L210-L264). Wire tests cover route bodies, token conversion, and device-ID mismatch rejection in [`auth/dcgauth/client_test.go`](../../auth/dcgauth/client_test.go#L13-L132).
 
 A successful identity token must contain an access token, device ID, and expiration epoch. The implementation stores it under `general`; a response whose device ID differs from the active identity is rejected. `CreateIdentity` does not persist the new private key itself. The caller persists it only after the service accepts the certificate JWT.
 
@@ -157,9 +157,9 @@ The JSON snapshot contains a persisted `clientProfile` (`phonelink` for new inst
 - the account certificate, account info, and root certificate chain;
 - trust relationships.
 
-Writes use a temporary file, `Sync`, rename, and a final mode check. `Save` also applies mode `0700` to the existing parent directory; it does not assume the parent was newly created. Schema and permission behavior are in [`auth/state/store.go`](../../auth/state/store.go#L18-L207); round-trip and mismatched-certificate tests are in [`auth/state/store_test.go`](../../auth/state/store_test.go#L12-L96).
+Writes use a temporary file, `Sync`, rename, and a final mode check. `Save` also applies mode `0700` to the existing parent directory; it does not assume the parent was newly created. Schema and permission behavior are in [`auth/state/store.go`](../../auth/state/store.go#L19-L217); round-trip and mismatched-certificate tests are in [`auth/state/store_test.go`](../../auth/state/store_test.go#L12-L96).
 
-On restart, the client refreshes the MSA access token with the saved refresh token, restores both key pairs, obtains a fresh nonce, and calls `/Auth/SignIn`. It does not call `/Auth/CreateIdentity`, so it keeps the same DCG client ID. [`bootstrap/resume.go`](../../bootstrap/resume.go#L20-L80) and [`bootstrap/resume_test.go`](../../bootstrap/resume_test.go#L16-L108) cover this contract.
+On restart, the client refreshes the MSA access token with the saved refresh token, restores both key pairs, obtains a fresh nonce, and calls `/Auth/SignIn`. It does not call `/Auth/CreateIdentity`, so it keeps the same DCG client ID. [`bootstrap/resume.go`](../../bootstrap/resume.go#L23-L123) and [`bootstrap/resume_test.go`](../../bootstrap/resume_test.go#L16-L108) cover this contract.
 
 ## Account relay, wake, and session validation
 
@@ -178,7 +178,7 @@ POST /Dispatcher/Wake?api-version=1.5.0
 Authorization: Bearer <DCG general token>
 ```
 
-The JSON data has target `deviceId`, `collapseKey` `YPPWake`, priority `high`, and TTL seconds. The signed `DCG-CryptoWakeJwt` is made by the trust identity and contains `iss: trust_<local-dcg-client-id>`, `SourceId`, `Scope: wake`, and a JSON `Data` claim. Signed data excludes the JWT itself to avoid recursive signing. Wake options include production environment, `DCG-RequestNewSession`, optional hub region, `IgnoreDeviceDisabledStatus`, and optional cancellation. See [`bootstrap/wake.go`](../../bootstrap/wake.go#L13-L90), [`services/dcg/wake.go`](../../services/dcg/wake.go#L13-L86), and [`bootstrap/wake_test.go`](../../bootstrap/wake_test.go#L17-L79). The request shape and bearer-token boundary are also checked in [`services/dcg/client_test.go`](../../services/dcg/client_test.go#L47-L121) and [`services/dcg/wake_test.go`](../../services/dcg/wake_test.go#L11-L51).
+The JSON data has target `deviceId`, `collapseKey` `YPPWake`, priority `high`, and TTL seconds. The signed `DCG-CryptoWakeJwt` is made by the trust identity and contains `iss: trust_<local-dcg-client-id>`, `SourceId`, `Scope: wake`, and a JSON `Data` claim. Signed data excludes the JWT itself to avoid recursive signing. Wake options include production environment, `DCG-RequestNewSession`, optional hub region, `IgnoreDeviceDisabledStatus`, and optional cancellation. See [`bootstrap/wake.go`](../../bootstrap/wake.go#L13-L90), [`services/dcg/wake.go`](../../services/dcg/wake.go#L13-L86), and [`bootstrap/wake_test.go`](../../bootstrap/wake_test.go#L17-L79). The request shape and bearer-token boundary are also checked in [`services/dcg/client_test.go`](../../services/dcg/client_test.go#L49-L123) and [`services/dcg/wake_test.go`](../../services/dcg/wake_test.go#L11-L51).
 
 Presence ordering is part of wake compatibility. The relay sends and awaits `SendConnectedAsync` completion before `Dispatcher/Wake`; reciprocal presence is still sent after `OnPartnerConnected`. The reason and evidence are in [`research findings`](../research/findings.md#pre-wake-presence-flush).
 

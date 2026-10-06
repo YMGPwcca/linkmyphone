@@ -51,7 +51,7 @@ For phone-to-Linux publication, the serialized change response is in `PubSubPayl
 | Clipboard type | The Linux feature accepts successful `IMAGE`, `TEXT_HTML` and `TEXT_PLAIN` responses. Rich native providers advertise and apply all three; `xsel` advertises text only. |
 | Resource request | Clipboard uses `UNKNOWN=4`, `GET=1`, and resource path `/clipboard`. |
 | Correlation | PLATFORM `_requestId` matches `_originalRequestId`; inner clipboard correlation must also match. |
-| Snapshots | Exact published content is retained for two minutes, up to 64 entries and 16 MiB total. Retired IDs are bounded to 256 entries and have no time expiry. |
+| Snapshots | Exact published content is eligible for CONTENT responses for two minutes, up to 64 entries and 16 MiB total. Expired bytes are pruned on the next publication or CONTENT request. The retired-ID pruning target is 256 entries; IDs have no time expiry. |
 | Stale content | Known retired or superseded IDs return `INVALID_CONTENT` with `ErrorType=REJECT`. The bounded retirement history and unknown-ID fallback are explained below. |
 | Ordering | One generation domain covers local and remote changes. New remote generations cancel older pulls and supersede older versioned local snapshots. |
 | Echo | The origin barrier lasts 3 seconds. Hashes include content type and full desktop bytes. Plain-text comparison normalizes CRLF/LF and one terminal newline while publication preserves its original text. |
@@ -59,7 +59,7 @@ For phone-to-Linux publication, the serialized change response is in `PubSubPayl
 
 ## Protobuf-compatible messages
 
-The repository uses hand-written protobuf-compatible codecs. Unknown fields are skipped; malformed varints, lengths, and wire types return `ErrMalformed`. Field numbers and Go fields are in [`protocol/clipboard/types.go`](../../protocol/clipboard/types.go#L3-L129); encoding is in [`protocol/clipboard/codec.go`](../../protocol/clipboard/codec.go#L3-L330).
+The repository uses hand-written protobuf-compatible codecs. Unknown fields are skipped; malformed varints, lengths, and wire types return `ErrMalformed`. Field numbers and Go fields are in [`protocol/clipboard/types.go`](../../protocol/clipboard/types.go#L3-L129); encoding is in [`protocol/clipboard/codec.go`](../../protocol/clipboard/codec.go#L3-L334).
 
 ### ClipboardRequestMessage
 
@@ -145,7 +145,7 @@ Item enum values are `UNSPECIFIED=0`, `IMAGE=1`, `TEXT_PLAIN=2`, and `TEXT_HTML=
 
 The selected field contains a serialized `ClipboardResponseMessage`; `Data` and `Additional` are not interchangeable. `TestPCClipboardChangePublicationUsesData`, `TestPhoneClipboardChangePublicationUsesAdditional`, and `TestPhoneClipboardChangePublicationRejectsDataOnly` cover this boundary in [`protocol/clipboard/pubsub_test.go`](../../protocol/clipboard/pubsub_test.go#L5-L38).
 
-The outer MSAEP message carries tag 9, the sender DCG client ID, an envelope message ID, serialized `PubSubPayload`, and platform protocol version 1.1. See fields 1 through 6 and the default version in [`protocol/msaep/message.go`](../../protocol/msaep/message.go#L1-L50), and PC publication in [`clipboard/client.go`](../../clipboard/client.go#L178-L203).
+The outer MSAEP message carries tag 9, the sender DCG client ID, an envelope message ID, serialized `PubSubPayload`, and platform protocol version 1.1. See fields 1 through 6 and the default version in [`protocol/msaep/message.go`](../../protocol/msaep/message.go#L1-L50), and PC publication in [`clipboard/client.go`](../../clipboard/client.go#L181-L206).
 
 </details>
 
@@ -166,7 +166,7 @@ _requestId: <request envelope ID>        # request
 _originalRequestId: <request envelope ID> # response
 ```
 
-The binary layout, headers, and route constructors are in [`protocol/platform/message.go`](../../protocol/platform/message.go#L14-L192). `NewContextPublish` is one-way at the application level. The relay still waits for the DCG fragment ACK; a `/DeviceResourceManager` request waits for a separate `/internal/response`.
+The binary layout, headers, and route constructors are in [`protocol/platform/message.go`](../../protocol/platform/message.go#L14-L193). `NewContextPublish` is one-way at the application level. The relay still waits for the DCG fragment ACK; a `/DeviceResourceManager` request waits for a separate `/internal/response`.
 
 A device-resource message has:
 
@@ -177,7 +177,7 @@ A device-resource message has:
 | payload       |      3 | serialized `ClipboardRequestMessage` |
 | resource path |      4 | `/clipboard`                         |
 
-The DeviceResourceManager request enum also defines `UNSPECIFIED=0`, `UPDATE=2`, `DELETE=3`, and `SYNC=4`. The response wrapper has payload field 1 and response type field 2. Response types are `UNSPECIFIED=0`, `Success=1`, and `ResourceHandlerNotRegistered=2`. Wrappers are in [`protocol/clipboard/types.go`](../../protocol/clipboard/types.go#L86-L129) and [`protocol/clipboard/codec.go`](../../protocol/clipboard/codec.go#L270-L419).
+The DeviceResourceManager request enum also defines `UNSPECIFIED=0`, `UPDATE=2`, `DELETE=3`, and `SYNC=4`. The response wrapper has payload field 1 and response type field 2. Response types are `UNSPECIFIED=0`, `Success=1`, and `ResourceHandlerNotRegistered=2`. Wrappers are in [`protocol/clipboard/types.go`](../../protocol/clipboard/types.go#L86-L129) and [`protocol/clipboard/codec.go`](../../protocol/clipboard/codec.go#L274-L422).
 
 </details>
 
@@ -202,7 +202,7 @@ A later run requested `CONTENT` directly; the implementation accepts both. A fin
 
 </details>
 
-The normal client answers inbound resource requests in a worker. It filters by configured peer source, requires `_requestId`, validates `/clipboard` and `GET`, and preserves the request correlation ID. CONTENT uses a live publication snapshot when available. A retained retired correlation or superseded snapshot returns `INVALID_CONTENT`; only an unknown, non-retired, non-superseded correlation can fall back to reading the current local clipboard. See [`clipboard/client.go`](../../clipboard/client.go#L661-L757).
+The normal client answers inbound resource requests in a worker. It filters by configured peer source, requires `_requestId`, validates `/clipboard` and `GET`, and preserves the request correlation ID. CONTENT uses a live publication snapshot when available. A retained retired correlation or superseded snapshot returns `INVALID_CONTENT`; only an unknown, non-retired, non-superseded correlation can fall back to reading the current local clipboard. See [`handlePlatform`](../../clipboard/client.go#L567-L602) for peer filtering and [`handleIncomingRequest`](../../clipboard/client.go#L749-L819) for resource, snapshot and fallback handling.
 
 ## Correlation IDs and snapshots
 
@@ -211,9 +211,9 @@ The normal client answers inbound resource requests in a worker. It filters by c
 | PLATFORM `_requestId` | Outer request envelope | `_originalRequestId` |
 | Clipboard correlation ID | Logical clipboard publication | The same inner value in the request and `ClipboardResponseMessage` |
 
-`clipboard.Client.request` matches the pending response by `_originalRequestId`, then checks that the inner response correlation equals the request correlation. A mismatch is an error, preventing one phone response from completing another local request. See [`clipboard/client.go`](../../clipboard/client.go#L463-L515).
+`clipboard.Client.request` matches the pending response by `_originalRequestId`, then checks that the inner response correlation equals the request correlation. A mismatch is an error, preventing one phone response from completing another local request. See [`clipboard/client.go`](../../clipboard/client.go#L510-L564).
 
-A PC publication records exact content under its correlation ID before sending `CLIPBOARD_CHANGE`. If the desktop clipboard changes before the phone asks for CONTENT, that live correlation still receives the advertised typed content. Snapshots expire after two minutes and are bounded to 64 entries and 16 MiB total. Expired or evicted snapshots are retired. Duplicate CONTENT requests do not retire a live snapshot and return the same snapshot, covering peer retry without replacing it with newer local content. A retained retired correlation returns `INVALID_CONTENT` with `ErrorType=REJECT`. The retired-ID map is bounded to 256 entries and has no time expiry, so rejection is not an unlimited historical guarantee once older tombstones are evicted. See [`clipboard/client.go`](../../clipboard/client.go#L205-L343), [`clipboard/client.go`](../../clipboard/client.go#L361-L405), and [`clipboard/client_test.go`](../../clipboard/client_test.go#L611-L682).
+A PC publication records exact content under its correlation ID before sending `CLIPBOARD_CHANGE`. If the desktop clipboard changes before the phone asks for CONTENT, that live correlation still receives the advertised typed content. Snapshots become ineligible after two minutes and are bounded to 64 entries and 16 MiB total. The next local publication or CONTENT request prunes expired entries and retires their correlations; an idle client may retain expired bytes longer. The TTL is not a memory-erasure deadline. Evicted snapshots are also retired. Duplicate CONTENT requests do not retire a live snapshot and return the same snapshot, covering peer retry without replacing it with newer local content. A retained retired correlation returns `INVALID_CONTENT` with `ErrorType=REJECT`. The retired-ID map is trimmed to 256 entries when pruning runs and has no time expiry; new retirements can raise its count until the next prune. Rejection is not an unlimited historical guarantee once older tombstones are evicted. See [`clipboard/client.go`](../../clipboard/client.go#L208-L381), [`clipboard/client.go`](../../clipboard/client.go#L399-L443), and [`clipboard/client_test.go`](../../clipboard/client_test.go#L611-L682).
 
 ## Generation ordering and tombstones
 
@@ -226,7 +226,7 @@ The modular and continuous paths share one monotonically increasing generation d
 5. Cancel an older phone CONTENT pull when a newer phone publication arrives.
 6. Before applying a phone response, verify that its generation is still current.
 
-An older local publication remains addressable while the peer may request its correlation ID. If a newer remote generation supersedes it, later CONTENT requests return `INVALID_CONTENT`, not current or stale text. See [`clipboard/client.go`](../../clipboard/client.go#L229-L291), [`clipboard/generation_test.go`](../../clipboard/generation_test.go#L14-L108), and [`clipboard/generation_order_test.go`](../../clipboard/generation_order_test.go#L36-L136).
+An older local publication remains addressable while the peer may request its correlation ID. If a newer remote generation supersedes it, later CONTENT requests return `INVALID_CONTENT`, not current or stale text. See [`clipboard/client.go`](../../clipboard/client.go#L232-L294), [`clipboard/generation_test.go`](../../clipboard/generation_test.go#L14-L108), and [`clipboard/generation_order_test.go`](../../clipboard/generation_order_test.go#L36-L136).
 
 The inbound resource-request queue is bounded at 16. The phone publication queue keeps the newest pending publication and cancels the prior pull. Late responses cannot apply stale content: cancellation removes the pending request, and the generation check blocks stale application. Receive/send race coverage is in [`clipboard/client_test.go`](../../clipboard/client_test.go#L446-L568).
 
@@ -239,7 +239,7 @@ Phone-to-Linux writes avoid immediate phone-to-Linux-to-phone echo:
 - echo comparison normalizes CRLF/LF and one terminal newline while preserving original bytes for protocol payloads;
 - phone publication work runs separately from the relay receive loop, so waiting for a DCG ACK does not block receive-side handling.
 
-Native backend selection prefers Wayland `wl-paste`/`wl-copy`; X11 falls back to `xclip`, then `xsel`. Commands execute directly without a shell. The native implementation is in [`clipboard/native.go`](../../clipboard/native.go#L19-L211). Rich providers use MIME polling. The legacy text observer supports `wl-paste --watch` and a hidden helper in the same executable. The helper sends length-delimited frames over pipes, includes `data` or `nil` state, and keeps events separated. See [`clipboard/native_watch.go`](../../clipboard/native_watch.go#L36-L329) and [`clipboard/native_watch_test.go`](../../clipboard/native_watch_test.go#L12-L153).
+Native backend selection prefers Wayland `wl-paste`/`wl-copy`; X11 falls back to `xclip`, then `xsel`. Commands execute directly without a shell. The native implementation is in [`clipboard/native.go`](../../clipboard/native.go#L20-L217). Rich providers use MIME polling. The legacy text observer supports `wl-paste --watch` and a hidden helper in the same executable. The helper sends length-delimited frames over pipes, includes `data` or `nil` state, and keeps events separated. See [`clipboard/native_watch.go`](../../clipboard/native_watch.go#L36-L329) and [`clipboard/native_watch_test.go`](../../clipboard/native_watch_test.go#L12-L152).
 
 `wl-copy` forks by default to keep owning the selection. Capturing stdout or stderr pipes while waiting can block the parent until the selection changes, so native writes do not capture those pipes. A Wayland compositor handoff can emit a transient nil selection before the next data offer; the watcher debounces nil for 100 ms. A following data event cancels the clear; a genuine clear publishes one empty value after debounce. These are native-backend behaviors and historical live observations, not protocol fields. Rich Wayland and X11 providers use MIME polling at 500 ms by default and re-read empty selections after debounce.
 

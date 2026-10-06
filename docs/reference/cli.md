@@ -75,7 +75,7 @@ linkmyphone feature disable [--state PATH] ID
 | --- | --- |
 | `list` | Reports built-in definitions and installed records. Against a ready runtime it reports live state, module state, and epoch; without a live socket it reports desired state from the file. |
 | `get` | Prints JSON containing the known manifest, installed record, and, when live, the runtime snapshot. |
-| `create` | Installs one known feature. `--enabled` defaults to false. `--config JSON` supplies initial configuration and is checked by the feature's Go validator; the JSON schema documents that contract. |
+| `create` | Installs one known feature. `--enabled` defaults to false. `--config JSON` supplies initial configuration and is checked by the feature's Go validator; built-in validators reject explicit null properties as well as unknown fields, wrong types and invalid ranges. |
 | `update` | Requires `--enabled`, `--config`, or both. `--enabled` accepts `true`, `false`, `1`, `0`, `yes`, `no`, `on`, and `off`. `--config` replaces the whole JSON configuration object. A live update stops and restarts the module when needed. |
 | `enable` / `disable` | Change desired enabled state. `enable` rejects an unavailable feature. |
 | `delete` | Removes the record and, when live, stops and removes its module instance. It does not close the shared Phone Link session. |

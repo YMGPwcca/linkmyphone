@@ -33,13 +33,15 @@ Manifest schema version and runtime API version are both `1.0`. A valid manifest
 
 The parser accepts only builtin modules in runtime API 1.0. There is no process loader, ABI bridge, sandbox, or permission enforcement. `permissions.requested` records intent and ownership metadata. It is not an authorization grant and must not be used as proof that a module can access a resource.
 
+All schema-required fields must be present, including the declaration containers and `configuration_schema`. Empty capability, dependency and permission declarations use `[]`; omitted or `null` declarations are rejected. Only `configuration_schema` may be `null`. The Go validator also enforces runtime API compatibility, safe schema paths, unique declarations and a combined limit of 64 required plus optional dependencies; the JSON schema does not replace those semantic checks.
+
 `configuration_schema` declares a safe relative path; it does not invoke a generic runtime validator. The catalog supplies the feature's Go validator. The clipboard module's [`config.schema.json`](../../features/clipboard/config.schema.json) and `DecodeConfig` define an object with no unknown fields:
 
 - `poll_interval_ms`, integer from 50 through 60000, used for MIME polling on rich providers and polling fallback on text-only providers;
 - `request_timeout_ms`, integer from 100 through 120000;
 - `publish_initial`, boolean, default false.
 
-An empty configuration becomes `{}` and receives module defaults. The feature store requires a non-null JSON object and rejects trailing JSON, but does not validate feature-specific fields or ranges. The clipboard module's Go validator rejects unknown fields and out-of-range values. Its JSON schema documents the same shape; no generic runtime schema engine evaluates it.
+An empty configuration becomes `{}` and receives module defaults. The feature store requires a non-null JSON object and rejects trailing JSON, but does not validate feature-specific fields or ranges. The clipboard and notification Go validators reject unknown fields, incorrect field types, explicit `null` property values and out-of-range values. Omitted properties receive defaults; explicit `false` remains false. Their JSON schemas list properties, types, ranges and defaults; no generic runtime schema engine evaluates them.
 
 Potential capabilities are declarations only. A successful start registers the instance's live capabilities and marks its registry entry `ready`. Stop, failure, dependency degradation, and rollback revoke them. The instance returns text capabilities with contract `1.0.0`; MIME-capable backends also return HTML and image read/write/bidirectional capabilities.
 
@@ -62,7 +64,7 @@ Capability registration happens before the state becomes `ready`, and the capabi
 }
 ```
 
-The default path is `~/.config/linkmyphone/features.json`. The store rejects unknown top-level fields, duplicate IDs, invalid IDs, non-object or trailing configuration JSON, and unsupported schema versions. Saves create a `0600` temporary file in a `0700` directory, flush the file, and rename it into place. Store mutations restore the in-memory record if the file save fails.
+The default path is `~/.config/linkmyphone/features.json`. The store rejects unknown top-level fields, duplicate IDs, invalid IDs, non-object or trailing configuration JSON, and unsupported schema versions. Before each save, the store creates or restricts its parent directory to `0700`, including an existing directory. It then creates a `0600` temporary file, flushes the file, and renames it into place. A permission-change failure aborts the save. Store mutations restore the in-memory record if the file save fails. Use a dedicated parent directory for a custom feature-store path.
 
 A registry entry carries the desired enabled state, validated configuration, manifest version, current state, last error, live instance, and an epoch. The lifecycle states are:
 
@@ -93,7 +95,7 @@ A delete removes the registry entry and capabilities after stopping it. Reusing 
 
 For a coherent lifecycle answer, read the kernel snapshot. A capability lookup alone does not establish `ready`; runtime API 1.0 has no atomic combined snapshot.
 
-Clipboard publication snapshots have their own bounded lifetime. Snapshots last two minutes and are capped at 64 entries and 16 MiB total. Evicted or expired correlations are retained as retired IDs, capped at 256 entries with no time expiry. A duplicate CONTENT request does not retire an active snapshot. An unknown correlation may fall back to current local content only when it is not retired or superseded. These rules prevent a late request from receiving unrelated current content, while keeping memory bounded.
+Clipboard publication snapshots have a two-minute CONTENT eligibility TTL and are capped at 64 entries and 16 MiB total. Expiry is checked and pruned on the next local publication or CONTENT request, rather than by a background timer; an idle client can retain expired bytes longer. Evicted or expired correlations are retained as retired IDs, trimmed to 256 entries during pruning with no time expiry. New retirements can raise the count until the next prune. A duplicate CONTENT request does not retire an active snapshot. An unknown correlation may fall back to current local content only when it is not retired or superseded. These rules prevent a late request from receiving unrelated current content, while bounding the snapshot cache rather than promising a maximum RAM retention time.
 
 ## Clipboard module ownership
 

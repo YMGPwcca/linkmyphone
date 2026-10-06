@@ -44,6 +44,7 @@ go test ./runtime/phonehost -run 'TestRouter|TestSession'
 go test ./runtime/controlplane -run 'TestServer|TestListen|TestCall|TestSocket'
 go test ./cmd/linkmyphone -run 'TestFeatureCommand'
 go test ./features/clipboard -run 'TestConfig|TestManifest|TestInstanceStop'
+go test ./features/notifications ./notifications -run 'TestConfig|TestReceiveOnly|TestDesktopStartup'
 ```
 
 The [CI workflow](../../.github/workflows/ci.yml) runs only on pushes to `main`, including merged pull requests and direct pushes. Feature-branch pushes, open pull requests, and manual dispatch do not trigger it. CI uses the Go version in `go.mod`, runs vet and build, then the full race suite under Xvfb with real X11 MIME transfers. Format changed Go files with `gofmt`. No separate linter, release command, or coverage threshold is configured.
@@ -54,8 +55,8 @@ Use this table to select regression coverage:
 
 | Consumer-visible invariant | Tests and owner |
 | --- | --- |
-| Unknown manifest fields, trailing JSON, unsafe schema paths, duplicates, invalid IDs, incompatible API versions, and incomplete metadata are rejected | `runtime/kernel/manifest_test.go`, `runtime/kernel/manifest.go` |
-| Feature records survive reopen, duplicate IDs fail, configs are JSON objects, saves are atomic and private | `runtime/kernel/store_test.go`, `runtime/kernel/store.go` |
+| Manifest JSON rejects missing required fields and forbidden nulls; semantic validation also rejects unknown fields, trailing JSON, unsafe schema paths, duplicates, invalid IDs, incompatible API versions and incomplete metadata | `runtime/kernel/manifest_test.go`, `runtime/kernel/manifest.go` |
+| Feature records survive reopen, duplicate IDs fail, configs are JSON objects, new/existing store directories become private, and failed replacement rolls back records and cleans temporary files | `runtime/kernel/store_test.go`, `runtime/kernel/store.go` |
 | Required providers start before dependents; missing providers block; compatible versions are required; provider teardown is protected | `runtime/kernel/registry_test.go`, `runtime/kernel/registry.go` |
 | An old instance cannot mutate a replacement epoch; dependency failure degrades active dependents; a stale start is rolled back and its capabilities never become live | `runtime/kernel/registry_test.go` |
 | Stop removes capabilities and remains safe to repeat; stopped update preserves the stopped lifecycle fact | `runtime/kernel/registry_test.go`, `features/clipboard/module_test.go` |
@@ -66,7 +67,9 @@ Use this table to select regression coverage:
 | Startup and shutdown handler transitions are visible without replacing the socket; handler panic is isolated; active handlers drain on close | `runtime/controlplane/controlplane_test.go`, `cmd/linkmyphone/runtime_run.go` |
 | Connected CLI mutations do not fall back to offline persistence when the runtime rejects them; stale records can be disabled and deleted | `cmd/linkmyphone/feature_test.go` |
 | Offline feature create, update, toggle, delete, manifest lookup, and default configuration follow the catalog contract | `cmd/linkmyphone/feature_test.go`, `features/catalog_test.go` |
-| Clipboard config rejects unknown and out-of-range values and the manifest exposes text capabilities plus HTML/image capabilities on rich providers | `features/clipboard/config_test.go` |
+| Clipboard config rejects unknown, null and out-of-range properties; omitted values keep defaults and explicit false stays false | `features/clipboard/config_test.go`, `features/clipboard/config.go` |
+| Notification config rejects null fields without accidentally enabling remote actions; desktop initialization honors request timeout, caller deadline and cancellation | `features/notifications/module_test.go`, `features/notifications/config.go`, `features/notifications/module.go` |
+| Cancelling a desktop constructor interrupts stalled D-Bus authentication and closes its connection | `notifications/native_test.go`, `notifications/native.go` |
 | Clipboard stop does not spend the full request timeout on advisory `FEATURE_OFF` and is idempotent after cancellation | `features/clipboard/module_test.go` |
 | Clipboard protocol codecs, platform routes, MSAEP envelopes, DCG fragments, SignalR framing, and relay transport preserve their wire contracts | `protocol/**`, `transport/**`, `clipboard/*_test.go` |
 | Native clipboard commands avoid a shell, detect supported Wayland or X11 utilities, normalize empty Wayland selection, and frame watch-helper events | `clipboard/native_test.go`, `clipboard/native_watch_test.go` |
@@ -75,6 +78,8 @@ Use this table to select regression coverage:
 | Auth state persistence, identity primitives, device-code handling, trust, and bootstrap stage transitions preserve their local contracts | `auth/**/*_test.go`, `bootstrap/**/*_test.go` |
 | Header profiles and DCG service request behavior remain source-compatible | `dcgheaders/**/*_test.go`, `services/dcg/**/*_test.go` |
 | systemd readiness notification reports the runtime state without changing module ownership | `runtime/systemdnotify/*_test.go` |
+
+Atomic store replacement is implemented by temporary-file creation, sync and rename in `store.go`. Its tests cover permissions and failed-save rollback/cleanup, not crash recovery or filesystem durability. The desktop-startup test uses an isolated TCP bus endpoint that consumes authentication bytes without replying; it does not contact the user's desktop service. Unix control sockets and systemd datagrams still require an environment that permits Unix sockets.
 
 For queue, endpoint, or worker changes, test observable feature or host behavior rather than internal fields or mock call counts. Tests do not replace ownership rules.
 

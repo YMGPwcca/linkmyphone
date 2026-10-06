@@ -10,32 +10,21 @@ New installations enroll as Phone Link (PL) after one device-code sign-in. Exist
 
 One shared Phone Link host serves a registry of in-process feature modules:
 
-<details>
-<summary>Copyable package tree</summary>
-
-```text
-linkmyphone run
-        |
-        +--> runtime/controlplane   Unix socket for feature CRUD
-        +--> runtime/phonehost      auth, trust, wake, SessionValidation,
-        |                            and one raw relay receiver
-        |          |
-        |          +--> bounded, matcher-scoped feature endpoints
-        |
-        +--> runtime/kernel         manifests, desired state, lifecycle,
-        |                            dependencies, epochs, capabilities
-        |
-        +--> features/catalog.go    built-in composition
-                   |
-                   +--> features/clipboard
-                              |
-                              +--> clipboard/ and protocol/clipboard
-                              +--> native Linux clipboard commands
-                              +--> transport/relay through phonehost
+```mermaid
+flowchart TD
+    CLI["linkmyphone run"] --> Control["runtime/controlplane"]
+    CLI --> Host["runtime/phonehost"]
+    CLI --> Kernel["runtime/kernel"]
+    CLI --> Catalog["features/catalog.go"]
+    Catalog --> Clipboard["features/clipboard"]
+    Catalog --> Notifications["features/notifications"]
+    Host -->|"Scoped endpoint"| Clipboard
+    Host -->|"Scoped endpoint"| Notifications
+    Kernel -->|"Lifecycle"| Clipboard
+    Kernel -->|"Lifecycle"| Notifications
 ```
 
-</details>
-
+Clipboard owns `clipboard/`, its wire protocol and native clipboard providers. Notifications owns `notifications/`, APP notification traffic, D-Bus and optional reply windows. Both use the shared host rather than reading the raw relay stream.
 
 See the [source map](../developer/source-map.md) for every tracked package and its entry points.
 
@@ -90,7 +79,7 @@ The phone host supervisor closes a failed generation, refreshes authentication a
 
 ## Data and trust boundaries
 
-Feature desired state defaults to `~/.config/linkmyphone/features.json`. The feature store uses schema version 1, rejects unknown top-level fields and malformed records, writes through a `0600` temporary file, syncs it, and atomically renames it into place. The containing directory is created with mode `0700`. This file contains desired state and feature configuration, not Microsoft identity state.
+Feature desired state defaults to `~/.config/linkmyphone/features.json`. The feature store uses schema version 1, rejects unknown top-level fields and malformed records, writes through a `0600` temporary file, syncs it, and atomically renames it into place. Before each save, the containing directory is created or restricted to mode `0700`, including an existing directory. Custom stores need a dedicated parent directory. This file contains desired state and feature configuration, not Microsoft identity state.
 
 The Microsoft and DCG bootstrap state is separate, normally `~/.config/linkmyphone/state.json`, and contains refresh credentials and private key material. Keep it private. The phone host uses Microsoft cloud services for authentication and relay operation.
 

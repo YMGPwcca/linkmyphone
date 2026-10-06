@@ -71,6 +71,8 @@ systemctl --user reset-failed linkmyphone.service
 
 If startup remains `activating`, inspect the host stages. With `Type=notify`, the unit waits until the control plane and enabled modules are ready. Feature commands return a retry response during startup.
 
+An error beginning `notifications module: initialize desktop` identifies notification-service initialization. Check that the session bus and desktop notification service are available. Startup uses the feature's `request_timeout_ms` and honors earlier caller cancellation or deadlines; increasing it does not repair a missing service. See [notification configuration](../reference/configuration.md#notification-configuration).
+
 ## Report a bug safely
 
 Include the smallest reproducer that identifies the failure stage, the command and flags, operating system, desktop session type, selected provider (`wl-clipboard`, `xclip`, or `xsel`), and exact non-secret error text. For code-level issues, include relevant source paths and versions.

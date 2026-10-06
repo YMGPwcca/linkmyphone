@@ -27,7 +27,7 @@ Historical Windows source notes describe CrossDevice acquiring its Microsoft tok
 <details>
 <summary>Scope constants, device-code tests, and historical sign-in</summary>
 
-Constants and modeled parameters are in [`auth/msa/config.go`](../../auth/msa/config.go#L5-L25), [`auth/msa/devicecode.go`](../../auth/msa/devicecode.go#L21-L24), and [`auth/dcgauth/constants.go`](../../auth/dcgauth/constants.go#L21-L46). [`auth/msa/devicecode_test.go`](../../auth/msa/devicecode_test.go#L13-L123) checks request and polling behavior. The baseline reports HTTP 200 from the Linux device-code probe and successful sign-in.
+Constants and modeled parameters are in [`auth/msa/config.go`](../../auth/msa/config.go#L9-L29), [`auth/msa/devicecode.go`](../../auth/msa/devicecode.go#L21-L24), and [`auth/dcgauth/constants.go`](../../auth/dcgauth/constants.go#L21-L46). [`auth/msa/devicecode_test.go`](../../auth/msa/devicecode_test.go#L31-L141) checks request and polling behavior. The baseline reports HTTP 200 from the Linux device-code probe and successful sign-in.
 
 </details>
 
@@ -51,9 +51,9 @@ The public bootstrap probe saves new keys and refresh credentials immediately af
 <details>
 <summary>Persistence order, stored fields, and resume evidence</summary>
 
-The CLI order is visible in [`main.go`](../../cmd/linkmyphone/main.go#L160-L264); the library order is in [`first_run.go`](../../bootstrap/first_run.go#L47-L165). State carries both key pairs, refresh credentials, the services token, enrollment material, trust relationships, and a stable logical-device ID. Resume refreshes the Microsoft token and calls DCG `SignIn`, not `CreateIdentity`.
+The CLI order is visible in [`main.go`](../../cmd/linkmyphone/main.go#L173-L279); the library order is in [`first_run.go`](../../bootstrap/first_run.go#L48-L174). State carries both key pairs, refresh credentials, the services token, enrollment material, trust relationships, and a stable logical-device ID. Resume refreshes the Microsoft token and calls DCG `SignIn`, not `CreateIdentity`.
 
-[`resume.go`](../../bootstrap/resume.go#L20-L80) and [`auth/state/store.go`](../../auth/state/store.go#L18-L207) implement the contracts. The library's staged persistence and resume behavior are covered by [`first_run_test.go`](../../bootstrap/first_run_test.go#L22-L141), [`resume_test.go`](../../bootstrap/resume_test.go#L16-L108), and [`store_test.go`](../../auth/state/store_test.go#L12-L96). The baseline reports production state persistence before later cloud stages.
+[`resume.go`](../../bootstrap/resume.go#L23-L123) and [`auth/state/store.go`](../../auth/state/store.go#L19-L217) implement the contracts. The library's staged persistence and resume behavior are covered by [`first_run_test.go`](../../bootstrap/first_run_test.go#L22-L152), [`resume_test.go`](../../bootstrap/resume_test.go#L16-L108), and [`store_test.go`](../../auth/state/store_test.go#L12-L96). The baseline reports production state persistence before later cloud stages.
 
 </details>
 
@@ -66,7 +66,7 @@ The production bootstrap report says SignalR returned its JSON handshake inside 
 <details>
 <summary>Handshake implementation, regression tests, and correction</summary>
 
-[`transport/signalr/client.go`](../../transport/signalr/client.go#L97-L137) accepts text or binary handshake messages and preserves trailing bytes for the next read. [`client_test.go`](../../transport/signalr/client_test.go#L21-L111) covers binary and coalesced cases. Commit [`e6cb89f`](https://github.com/YMGPwcca/phonelink-linux/commit/e6cb89f0d1761e44847294c64876662113df335d) records the correction.
+[`Dial`](../../transport/signalr/client.go#L144-L176) accepts text or binary handshake messages; [`consumeHandshake`](../../transport/signalr/client.go#L302-L321) preserves trailing bytes for the next read. [`client_test.go`](../../transport/signalr/client_test.go#L163-L253) covers binary and coalesced cases. Commit [`e6cb89f`](https://github.com/YMGPwcca/phonelink-linux/commit/e6cb89f0d1761e44847294c64876662113df335d) records the correction.
 
 </details>
 
@@ -77,7 +77,7 @@ When a caller omits a session ID, the relay generates and retains a stable DCG `
 <details>
 <summary>Session ID ownership, stability tests, and correction</summary>
 
-The relay creates and retains the per-target IDs in [`client.go`](../../transport/relay/client.go#L298-L335) and [`client.go`](../../transport/relay/client.go#L647-L666). [`invocation.go`](../../protocol/signalr/invocation.go#L62-L97) models the Hub argument separately. Tests cover stability and invocation shape in [`relay/client_test.go`](../../transport/relay/client_test.go#L331-L354) and [`invocation_test.go`](../../protocol/signalr/invocation_test.go#L78-L123). Commit [`69acae8`](https://github.com/YMGPwcca/phonelink-linux/commit/69acae8e5eea909a8dd8fefaf728cd0389d156cc) records the separation.
+The relay creates and retains the per-target IDs in [`client.go`](../../transport/relay/client.go#L308-L345) and [`client.go`](../../transport/relay/client.go#L658-L677). [`invocation.go`](../../protocol/signalr/invocation.go#L62-L97) models the Hub argument separately. Tests cover stability and invocation shape in [`relay/client_test.go`](../../transport/relay/client_test.go#L342-L365) and [`invocation_test.go`](../../protocol/signalr/invocation_test.go#L78-L123). Commit [`69acae8`](https://github.com/YMGPwcca/phonelink-linux/commit/69acae8e5eea909a8dd8fefaf728cd0389d156cc) records the separation.
 
 </details>
 
@@ -99,7 +99,7 @@ Historical Windows source notes describe Hub Relay operations using `InvokeAsync
 <details>
 <summary>Completion waiters, fake-Hub tests, and correction</summary>
 
-Separate waiters are implemented in [`relay/client.go`](../../transport/relay/client.go#L337-L420) and [`relay/client.go`](../../transport/relay/client.go#L477-L541). [`completion.go`](../../protocol/signalr/completion.go#L8-L66) parses the Hub result. Fake-Hub checks in [`client_test.go`](../../transport/relay/client_test.go#L509-L644) exercise rejection, flush completion, and send behavior. Commit [`002ea31`](https://github.com/YMGPwcca/phonelink-linux/commit/002ea31398ea156221f1fb85719b6dfcd83c47a9) introduced completion tracking.
+Separate waiters are implemented in [`relay/client.go`](../../transport/relay/client.go#L347-L430) and [`relay/client.go`](../../transport/relay/client.go#L487-L551). [`completion.go`](../../protocol/signalr/completion.go#L8-L66) parses the Hub result. Fake-Hub checks in [`client_test.go`](../../transport/relay/client_test.go#L520-L655) exercise rejection, flush completion, and send behavior. Commit [`002ea31`](https://github.com/YMGPwcca/phonelink-linux/commit/002ea31398ea156221f1fb85719b6dfcd83c47a9) introduced completion tracking.
 
 </details>
 
@@ -110,7 +110,7 @@ Before `Dispatcher/Wake`, the client sends `SendConnectedAsync(target)` and wait
 <details>
 <summary>Presence flush implementation and historical wake report</summary>
 
-[`FlushPartner`](../../transport/relay/client.go#L198-L247) performs the completion-waited send. [`bootstrap/peer.go`](../../bootstrap/peer.go#L1-L119) integrates presence checks and wake. Commit [`abb99ca`](https://github.com/YMGPwcca/phonelink-linux/commit/abb99ca25f927e12367ef68b619ddba2fe8ec79d) records the fix. The baseline and [PR #1](https://github.com/YMGPwcca/phonelink-linux/pull/1) describe Windows pre-wake ordering. Later production success was reported, but repeated wake recovery during a long-lived session remains open.
+[`FlushPartner`](../../transport/relay/client.go#L200-L249) performs the completion-waited send. [`bootstrap/peer.go`](../../bootstrap/peer.go#L1-L119) integrates presence checks and wake. Commit [`abb99ca`](https://github.com/YMGPwcca/phonelink-linux/commit/abb99ca25f927e12367ef68b619ddba2fe8ec79d) records the fix. The baseline and [PR #1](https://github.com/YMGPwcca/phonelink-linux/pull/1) describe Windows pre-wake ordering. Later production success was reported, but repeated wake recovery during a long-lived session remains open.
 
 </details>
 
@@ -147,7 +147,7 @@ For clipboard tag 9, PC-to-phone publication puts serialized `CLIPBOARD_CHANGE` 
 <details>
 <summary>Directional PubSub parser, tests, and correction</summary>
 
-The directional model is in [`pubsub.go`](../../protocol/clipboard/pubsub.go#L10-L31), [`pubsub_test.go`](../../protocol/clipboard/pubsub_test.go#L5-L38), and [`clipboard/client.go`](../../clipboard/client.go#L554-L580). Commit [`a4ffac0`](https://github.com/YMGPwcca/phonelink-linux/commit/a4ffac0bc6a9aa6b32adfa1473a4e4d72cada257) records the finding.
+The directional model is in [`pubsub.go`](../../protocol/clipboard/pubsub.go#L10-L31), [`pubsub_test.go`](../../protocol/clipboard/pubsub_test.go#L5-L38), and [`clipboard/client.go`](../../clipboard/client.go#L603-L629). Commit [`a4ffac0`](https://github.com/YMGPwcca/phonelink-linux/commit/a4ffac0bc6a9aa6b32adfa1473a4e4d72cada257) records the finding.
 
 </details>
 
@@ -158,7 +158,7 @@ After the Linux tag-9 publication, the recorded S23 run requested `GET /clipboar
 <details>
 <summary>Finite probe stages, explicit-content tests, and reports</summary>
 
-The finite probe is implemented in [`context.go`](../../bootstrap/context.go#L49-L58) and [`context.go`](../../bootstrap/context.go#L180-L297); the immediate phone CONTENT path is in [`clipboard/client.go`](../../clipboard/client.go#L345-L359). Commits [`4b4c093`](https://github.com/YMGPwcca/phonelink-linux/commit/4b4c09312d6974f9b0df8c77141349b8d973d7cf), [`ee33183`](https://github.com/YMGPwcca/phonelink-linux/commit/ee3318368e1f8e73b683b2912ab59a9ef16d39d5), and [`77844a5`](https://github.com/YMGPwcca/phonelink-linux/commit/77844a5b1148c14ef585a396c2af55563beff90a) record publication, negotiation, and explicit-content stages.
+The finite probe is implemented in [`context.go`](../../bootstrap/context.go#L49-L58) and [`context.go`](../../bootstrap/context.go#L180-L297); the immediate phone CONTENT path is in [`clipboard/client.go`](../../clipboard/client.go#L383-L397). Commits [`4b4c093`](https://github.com/YMGPwcca/phonelink-linux/commit/4b4c09312d6974f9b0df8c77141349b8d973d7cf), [`ee33183`](https://github.com/YMGPwcca/phonelink-linux/commit/ee3318368e1f8e73b683b2912ab59a9ef16d39d5), and [`77844a5`](https://github.com/YMGPwcca/phonelink-linux/commit/77844a5b1148c14ef585a396c2af55563beff90a) record publication, negotiation, and explicit-content stages.
 
 The baseline reports that explicitly supplied, non-sensitive probe text reached the S23 clipboard and could be pasted. Without explicit text, the probe declines CONTENT instead of returning real clipboard data. [`context_test.go`](../../bootstrap/context_test.go#L15-L547) covers STATUS followed by CONTENT, status-only timeout, rejection, timeout-as-observation, explicit text, and the 4096-byte limit. The observed negotiation sequence is not mandatory for every peer.
 
@@ -166,12 +166,12 @@ The baseline reports that explicitly supplied, non-sensitive probe text reached 
 
 ### Correlation snapshots and tombstones prevent stale content
 
-A PC publication stores exact text under the clipboard correlation before sending the change notification. A later CONTENT request receives that snapshot even if local clipboard text changed. Snapshots expire after two minutes or bounded eviction. A known retired or superseded correlation returns `INVALID_CONTENT` rather than unrelated current text. A newer remote generation tombstones older versioned local snapshots. Retirement history is bounded to 256 IDs; once an old ID is forgotten, the unknown-ID fallback can apply.
+A PC publication stores exact typed content under the clipboard correlation before sending the change notification. A later CONTENT request receives that snapshot while it is active, even if local clipboard content changed. Snapshots become ineligible after two minutes or bounded eviction. Expired entries are pruned on the next local publication or CONTENT request; an idle client can retain expired bytes longer, so the TTL is not a RAM-retention guarantee. A known retired or superseded correlation returns `INVALID_CONTENT` rather than unrelated current content. A newer remote generation tombstones older versioned local snapshots. Retirement history is trimmed to 256 IDs during pruning; new retirements can raise the count until the next prune. Once an old ID is forgotten, the unknown-ID fallback can apply.
 
 <details>
 <summary>Snapshot boundaries, generation tests, and corrections</summary>
 
-Snapshot, expiry, and tombstone code is in [`client.go`](../../clipboard/client.go#L205-L343), [`client.go`](../../clipboard/client.go#L361-L405), and [`client.go`](../../clipboard/client.go#L688-L748). Boundary tests are in [`client_test.go`](../../clipboard/client_test.go#L220-L278), [`client_test.go`](../../clipboard/client_test.go#L611-L682), [`retired_snapshot_test.go`](../../clipboard/retired_snapshot_test.go#L14-L71), and [`generation_test.go`](../../clipboard/generation_test.go#L39-L108). Commits [`8da85c7`](https://github.com/YMGPwcca/phonelink-linux/commit/8da85c778d5f072a92336c3e4daa93606551b035), [`a37e286`](https://github.com/YMGPwcca/phonelink-linux/commit/a37e286c85e451ed4bbda59074d62f730b4eb120), and [`5d0d5c1`](https://github.com/YMGPwcca/phonelink-linux/commit/5d0d5c154fbfdb0fb18c988ca75a8a676855b82f) record the corrections.
+Snapshot, expiry, and tombstone code is in [`client.go`](../../clipboard/client.go#L208-L381), [`client.go`](../../clipboard/client.go#L399-L443), and [`client.go`](../../clipboard/client.go#L749-L818). Boundary tests are in [`client_test.go`](../../clipboard/client_test.go#L220-L278), [`client_test.go`](../../clipboard/client_test.go#L611-L682), [`retired_snapshot_test.go`](../../clipboard/retired_snapshot_test.go#L14-L71), and [`generation_test.go`](../../clipboard/generation_test.go#L39-L108). Commits [`8da85c7`](https://github.com/YMGPwcca/phonelink-linux/commit/8da85c778d5f072a92336c3e4daa93606551b035), [`a37e286`](https://github.com/YMGPwcca/phonelink-linux/commit/a37e286c85e451ed4bbda59074d62f730b4eb120), and [`5d0d5c1`](https://github.com/YMGPwcca/phonelink-linux/commit/5d0d5c154fbfdb0fb18c988ca75a8a676855b82f) record the corrections.
 
 </details>
 
@@ -184,7 +184,7 @@ Outbound Context Publish runs on a separate publisher worker. Waiting for DCG ac
 <details>
 <summary>Publisher ownership, queue tests, and ordering corrections</summary>
 
-The feature publisher is in [`features/clipboard/sync.go`](../../features/clipboard/sync.go). Protocol workers are in [`clipboard/client.go`](../../clipboard/client.go#L114-L142) and [`clipboard/client.go`](../../clipboard/client.go#L583-L659), with queue and late-response tests in [`client_test.go`](../../clipboard/client_test.go#L446-L568). Commits [`9cf0521`](https://github.com/YMGPwcca/phonelink-linux/commit/9cf052198995621a21d9658fbd397be1266bdcc1), [`a37e286`](https://github.com/YMGPwcca/phonelink-linux/commit/a37e286c85e451ed4bbda59074d62f730b4eb120), and [`6e50c69`](https://github.com/YMGPwcca/phonelink-linux/commit/6e50c69f29fb853cbb776e4c62c9fba5f2bc9b9c) record ordering changes and immediate propagation of relay read-loop failure.
+The feature publisher is in [`features/clipboard/sync.go`](../../features/clipboard/sync.go). Protocol workers are in [`clipboard/client.go`](../../clipboard/client.go#L117-L145) and [`clipboard/client.go`](../../clipboard/client.go#L632-L714), with queue and late-response tests in [`client_test.go`](../../clipboard/client_test.go#L446-L568). Commits [`9cf0521`](https://github.com/YMGPwcca/phonelink-linux/commit/9cf052198995621a21d9658fbd397be1266bdcc1), [`a37e286`](https://github.com/YMGPwcca/phonelink-linux/commit/a37e286c85e451ed4bbda59074d62f730b4eb120), and [`6e50c69`](https://github.com/YMGPwcca/phonelink-linux/commit/6e50c69f29fb853cbb776e4c62c9fba5f2bc9b9c) record ordering changes and immediate propagation of relay read-loop failure.
 
 </details>
 
@@ -195,7 +195,7 @@ The client skips a native write when phone CONTENT exactly matches current local
 <details>
 <summary>Equality and origin-barrier tests and Wayland report</summary>
 
-The equality check is in [`clipboard/client.go`](../../clipboard/client.go#L407-L445); origin and echo handling are in [`features/clipboard/sync.go`](../../features/clipboard/sync.go). Tests are in [`client_test.go`](../../clipboard/client_test.go#L295-L372) and [`sync_test.go`](../../features/clipboard/sync_test.go). Commits [`9a039c6`](https://github.com/YMGPwcca/phonelink-linux/commit/9a039c634f87d4ff05fff0abfa31e100e040341e) and [`9b55277`](https://github.com/YMGPwcca/phonelink-linux/commit/9b552776b996f91ab9285305cd10f6feb912b7dd) record the fixes. The historical Wayland check reports reflected echo was eliminated. X11 has no tracked live validation.
+The equality check is in [`clipboard/client.go`](../../clipboard/client.go#L445-L492); origin and echo handling are in [`features/clipboard/sync.go`](../../features/clipboard/sync.go). Tests are in [`client_test.go`](../../clipboard/client_test.go#L295-L372) and [`sync_test.go`](../../features/clipboard/sync_test.go). Commits [`9a039c6`](https://github.com/YMGPwcca/phonelink-linux/commit/9a039c634f87d4ff05fff0abfa31e100e040341e) and [`9b55277`](https://github.com/YMGPwcca/phonelink-linux/commit/9b552776b996f91ab9285305cd10f6feb912b7dd) record the fixes. The historical Wayland check reports reflected echo was eliminated. X11 has no tracked live validation.
 
 </details>
 
@@ -208,7 +208,7 @@ The equality check is in [`clipboard/client.go`](../../clipboard/client.go#L407-
 <details>
 <summary>Native watcher sources, helper tests, and validation report</summary>
 
-Native paths and helper tests are in [`native.go`](../../clipboard/native.go#L62-L86), [`native_watch.go`](../../clipboard/native_watch.go#L36-L198), and [`native_watch_test.go`](../../clipboard/native_watch_test.go#L12-L153). Commits [`9b55277`](https://github.com/YMGPwcca/phonelink-linux/commit/9b552776b996f91ab9285305cd10f6feb912b7dd) and [`3c79498`](https://github.com/YMGPwcca/phonelink-linux/commit/3c79498277dc84473091b54fad6a875808f67e7c) record the write and watcher changes. The baseline reports immediate single publications for consecutive copies, one genuine-clear publication, non-echoing phone writes, and clean Ctrl+C without polling fallback.
+Native paths and helper tests are in [`native.go`](../../clipboard/native.go#L68-L92), [`native_watch.go`](../../clipboard/native_watch.go#L36-L198), and [`native_watch_test.go`](../../clipboard/native_watch_test.go#L12-L152). Commits [`9b55277`](https://github.com/YMGPwcca/phonelink-linux/commit/9b552776b996f91ab9285305cd10f6feb912b7dd) and [`3c79498`](https://github.com/YMGPwcca/phonelink-linux/commit/3c79498277dc84473091b54fad6a875808f67e7c) record the write and watcher changes. The baseline reports immediate single publications for consecutive copies, one genuine-clear publication, non-echoing phone writes, and clean Ctrl+C without polling fallback.
 
 </details>
 

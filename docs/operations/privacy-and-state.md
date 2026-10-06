@@ -6,7 +6,7 @@ LinkMyPhone requires Microsoft cloud services. Sign-in uses Microsoft's identity
 
 ## Before you enable clipboard sync
 
-The clipboard module has no content-based secret filter. Supported MIME selections are synchronized even if the source application labels them sensitive. Stop or disable the feature before copying secrets; sensitive-selection labels do not keep them local. See [`features/clipboard/sync.go`](../../features/clipboard/sync.go#L401-L415) for the handling.
+The clipboard module has no content-based secret filter. Supported MIME selections are synchronized even if the source application labels them sensitive. Stop or disable the feature before copying secrets; sensitive-selection labels do not keep them local. See [`features/clipboard/sync.go`](../../features/clipboard/sync.go#L404-L428) for the handling.
 
 The module does not print clipboard contents in normal runtime, probe, or service output. Diagnostics report byte counts and shortened correlation IDs. A desktop clipboard provider, journal collector, crash handler, or other process may have separate logging behavior outside this program.
 
@@ -27,7 +27,7 @@ The default feature registry is `~/.config/linkmyphone/features.json`. It stores
 
 The runtime control socket is a user-local Unix socket derived from the absolute feature-store path. It is created under `$XDG_RUNTIME_DIR/linkmyphone/` when the path fits the Unix socket limit, with a short `/tmp/linkmyphone-<uid>/` fallback otherwise. The directory is mode `0700` and socket mode is `0600`.
 
-Authentication and feature files are written atomically. The state directory is mode `0700`; state and feature files are mode `0600`. These permissions are not encryption. LinkMyPhone does not claim encrypted-at-rest state, hardware-backed key storage, or protection from a compromised user account, root, or another process running as the same user.
+Authentication and feature files are written atomically. Saving either store sets its parent directory to mode `0700`, including an existing directory; the files are mode `0600`. Use dedicated directories for custom store paths because saving changes their permissions. These permissions are not encryption. LinkMyPhone does not claim encrypted-at-rest state, hardware-backed key storage, or protection from a compromised user account, root, or another process running as the same user.
 
 ## What clipboard sync sends
 
@@ -77,6 +77,8 @@ A fresh PL enrollment adds one Microsoft account device/trust entry for both cli
 
 ### Clipboard
 
-Published snapshots hold text, HTML or outbound PNG for up to two minutes, with at most 64 entries and 16 MiB total. The native image cache retains the latest normalized desktop image, with a 128 MiB PNG budget and a 33554432-pixel limit on decoded images. These are separate from the outbound PNG limit of 1 MiB and are not a total process-memory ceiling: decoding, encoding and clones use additional memory.
+Published snapshots hold text, HTML or outbound PNG, with at most 64 entries and 16 MiB total. Their two-minute TTL limits eligibility for a correlated CONTENT response. Expired entries are removed on the next local publication or CONTENT request; an idle client can retain their bytes longer because no timer purges them. Removing an entry or stopping the module does not guarantee immediate garbage collection or secure memory erasure.
+
+The native image cache retains the latest normalized desktop image, with a 128 MiB PNG budget and a 33554432-pixel limit on decoded images. These are separate from the outbound PNG limit of 1 MiB and are not a total process-memory ceiling: decoding, encoding and clones use additional memory.
 
 A GTK clipboard helper may own received HTML until another selection replaces it. LinkMyPhone does not store clipboard history on disk; desktop clipboard managers and receiving apps may retain their own copies.

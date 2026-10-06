@@ -18,6 +18,23 @@ This page records manual device tests and automated checks. Historical stage res
 
 Authenticated X11 runs, other phones and other desktop setups still need testing. The [research method](method.md) describes the capture procedure.
 
+## Configuration, storage and desktop-startup regressions (2026-10-06)
+
+Checked at [`d8213f2`](https://github.com/YMGPwcca/linkmyphone/commit/d8213f24cfdcd25e19f19405a6c6f758e2cd7cc5) using Go 1.23.12 on Linux amd64. These are local regression checks; no Microsoft login, enrollment, phone traffic, desktop notification service or graphical-session test was run.
+
+| Check | Result |
+| --- | --- |
+| Clipboard and notification config | Explicit null properties rejected; omitted properties retain defaults and explicit false remains false. |
+| Manifest shape | Missing schema-required fields and forbidden nulls rejected; explicit null configuration schema and empty declaration arrays accepted. |
+| Feature-store permissions | New directories and existing `0755` directories end at `0700`; saved files end at `0600`. |
+| Failed feature-store replacement | No record remains after the failed create, and the temporary file is removed. |
+| Desktop initialization | Module tests cover request timeout, earlier caller deadline and cancellation. An isolated TCP bus that never answers authentication verifies that cancellation interrupts authentication and closes the connection. |
+| Regression baseline | The new null/manifest/permission/authentication tests fail against the unchanged `9680280` implementation and pass after the fix. |
+| Vet and CLI build | Passed. |
+| Race suite | Passed with exactly the eleven Unix-socket tests listed under [local fault tests](#local-fault-tests) excluded. Those same eleven tests also fail on unchanged `9680280` with `socket: operation not permitted`. The full suite could not pass in this workspace. No test or CI configuration was changed to skip them. |
+
+The clipboard snapshot TTL was clarified from source inspection: expired entries are pruned on publication or CONTENT requests, not by a timer. No maximum two-minute RAM retention or secure erasure is established. The previous S23 network-loss and suspend results remain historical device evidence; this run adds no token-expiry, extended-run, notification-recovery or systemd-interruption result.
+
 ## Unified PL enrollment (2026-10-05)
 
 PR [#9](https://github.com/YMGPwcca/linkmyphone/pull/9) had already merged notification synchronization into `main`. Fresh `bootstrap-probe` enrollment now chooses PL for its single device-code sign-in; saved WEA enrollment remains WEA and is never relabeled. The initial CachyOS desktop checks reused the previously enrolled PL profile without a new sign-in.
@@ -174,7 +191,7 @@ The migrated CrossDevice scope and public client reached the Microsoft device-co
 
 **Expected and failure signals**
 
-A safe run shows a device-code message and continuation into DCG identity bootstrap. `authorization_pending` and `slow_down` are expected polling responses handled in [`auth/msa/devicecode.go`](../../auth/msa/devicecode.go#L103-L172). Expired codes, invalid client/scope, and HTTP failures prevent completion.
+A safe run shows a device-code message and continuation into DCG identity bootstrap. `authorization_pending` and `slow_down` are expected polling responses handled in [`auth/msa/devicecode.go`](../../auth/msa/devicecode.go#L107-L176). Expired codes, invalid client/scope, and HTTP failures prevent completion.
 
 **Safety**
 
@@ -358,7 +375,7 @@ The baseline reports bidirectional text synchronization on Wayland with an S23. 
 
 Diagnostics name observer mode and direction, byte counts, and shortened IDs only. Wayland selects `wl-clipboard` and event watching; X11 falls back to polling with default 500 ms interval. An empty Wayland selection is valid empty text.
 
-No native provider, watcher startup failure, compositor lacking required data-control protocol, malformed helper frame, clipboard read/write failure, stale generation, or relay response timeout indicates failure. Native helper boundaries are tested in [`clipboard/native_watch_test.go`](../../clipboard/native_watch_test.go#L12-L153), and backend selection/empty-selection behavior in [`clipboard/native_test.go`](../../clipboard/native_test.go#L9-L138).
+No native provider, watcher startup failure, compositor lacking required data-control protocol, malformed helper frame, clipboard read/write failure, stale generation, or relay response timeout indicates failure. Native helper boundaries are tested in [`clipboard/native_watch_test.go`](../../clipboard/native_watch_test.go#L12-L152), and backend selection/empty-selection behavior in [`clipboard/native_test.go`](../../clipboard/native_test.go#L9-L138).
 
 Wayland/S23 was live validated. X11, other compositors, and other phones were not.
 

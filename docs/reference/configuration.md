@@ -19,7 +19,7 @@ linkmyphone run \
   --features-state "$HOME/.config/linkmyphone/features.json"
 ```
 
-Keep each separately enrolled identity in its own directory. Saving authentication state changes its parent directory to `0700`, even if the directory already exists; do not use a shared directory. Fresh installations enroll PL at the default path. Existing WEA state remains WEA and must not be relabeled. One PL state and feature store can serve both clipboard and notifications.
+Keep each separately enrolled identity in its own directory. Saving authentication state or feature state changes its parent directory to `0700`, even if the directory already exists; do not use a shared directory for a custom store path. Fresh installations enroll PL at the default path. Existing WEA state remains WEA and must not be relabeled. One PL state and feature store can serve both clipboard and notifications.
 
 ## Authentication state
 
@@ -120,7 +120,7 @@ Each feature record has exactly these fields:
 
 The registry records desired state, not whether a module is running. Disabled records remain installed. Live snapshots add `state`, `epoch`, and `last_error`; these are not persisted in `features.json`. Live capabilities belong to the kernel capability registry, not the control-plane snapshot.
 
-The store writes mode `0600` files under a mode `0700` directory and replaces them atomically. A missing file is treated as an empty registry. Unknown top-level fields, an unsupported schema version, duplicate IDs, invalid IDs, non-object config, trailing JSON, and malformed JSON are rejected.
+Before each save, the store creates or changes its parent directory to mode `0700`, including an existing directory, and aborts if that fails. It writes mode `0600` files and replaces them atomically. Merely opening an existing store does not change its permissions. A missing file is treated as an empty registry. Unknown top-level fields, an unsupported schema version, duplicate IDs, invalid IDs, non-object config, trailing JSON, and malformed JSON are rejected.
 
 ## Clipboard configuration
 
@@ -132,7 +132,7 @@ The clipboard feature has ID `linkmyphone.clipboard`, version `0.2.0`, and this 
 | `request_timeout_ms` | Integer, 100 through 120000 | `10000` | Clipboard protocol request timeout. |
 | `publish_initial` | Boolean | `false` | Publish the current local clipboard on each module start, including recovery. |
 
-The feature schema is [`features/clipboard/config.schema.json`](../../features/clipboard/config.schema.json). Empty or omitted config is decoded with defaults. `feature create --config JSON` validates the object before writing it. `feature update --config JSON` validates and replaces the entire object. It does not merge keys with the previous object.
+The feature schema is [`features/clipboard/config.schema.json`](../../features/clipboard/config.schema.json). Empty or omitted config is decoded with defaults, as are omitted properties. Explicit `null` properties, incorrect field types, unknown properties and out-of-range values are rejected; `publish_initial:false` stays false. `feature create --config JSON` validates the object before writing it. `feature update --config JSON` validates and replaces the entire object. It does not merge keys with the previous object.
 
 To enable initial publication with the default polling interval and request timeout:
 
@@ -150,11 +150,15 @@ The compatibility command's `--poll-interval` and `--publish-initial` flags cons
 
 | Property | Type and range | Default | Effect |
 | --- | --- | --- | --- |
-| `request_timeout_ms` | Integer, 100 through 120000 | `10000` | APP request/desktop-call deadline. |
+| `request_timeout_ms` | Integer, 100 through 120000 | `10000` | APP request, desktop initialization, Notify and normal CloseNotification deadline. An earlier caller deadline or cancellation takes precedence. |
 | `remote_actions` | Boolean | `true` | Permit explicit desktop dismissal, Android action buttons, launch and confirmed reply. Set false for a receive-only trial. |
 | `show_existing` | Boolean | `false` | Render existing/reconciled items with the suppress-sound hint; false avoids startup/recovery floods. The hint does not guarantee that a server hides its popup. |
 
-The [notification schema](../../features/notifications/config.schema.json) documents the accepted shape; the feature's Go validator rejects unknown properties, non-object values, trailing JSON and out-of-range timeouts. The optional reply UI uses Python GI/GTK4. Missing GTK or native action support removes reply capabilities/buttons, not notification reception. Each new host generation reconciles from fresh memory without replaying pending mutations.
+The [notification schema](../../features/notifications/config.schema.json) lists the properties, types, ranges and defaults. The feature's Go validator rejects unknown properties, incorrect field types, explicit `null` properties, non-object values, trailing JSON and out-of-range timeouts. Omitted properties receive defaults; `remote_actions:false` stays false and disables phone mutations.
+
+Desktop startup passes its deadline to D-Bus service discovery and subscriptions; cancellation also closes an in-progress bus authentication. After successful startup, the backend remains open until explicit teardown, so cancellation of the startup context does not prevent local notification cleanup. Service-owner rebind uses a separate two-second timeout; shutdown closes local notifications within a separate one-second cleanup budget. These cleanup paths do not use `request_timeout_ms`.
+
+The optional reply UI uses Python GI/GTK4. Missing GTK or native action support removes reply capabilities/buttons, not notification reception. Each new host generation reconciles from fresh memory without replaying pending mutations.
 
 State is limited to 4096 items and 32 MiB of estimated retained content. When that budget is exhausted, the oldest item is evicted locally and reported in diagnostics; eviction never dismisses it on the phone. Desktop service loss invalidates native IDs and cancels replies. A new owner silently replays previously visible/pending items. See [`notifications/`](../../notifications/) and [`features/notifications/`](../../features/notifications/).
 
@@ -168,4 +172,4 @@ During startup or recovery, the socket stays reserved and feature commands ask y
 
 The socket is a user-local Unix socket under `$XDG_RUNTIME_DIR/linkmyphone/` with a filename derived from a hash of the absolute feature-store path. If `XDG_RUNTIME_DIR` is unset or the candidate path reaches the 100-byte budget, the runtime uses `/tmp/linkmyphone-<uid>/`. The socket directory is mode `0700` and the socket is mode `0600`.
 
-Registry persistence and atomic replacement are defined in [`runtime/kernel/store.go`](../../runtime/kernel/store.go) and covered by [`runtime/kernel/store_test.go`](../../runtime/kernel/store_test.go). Authentication state is defined in [`auth/state/store.go`](../../auth/state/store.go) and covered by [`auth/state/store_test.go`](../../auth/state/store_test.go). The socket contract is defined in [`runtime/controlplane/protocol.go`](../../runtime/controlplane/protocol.go) and covered by [`runtime/controlplane/controlplane_test.go`](../../runtime/controlplane/controlplane_test.go).
+Registry persistence and atomic replacement are defined in [`runtime/kernel/store.go`](../../runtime/kernel/store.go). [`runtime/kernel/store_test.go`](../../runtime/kernel/store_test.go) covers reopen/CRUD, private permissions on new and existing directories, and rollback/temporary-file cleanup after a failed replacement; it does not simulate a crash or prove filesystem durability. Authentication state is defined in [`auth/state/store.go`](../../auth/state/store.go) and covered by [`auth/state/store_test.go`](../../auth/state/store_test.go). The socket contract is defined in [`runtime/controlplane/protocol.go`](../../runtime/controlplane/protocol.go) and covered by [`runtime/controlplane/controlplane_test.go`](../../runtime/controlplane/controlplane_test.go).
