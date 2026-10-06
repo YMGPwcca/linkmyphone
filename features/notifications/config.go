@@ -34,6 +34,15 @@ func DecodeConfig(raw json.RawMessage) (Config, error) {
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return Config{}, errors.New("notifications module: trailing JSON")
 	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(trimmed, &fields); err != nil {
+		return Config{}, fmt.Errorf("notifications module: decode config fields: %w", err)
+	}
+	for name, value := range fields {
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return Config{}, fmt.Errorf("notifications module: config field %s must not be null", name)
+		}
+	}
 	if cfg.RequestTimeoutMS < 100 || cfg.RequestTimeoutMS > 120000 {
 		return Config{}, errors.New("notifications module: request_timeout_ms must be between 100 and 120000")
 	}

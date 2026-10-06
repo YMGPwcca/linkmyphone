@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -33,6 +34,61 @@ func TestParseManifestJSON(t *testing.T) {
 	}
 	if manifest.ID != "linkmyphone.test" || !manifest.DeclaresCapability("test.echo", "1.0.0") {
 		t.Fatalf("manifest=%#v", manifest)
+	}
+}
+
+func TestManifestRequiresSchemaFields(t *testing.T) {
+	requirements := map[string][]string{
+		"":             {"schema_version", "id", "version", "kind", "runtime", "capabilities", "dependencies", "permissions", "configuration_schema", "metadata"},
+		"runtime":      {"api_version"},
+		"capabilities": {"potential"},
+		"dependencies": {"required", "optional"},
+		"permissions":  {"requested"},
+		"metadata":     {"display_name", "description", "diagnostic_label"},
+	}
+	for section, names := range requirements {
+		for _, name := range names {
+			for _, null := range []bool{false, true} {
+				if section == "" && name == "configuration_schema" && null {
+					continue
+				}
+				label := section + "." + name + " omitted"
+				if null {
+					label = section + "." + name + " null"
+				}
+				t.Run(label, func(t *testing.T) {
+					var document map[string]any
+					if err := json.Unmarshal([]byte(validManifestJSON), &document); err != nil {
+						t.Fatal(err)
+					}
+					object := document
+					if section != "" {
+						object = document[section].(map[string]any)
+					}
+					if null {
+						object[name] = nil
+					} else {
+						delete(object, name)
+					}
+					data, err := json.Marshal(document)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if _, err := ParseManifestJSON(data); err == nil {
+						t.Fatalf("invalid manifest accepted: %s", data)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestManifestAllowsEmptyDeclarationsAndNullConfigurationSchema(t *testing.T) {
+	source := strings.Replace(validManifestJSON, `"configuration_schema": "config.schema.json"`, `"configuration_schema": null`, 1)
+	source = strings.Replace(source, `{"id": "test.echo", "contract_version": "1.0.0"}`, "", 1)
+	source = strings.Replace(source, `["ipc.local"]`, `[]`, 1)
+	if _, err := ParseManifestJSON([]byte(source)); err != nil {
+		t.Fatalf("valid empty declarations/null schema rejected: %v", err)
 	}
 }
 

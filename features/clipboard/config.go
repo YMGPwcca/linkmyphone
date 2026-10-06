@@ -51,6 +51,15 @@ func DecodeConfig(raw json.RawMessage) (Config, error) {
 		}
 		return Config{}, fmt.Errorf("clipboard module: decode config trailer: %w", err)
 	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(trimmed, &fields); err != nil {
+		return Config{}, fmt.Errorf("clipboard module: decode config fields: %w", err)
+	}
+	for name, value := range fields {
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return Config{}, fmt.Errorf("clipboard module: config field %s must not be null", name)
+		}
+	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
