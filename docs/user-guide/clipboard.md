@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md)
 
-The clipboard module synchronizes plain text, HTML fragments and images through the existing CDEH/DCG clipboard.v1 publication and CONTENT exchange. Plain text, Rich text & HTML clipboard, and Image clipboard are Supported. Live checks on CachyOS/Wayland with a Samsung S23 include received HTML and image pastes in both directions; see [validation](../research/validation.md#clipboard-validation-2026-10-03). Rich formatting uses HTML fragments; arbitrary RTF and document formats are not supported.
+The clipboard module synchronizes plain text, HTML fragments and images through the CDEH/DCG clipboard.v1 publication and CONTENT exchange. Live checks on CachyOS/Wayland with a Samsung S23 covered HTML and image pastes in both directions; see [validation](../research/validation.md#clipboard-validation-2026-10-03). Rich formatting uses HTML fragments; arbitrary RTF and document formats are not supported.
 
 ## Providers
 
@@ -12,7 +12,9 @@ The clipboard module synchronizes plain text, HTML fragments and images through 
 | X11 | xclip | Text, HTML, PNG/JPEG/GIF/BMP input |
 | X11 fallback | xsel | Plain text only |
 
-Install the matching clipboard utilities. Optional Python 3, PyGObject and GTK4 allow incoming HTML to offer both its original fragment and derived plain text. Without those dependencies, the command provider offers HTML only; applications requesting only plain text may not paste it. HTML is retained as data, never executed by this program. GIF uses its first frame. BMP support follows the decoder's 8/24/32-bit variants. HEIC, AVIF, TIFF and WebP are not supported. File selections and unknown MIME types are skipped.
+Install the matching clipboard utilities. Python 3, PyGObject and GTK4 are optional: they let incoming HTML offer both its original fragment and derived plain text. Without them, the command provider offers HTML only, so text-only applications may not paste it. LinkMyPhone retains HTML as data and never executes it.
+
+GIF uses its first frame. BMP support follows the decoder's 8/24/32-bit variants. HEIC, AVIF, TIFF and WebP are not supported. File selections and unknown MIME types are skipped.
 
 Rich providers inspect MIME offers at `poll_interval_ms` (default 500 ms), preferring image, then HTML, then text. This catches formatting changes even when visible text is identical. The legacy text watcher remains available. A transient empty selection is debounced for 100 ms and re-read before a clear is published.
 
@@ -25,38 +27,31 @@ linkmyphone run
 
 Enable an existing record rather than creating it twice. See [first run](../getting-started/first-run.md) for authentication and target selection, and [configuration](../reference/configuration.md) for commands and timing ranges.
 
-`publish_initial` defaults to false: the clipboard present when the module starts is not sent. With it enabled, supported initial content is published on each module start, including recovery. `request_timeout_ms` bounds sending and waiting for protocol responses. Oversized, malformed, unavailable or unsupported content is skipped with a content-free diagnostic; a later valid copy can continue syncing.
+`publish_initial` defaults to false: the clipboard present at startup is not sent. When enabled, supported initial content is published on every module start, including recovery. `request_timeout_ms` bounds sending and waiting for protocol responses. Oversized, malformed, unavailable or unsupported content is skipped with a diagnostic that contains no clipboard content; a later valid copy can continue syncing.
 
 ## Limits and ordering
 
-Text and HTML must be valid UTF-8 and contain fewer than 131072 UTF-16 units; an emoji outside the BMP counts as two units. Images received from the phone are converted to PNG without resizing: their decoded dimensions are preserved, even when PNG encoding exceeds 1 MiB. Android may already have reduced the image before sending it. Only Linux → phone images are resized when necessary to fit 1048576 PNG bytes. Incoming phone encodings and non-PNG native input are capped at 16 MiB; desktop PNGs at 128 MiB and decoded dimensions at 33554432 pixels (32 Mi pixels). Outbound resizing may lose detail. Valid native PNGs retain their exact bytes until outbound preparation.
+Text and HTML must be valid UTF-8 and contain fewer than 131072 UTF-16 units; an emoji outside the BMP counts as two units.
 
-Published snapshots retain the advertised type, bytes and timestamp for two minutes, at most 64 entries and 16 MiB in aggregate. A matching CONTENT request receives that snapshot rather than an unrelated new selection. Newer phone/local generations suppress stale writes; superseded correlations are rejected. Format-aware hashes suppress reflected copies using the full desktop representation, before outbound resizing. There is no clipboard history or secret filter. Clipboard contents pass through Microsoft services; stop synchronization before copying secrets.
+Images received from the phone are converted to PNG without resizing. Their decoded dimensions are preserved even if PNG encoding exceeds 1 MiB; Android may already have reduced the image before sending it. Only Linux → phone images are resized when needed to fit 1048576 PNG bytes. Resizing may lose detail.
+
+Incoming phone encodings and non-PNG native input are capped at 16 MiB. Desktop PNGs are capped at 128 MiB, and decoded dimensions at 33554432 pixels (32 Mi pixels). Valid native PNGs retain their exact bytes until outbound preparation.
+
+Published snapshots retain the advertised type, bytes and timestamp for correlated CONTENT requests within two minutes, with at most 64 entries and 16 MiB in aggregate. Expired entries are pruned on the next local publication or CONTENT request; the TTL is not a guarantee that bytes leave RAM within two minutes. A matching request for an active snapshot receives that snapshot, not an unrelated new selection. Newer phone/local generations suppress stale writes; superseded correlations are rejected. Format-aware hashes suppress reflected copies using the full desktop representation, before outbound resizing.
+
+There is no clipboard history or secret filter. Clipboard contents pass through Microsoft services; stop synchronization before copying secrets.
 
 ## Validate on your devices
 
-Use non-sensitive samples in both directions:
+Use harmless content and avoid copying secrets:
 
-1. Copy Vietnamese text, newlines, emoji and an empty string/clear.
-2. Copy formatted HTML, then change only formatting. Paste into an HTML-capable editor and a text-only application.
-3. Copy a transparent PNG, a JPEG, and an image exceeding 1 MiB. Check received pixels/dimensions and successful paste.
-4. Copy files or unsupported content, then valid text; synchronization should recover without restarting.
-5. Copy a new local selection while a phone CONTENT response is delayed; the delayed value must not overwrite the newer generation.
-6. Stop/restart the module and verify initial publication follows configuration.
+1. Copy text in both directions, including formatting, emoji and an empty selection.
+2. Test HTML in a rich editor and a text-only app. Try supported image formats in both directions, including one image over 1 MiB.
+3. Test a clear, an unsupported file followed by valid text, and a module restart.
+4. Repeat after disconnecting a device or suspending Linux; wait for readiness before testing again.
 
-Also test after disconnecting either device or suspending Linux. Wait for runtime readiness, then copy a new selection and paste in both directions. The [session recovery guide](../operations/session-recovery.md) explains this sequence. See [testing](../developer/testing.md) for automated checks and [privacy](../operations/privacy-and-state.md) for local state and clipboard handling.
+For detailed recovery steps, see [session recovery](../operations/session-recovery.md). For automated and opt-in checks, see the [testing guide](../developer/testing.md).
 
 ## Image behavior compared with Windows
 
-Phone → Linux keeps the dimensions Android sends. Linux → phone prepares a PNG within **1048576 bytes (1 MiB)**, using area-average resampling when resizing is needed. Windows uses high-quality bicubic resizing and a different size-selection rule.
-
-Each row in the [2026-10-03 comparison](../research/validation.md#clipboard-validation-2026-10-03) used the same source image on Linux and Windows:
-
-| Sample | Linux | Windows |
-| --- | --- | --- |
-| Same phone image pasted on each PC | 1572×2096 | 1572×2096 |
-| Same PC image sent to the phone | 583×1036, displayed as 1.05 MB | 310×551, displayed as 330 KB |
-
-The displayed file sizes are rounded. The outgoing limit is measured in exact encoded PNG bytes.
-
-To compare your own image, copy the same source file on both computers and paste into the same Android app without further recompression. Compare received dimensions, small text, fine edges and texture at the same displayed size. Inspect exact bytes if a file manager's rounded size appears to exceed 1 MiB.
+Phone → Linux keeps the dimensions Android sends. Linux → phone resizes PNG as needed to fit 1048576 bytes using area-average resampling; Windows uses high-quality bicubic resizing and a different size-selection rule. See [validation](../research/validation.md#clipboard-validation-2026-10-03) for measured results.

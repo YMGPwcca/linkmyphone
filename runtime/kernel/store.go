@@ -181,6 +181,9 @@ func (s *FeatureStore) saveLocked() error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("kernel: create feature store directory: %w", err)
 	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return fmt.Errorf("kernel: chmod feature store directory: %w", err)
+	}
 
 	file := featureStoreFile{
 		SchemaVersion: featureStoreSchemaVersion,

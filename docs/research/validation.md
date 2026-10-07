@@ -2,7 +2,7 @@
 
 [Documentation index](../README.md)
 
-This page records manual device tests and automated checks. Older results come from the [baseline README at `e51728b`](https://github.com/YMGPwcca/phonelink-linux/blob/e51728b12a148061c8076c67200ee4a8f366e423/README.md); the dated sections below add the later clipboard and recovery runs. Command examples use the current LinkMyPhone names.
+This page records manual device tests and automated checks. Historical stage results come from the [baseline README at `e51728b`](https://github.com/YMGPwcca/phonelink-linux/blob/e51728b12a148061c8076c67200ee4a8f366e423/README.md); dated sections record later clipboard, notification and recovery runs. Command examples use current LinkMyPhone names.
 
 ## Current results
 
@@ -18,13 +18,30 @@ This page records manual device tests and automated checks. Older results come f
 
 Authenticated X11 runs, other phones and other desktop setups still need testing. The [research method](method.md) describes the capture procedure.
 
+## Configuration, storage and desktop-startup regressions (2026-10-06)
+
+Checked at [`d8213f2`](https://github.com/YMGPwcca/linkmyphone/commit/d8213f24cfdcd25e19f19405a6c6f758e2cd7cc5) using Go 1.23.12 on Linux amd64. These are local regression checks; no Microsoft login, enrollment, phone traffic, desktop notification service or graphical-session test was run.
+
+| Check | Result |
+| --- | --- |
+| Clipboard and notification config | Explicit null properties rejected; omitted properties retain defaults and explicit false remains false. |
+| Manifest shape | Missing schema-required fields and forbidden nulls rejected; explicit null configuration schema and empty declaration arrays accepted. |
+| Feature-store permissions | New directories and existing `0755` directories end at `0700`; saved files end at `0600`. |
+| Failed feature-store replacement | No record remains after the failed create, and the temporary file is removed. |
+| Desktop initialization | Module tests cover request timeout, earlier caller deadline and cancellation. An isolated TCP bus that never answers authentication verifies that cancellation interrupts authentication and closes the connection. |
+| Regression baseline | The new null/manifest/permission/authentication tests fail against the unchanged `9680280` implementation and pass after the fix. |
+| Vet and CLI build | Passed. |
+| Race suite | Passed with exactly the eleven Unix-socket tests listed under [local fault tests](#local-fault-tests) excluded. Those same eleven tests also fail on unchanged `9680280` with `socket: operation not permitted`. The full suite could not pass in this workspace. No test or CI configuration was changed to skip them. |
+
+The clipboard snapshot TTL was clarified from source inspection: expired entries are pruned on publication or CONTENT requests, not by a timer. No maximum two-minute RAM retention or secure erasure is established. The previous S23 network-loss and suspend results remain historical device evidence; this run adds no token-expiry, extended-run, notification-recovery or systemd-interruption result.
+
 ## Unified PL enrollment (2026-10-05)
 
-PR [#9](https://github.com/YMGPwcca/linkmyphone/pull/9) merged notification synchronization into `main` before this change. A fresh `bootstrap-probe` now chooses PL for its single device-code sign-in; a saved WEA enrollment remains WEA and is never relabeled. The previously enrolled PL profile was reused on the CachyOS desktop without a new sign-in.
+PR [#9](https://github.com/YMGPwcca/linkmyphone/pull/9) had already merged notification synchronization into `main`. Fresh `bootstrap-probe` enrollment now chooses PL for its single device-code sign-in; saved WEA enrollment remains WEA and is never relabeled. The initial CachyOS desktop checks reused the previously enrolled PL profile without a new sign-in.
 
 With the existing PL state, `session-probe --context-probe` reached S23 clipboard STATUS and CONTENT with matching correlation IDs. The probe answered FEATURE_ON and declined CONTENT, **sending no clipboard bytes**. In a separate combined runtime, both `linkmyphone.clipboard` and `linkmyphone.notifications` reached Ready in one host generation. Clipboard FEATURE_ON returned status 1; notifications APP connect reported `ecr=true` and reconciled six items with remote actions disabled. `feature get` reported both records Ready, epoch 1, and exposed clipboard text/HTML/image and notification receive capabilities.
 
-Linux `go test -race ./...`, `go vet ./...` and CLI build passed on the isolated build tree. Focused bootstrap/CLI/state tests passed after test cleanup. Those initial checks reused an existing PL identity rather than asking the owner to sign in again; the owner later completed a fresh single-login enrollment and tested the two modules together, as recorded below.
+Linux `go test -race ./...`, `go vet ./...` and CLI build passed on the isolated build tree. Focused bootstrap/CLI/state tests passed after test cleanup. These initial checks reused an existing PL identity. The owner later completed fresh single-login enrollment and tested both modules together, as recorded below.
 
 Bidirectional plain-text delivery also passed while **both modules were Ready on the PL state** and the old WEA service was stopped. A temporary Android foreground fixture set a harmless test string; the PL runtime reported `phone -> Linux applied clipboard (bytes=28)` and the Linux selection's SHA-256 matched the fixture string. A second harmless Linux selection produced `Linux -> phone published clipboard (bytes=33)`; the foreground Android fixture compared the received clipboard to the expected value and logged `PC_TO_PHONE_MATCH` without printing it. This validates both directions on this S23 with its existing Windows pairing; HTML/image and other phones under PL remain untested. The earlier source concern remains a compatibility risk in other connection-sharing configurations, not a failure observed here.
 
@@ -32,25 +49,29 @@ The old WEA service was restored to Active/Running. The desktop's original PNG s
 
 ## APP route decoding after fresh login (2026-10-05)
 
-The user's first fresh PL login and one-host runtime reached notification APP ready/reconcile and clipboard transfers. After a ninth notification item, the runtime printed one `malformed APP envelope`. That output proves an APP payload failed the old universal PBValueSet decoder; **no raw envelope or route was captured**, so its exact cause cannot be assigned.
+The owner's first fresh PL login reached notification APP readiness/reconciliation and clipboard transfers in one host. After a ninth notification item, the runtime printed one `malformed APP envelope`. This shows that an APP payload failed the old universal PBValueSet decoder; **no raw envelope or route was captured**, so its exact cause cannot be assigned.
 
-APP is multiplexed by `_route`. The supplied Windows `DeviceProxyMessageReceiver` handles `/DeviceProxyClient/TransportMiddleware` with a JSON body, whereas notification `/legacy/phonecontent` uses PBValueSet. The old notification receive loop decoded PBValueSet before inspecting `_route`, misreporting an unrelated valid JSON APP frame as malformed. An offline test reproduced that false warning before the change and passed after route-first decoding. The notification client now validates framing, ignores routes and response IDs it does not own, then decodes typed values only for its own routes. Malformed frames or typed bodies on a claimed route still report a non-content `stage` and decoder `reason`. This prevents the established false-positive shape; the user's exact live frame has **not** been re-captured or asserted fixed.
+APP is multiplexed by `_route`. The supplied Windows `DeviceProxyMessageReceiver` handles `/DeviceProxyClient/TransportMiddleware` with a JSON body; notification `/legacy/phonecontent` uses PBValueSet. The old notification loop decoded PBValueSet before inspecting `_route`, so an unrelated valid JSON APP frame could be misreported as malformed. An offline test reproduced that false warning before the change and passed after route-first decoding.
 
-On the next owner-run, copying an image on S23 produced `malformed APP envelope (reason=malformed app values: byte array limit, stage=values)` after Notification had already reached Ready. This is separate from a malformed frame: Android's active `ContentTransferClipboardMessage` puts image bytes in `image_bytes` and identifies the legacy APP payload as `copypaste_metadata`; its PL multicast uses the shared `/legacy/phonecontent` route. The notification client still attempted full PBValueSet decode before checking `contentType`, so a valid clipboard byte array over its 4096-byte *notification decoder* limit triggered a false warning. A 4097-byte independent fixture on the shared route reproduced the warning before the fix and passes after bounded top-level `contentType` inspection. Only `notifications` content is fully decoded; the existing byte-array limit and error report remain for malformed notification payloads. The exact live image frame was not captured, and no phone copy was rerun for this verification.
+The client now validates framing, ignores routes and response IDs it does not own, and decodes typed values only for its own routes. Malformed frames or typed bodies on a claimed route still report a non-content `stage` and decoder `reason`. This prevents the reproduced false-positive shape; the owner's exact live frame has **not** been re-captured or shown to be fixed.
+
+On the next owner-run, copying an image on S23 produced `malformed APP envelope (reason=malformed app values: byte array limit, stage=values)` after notifications had reached Ready. This was a value-decoding failure, not malformed framing. Android's active `ContentTransferClipboardMessage` puts image bytes in `image_bytes`, identifies the legacy APP payload as `copypaste_metadata`, and multicasts it over PL on the shared `/legacy/phonecontent` route. Full PBValueSet decoding before checking `contentType` caused valid clipboard arrays over the 4096-byte *notification decoder* limit to trigger a false warning.
+
+A 4097-byte independent fixture on the shared route reproduced the warning before the fix and passes after bounded top-level `contentType` inspection. Only `notifications` content is fully decoded; the existing byte-array limit and error report remain for malformed notification payloads. The exact live image frame was not captured, and no phone copy was rerun for this verification.
 
 
 ## Notification desktop actions on unified enrollment (2026-10-05)
 
 The laptop enrolled as Phone Link (PL) after one Microsoft sign-in. Clipboard and Notifications both reached Ready in the same service. In the S23 Messenger test, the desktop Like button used notification #39, reply used #40 and dismissal used #41. Android accepted the requests and sent a removal for each notification. The chat screenshots and the tester's confirmation show the Like and reply appeared and dismissal worked.
 
-Journal lines now use a short number such as #41 to follow one notification. An offline test checks desktop dismissal, Android acceptance, phone removal, button presses and replies. A rejected request cannot appear as accepted. Notification keys and message text stay out of the log. Old journal lines remain unchanged.
+Journal lines now identify each notification with a short number such as #41. An offline test checks desktop dismissal, Android acceptance, phone removal, button presses and replies, including that rejected requests cannot appear as accepted. Notification keys and message text stay out of the log. Old journal lines remain unchanged.
 
 Notification sync and one-login PL enrollment are **Supported** for the tested S23/CachyOS/Wayland setup. [PR #10](https://github.com/YMGPwcca/linkmyphone/pull/10) merged the work into `main`; [CI](https://github.com/YMGPwcca/linkmyphone/actions/runs/37276711700) passed vet, build, the full race suite and X11 clipboard checks. The updated laptop service stayed Ready, and the clipboard text survived its restart unchanged. Other phones, permission revocation, token expiry and long-running recovery have not been tested.
 
 
 ## Notification validation (2026-10-04)
 
-Implementation on `feature/notification-sync`; source corpus: Phone Link 1.26072.257.0 and active Link to Windows 1.26082.130.0. No Microsoft source, application assemblies or captured personal notification payloads are tracked in the repository.
+This run tested the implementation on `feature/notification-sync` against a source corpus of Phone Link 1.26072.257.0 and active Link to Windows 1.26082.130.0. No Microsoft source, application assemblies or captured personal notification payloads are tracked in the repository.
 
 | Check | Observed result |
 | --- | --- |
@@ -82,7 +103,7 @@ Automation limits for this 2026-10-04 run: the virtual-input prerequisite was re
 
 ## Clipboard validation (2026-10-03)
 
-Setup: CachyOS/Wayland, `wl-clipboard`, Samsung Galaxy S23 with Link to Windows, and Windows Phone Link for the image comparison. HTML offers used GTK4/Python GI. The new executable reused `~/.config/phonelink-linux/state.json` through `--state`.
+Setup: CachyOS/Wayland, `wl-clipboard`, Samsung Galaxy S23 with Link to Windows, and Windows Phone Link for the image comparison. HTML offers used GTK4/Python GI. The executable reused `~/.config/phonelink-linux/state.json` through `--state`.
 
 | Check | Result |
 | --- | --- |
@@ -170,11 +191,11 @@ The migrated CrossDevice scope and public client reached the Microsoft device-co
 
 **Expected and failure signals**
 
-A safe run shows a device-code message and continuation into DCG identity bootstrap. `authorization_pending` and `slow_down` are expected polling responses handled in [`auth/msa/devicecode.go`](../../auth/msa/devicecode.go#L103-L172). Expired codes, invalid client/scope, and HTTP failures prevent completion.
+A safe run shows a device-code message and continuation into DCG identity bootstrap. `authorization_pending` and `slow_down` are expected polling responses handled in [`auth/msa/devicecode.go`](../../auth/msa/devicecode.go#L107-L176). Expired codes, invalid client/scope, and HTTP failures prevent completion.
 
 **Safety**
 
-This is a live Microsoft authentication flow. Run only with an account and state directory intended for the experiment. Never run it with shared credentials, and never copy a token or verification code into logs or issue reports.
+This contacts Microsoft's live authentication service. Use only your own account and experiment state directory, never shared credentials. Keep tokens and verification codes out of logs and issue reports.
 
 ### 2. DCG identity creation and enrollment
 
@@ -354,7 +375,7 @@ The baseline reports bidirectional text synchronization on Wayland with an S23. 
 
 Diagnostics name observer mode and direction, byte counts, and shortened IDs only. Wayland selects `wl-clipboard` and event watching; X11 falls back to polling with default 500 ms interval. An empty Wayland selection is valid empty text.
 
-No native provider, watcher startup failure, compositor lacking required data-control protocol, malformed helper frame, clipboard read/write failure, stale generation, or relay response timeout indicates failure. Native helper boundaries are tested in [`clipboard/native_watch_test.go`](../../clipboard/native_watch_test.go#L12-L153), and backend selection/empty-selection behavior in [`clipboard/native_test.go`](../../clipboard/native_test.go#L9-L138).
+No native provider, watcher startup failure, compositor lacking required data-control protocol, malformed helper frame, clipboard read/write failure, stale generation, or relay response timeout indicates failure. Native helper boundaries are tested in [`clipboard/native_watch_test.go`](../../clipboard/native_watch_test.go#L12-L152), and backend selection/empty-selection behavior in [`clipboard/native_test.go`](../../clipboard/native_test.go#L9-L138).
 
 Wayland/S23 was live validated. X11, other compositors, and other phones were not.
 
@@ -385,7 +406,7 @@ Flags precede the positional feature ID in update and create forms. Historical s
 
 `list` and `get` report live state while the daemon owns the socket. Commands during `activating` return `runtime is starting; retry the feature command` instead of changing desired state offline. Once ready, commands return live state. Source paths are [`cmd/linkmyphone/runtime_control.go`](../../cmd/linkmyphone/runtime_control.go), [`runtime/kernel/`](../../runtime/kernel/), and [`runtime/controlplane/`](../../runtime/controlplane/). `run --request-timeout` controls only the host's PLATFORM `/SessionValidation` wait. Clipboard operations use the separate module `request_timeout_ms` configuration.
 
-The baseline reports an end-to-end S23 run, targeted stress tests, full `go test ./...`, and full `go test -race ./...` after lifecycle, router, generation, socket, and reconcile changes. This is a historical report, not a fresh run, and does not establish recovery after losing the cloud session.
+The baseline reports an end-to-end S23 run, targeted stress tests, full `go test ./...` and full `go test -race ./...` after lifecycle, router, generation, socket and reconcile changes. That historical run did not establish recovery after cloud-session loss; later recovery checks are recorded [above](#session-resilience-2026-10-03).
 
 ### 10. systemd user service
 
@@ -416,11 +437,11 @@ The baseline README reports these prior checks after corresponding feature work:
 - event-driven Wayland watcher: targeted tests repeated 50 times and targeted race tests repeated 50 times, then full `go test ./...` and `go test -race ./...`;
 - systemd packaging and empty-clipboard fix: targeted tests repeated 50 times and targeted race tests repeated 50 times, then full `go test ./...` and `go test -race ./...`.
 
-These are reports of prior runs, not newly captured results. Their source/test pointers are in [findings](findings.md) and the protocol references. Record a new run's commit, environment, command, and outcome separately rather than treating these assertions as current proof.
+These are prior runs, not newly captured results. Source/test pointers are in [findings](findings.md) and the protocol references. Record each new run's commit, environment, command and outcome separately.
 
-## Absent artifacts and provenance limits
+## Historical artifact limits
 
-The repository does not contain:
+The baseline record does not include the following artifacts or evidence. Later validation results are recorded in the dated sections above.
 
 - the Windows decompiled source files that informed source-confirmed comments;
 - raw Microsoft authentication responses or WAM traces;
@@ -433,7 +454,7 @@ The repository does not contain:
 - evidence for X11 or non-Wayland clipboard watching;
 - evidence of successful long-running reconnect, peer wake recovery, or token refresh.
 
-The checkable record is current source, focused tests, dated commits, PR #1 body, and historical prose in the main README. No external decompiled-source location or raw live artifact is cited because none is tracked.
+The checkable baseline record consists of source, focused tests, dated commits, the PR #1 body and historical README prose. No external decompiled-source location or raw live artifact is cited because none is tracked.
 
 ## Open limitations
 

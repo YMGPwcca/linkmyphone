@@ -13,7 +13,7 @@ Use the smallest probe that answers the question, record the boundary that faile
 | Commit history | When an implementation or correction entered the repository, and the exact diff |
 | Written live reports | Results reported for the tested Microsoft services, S23, Wayland desktop, and systemd session |
 
-The original reports remain available in the [pre-restructure README](https://github.com/YMGPwcca/phonelink-linux/blob/e51728b12a148061c8076c67200ee4a8f366e423/README.md), [module-system notes](https://github.com/YMGPwcca/phonelink-linux/blob/e51728b12a148061c8076c67200ee4a8f366e423/docs/architecture/MODULE_SYSTEM.md), and [systemd notes](https://github.com/YMGPwcca/phonelink-linux/blob/e51728b12a148061c8076c67200ee4a8f366e423/docs/operations/SYSTEMD.md). [Findings](findings.md), [history](history.md), and the [validation record](validation.md) separate those reports from current implementation contracts.
+Original reports are available in the [baseline README](https://github.com/YMGPwcca/phonelink-linux/blob/e51728b12a148061c8076c67200ee4a8f366e423/README.md), [module-system notes](https://github.com/YMGPwcca/phonelink-linux/blob/e51728b12a148061c8076c67200ee4a8f366e423/docs/architecture/MODULE_SYSTEM.md) and [systemd notes](https://github.com/YMGPwcca/phonelink-linux/blob/e51728b12a148061c8076c67200ee4a8f366e423/docs/operations/SYSTEMD.md). [Findings](findings.md), [history](history.md) and [validation](validation.md) distinguish those reports from current implementation contracts.
 
 [PR #1](https://github.com/YMGPwcca/phonelink-linux/pull/1) contains earlier implementation notes. Parts of its description still list bootstrap validation, session setup, and the Linux clipboard backend as unfinished, although later commits and the recorded README describe them working. Follow the commit-linked history when the records disagree.
 
@@ -61,25 +61,6 @@ Find the first failed boundary: **sign-in → enrollment → trust → relay →
 | Linux to phone | Native observation → change publication → phone CONTENT request → text response. |
 | Phone to Linux | Phone publication → Linux CONTENT pull → phone response → native write. |
 
-<details>
-<summary>Full investigation boundary chart</summary>
-
-```mermaid
-flowchart TD
-    A[Microsoft sign-in] --> B[DCG identity and enrollment]
-    B --> C[Trust and peer discovery]
-    C --> D[Assigned SignalR relay and account connection]
-    D --> E[Peer presence or wake]
-    E --> F[PLATFORM SessionValidation]
-    F --> G[Native clipboard observation]
-    G --> H[Linux change publication]
-    H --> I[Phone CONTENT request and Linux response]
-    F --> J[Phone change publication]
-    J --> K[Linux CONTENT pull and phone response]
-    K --> L[Native clipboard write]
-```
-
-</details>
 
 For transport experiments, record acknowledgements separately:
 
@@ -89,13 +70,13 @@ For transport experiments, record acknowledgements separately:
 - A correlated PLATFORM/clipboard response proves the application exchange reached that stage.
 - A manual paste on the receiving desktop or phone establishes the visible clipboard result.
 
-Do not collapse these observations into "the send succeeded." This distinction led to the [Hub completion, packet enum, and trace-context findings](findings.md).
+Keep these outcomes separate in reports. Their differences led to the [Hub completion, packet enum and trace-context findings](findings.md).
 
 When a hypothesis depends on wire bytes, reduce it to a redacted deterministic fixture that preserves relevant field numbers, types, lengths, and correlation relationships. If changing the bytes would invalidate the experiment, keep the original artifact private and describe sensitive fields and storage restrictions. A round trip between two copies of the same codec is insufficient evidence of compatibility with an independent peer.
 
-## Write a finding that can be reviewed
+## Record a finding
 
-Use a record with enough detail to repeat the experiment:
+Include enough detail to repeat the experiment:
 
 ```text
 Question:
@@ -121,7 +102,7 @@ Remaining uncertainty:
 
 A source inspection, test, and production observation can support one finding, but each must say what it proves. Preserve a negative result when it explains a later change. Keep the original observation when correcting an interpretation, and link the corrective commit.
 
-For an upstream-source observation, record package version and hash, type/method or message definition, and extraction method when those artifacts are available. If unavailable, cite the historical report and say which upstream detail cannot be checked. Do not invent a file path, symbol, capture, or successful experiment to close that gap.
+For upstream-source observations, record the package version and hash, type/method or message definition, and extraction method when available. Otherwise, cite the historical report and identify the detail that cannot be checked. Do not invent paths, symbols, captures or successful experiments to fill a gap.
 
 Update [findings](findings.md) for the discovery, [history](history.md) for the corrective commit, and [validation](validation.md) for the experiment's environment and outcome. User-visible changes also need their guide or reference updated.
 
@@ -136,4 +117,4 @@ These references explain public framing and authentication layers. They do not s
 
 For implemented Phone Link contracts, begin with the [source map](../developer/source-map.md) and the [protocol references](README.md#follow-a-message).
 
-Current clipboard research additionally uses owner-supplied Windows and Android reverse-engineering observations, recorded archive identifiers and independent runtime code. [Clipboard content evidence](clipboard-content.md) documents that provenance without importing the source corpus into the public repository. The [2026-10-03 validation](validation.md#clipboard-validation-2026-10-03) records user-visible paste results and approximate displayed image sizes; those reports do not supply original payloads for exact-byte or pixel comparison.
+Clipboard content research also uses owner-supplied Windows and Android reverse-engineering observations, recorded archive identifiers and independent runtime code. [Clipboard content evidence](clipboard-content.md) documents that provenance without importing the source corpus into the public repository. The [2026-10-03 validation](validation.md#clipboard-validation-2026-10-03) records user-visible paste results and approximate displayed image sizes; those reports do not supply original payloads for exact-byte or pixel comparison.

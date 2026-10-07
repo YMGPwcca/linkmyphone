@@ -1,4 +1,4 @@
-# Transport and message reference
+# Transport and messages
 
 [Documentation index](../README.md)
 
@@ -6,7 +6,7 @@ A packet can be valid at one layer and fail at another. Name the first boundary 
 
 Related evidence: [research findings](../research/findings.md), [historical validation](../research/validation.md), and [development history](../research/history.md).
 
-## Start here: message path and acknowledgements
+## Message path and acknowledgements
 
 The outer wire stack is:
 
@@ -18,7 +18,7 @@ flowchart TD
     D --> E[RFC 6455 WebSocket binary message]
 ```
 
-A normal Linux clipboard publication crosses the layers in this order:
+A Linux clipboard publication crosses these layers:
 
 ```text
 ClipboardResponseMessage(CLIPBOARD_CHANGE)
@@ -40,7 +40,7 @@ A successful peer ACK may complete a send before Hub Completion arrives. `Succes
 
 ## Identifier map
 
-Do not substitute one identifier for another:
+These identifiers are not interchangeable:
 
 | Identifier | Scope | Where it appears |
 | --- | --- | --- |
@@ -52,13 +52,13 @@ Do not substitute one identifier for another:
 | Clipboard correlation ID | One logical clipboard publication/request | Clipboard protobuf field 3, preserved from `CLIPBOARD_CHANGE` through CONTENT |
 | MSAEP `MessageID` | One cloud PubSub envelope | MSAEP field 3 |
 
-`transport/relay/client.go` keeps DCG session IDs keyed by target and creates a UUID on the target's first send. The optional Hub session ID is passed separately to the session-based method. See [`transport/relay/client_test.go`](../../transport/relay/client_test.go#L331-L354) and [`protocol/signalr/invocation_test.go`](../../protocol/signalr/invocation_test.go#L78-L123).
+`transport/relay/client.go` keeps DCG session IDs keyed by target and creates a UUID on the target's first send. The optional Hub session ID is passed separately to the session-based method. See [`transport/relay/client_test.go`](../../transport/relay/client_test.go#L342-L365) and [`protocol/signalr/invocation_test.go`](../../protocol/signalr/invocation_test.go#L78-L123).
 
 ## SignalR WebSocket transport
 
 ### Negotiate and handshake
 
-`transport/signalr.Dial` posts to `<hub>/negotiate?negotiateVersion=1` with the DCG bearer token and source-compatible headers. It follows up to four redirects, requires a connection token, and requires a `WebSockets` transport with `Binary` transfer format. It converts `http` to `ws` and `https` to `wss`, then adds the negotiated token as the `id` query parameter. See [`transport/signalr/client.go`](../../transport/signalr/client.go#L19-L115) and [`transport/signalr/client.go`](../../transport/signalr/client.go#L140-L208).
+`transport/signalr.Dial` posts to `<hub>/negotiate?negotiateVersion=1` with the DCG bearer token and source-compatible headers. It follows up to four redirects, requires a connection token, and requires a `WebSockets` transport with `Binary` transfer format. It converts `http` to `ws` and `https` to `wss`, then adds the negotiated token as the `id` query parameter. See [`transport/signalr/client.go`](../../transport/signalr/client.go#L34-L170) and [`transport/signalr/client.go`](../../transport/signalr/client.go#L232-L299).
 
 The client sends this text handshake record:
 
@@ -66,7 +66,7 @@ The client sends this text handshake record:
 {"protocol":"messagepack","version":1}<record separator>
 ```
 
-The server response must contain a JSON record followed by byte `0x1e`. It may arrive as a text or binary WebSocket message. If binary data follows the separator, the client retains those bytes as the first Hub payload. Production observed the handshake and first Hub record coalesced in one binary message. Text handshake data with trailing Hub bytes is rejected, because that framing shape is unsupported. The parser and regression tests are in [`transport/signalr/client.go`](../../transport/signalr/client.go#L97-L137) and [`transport/signalr/client_test.go`](../../transport/signalr/client_test.go#L21-L111).
+The server response must contain a JSON record followed by byte `0x1e`. It may arrive as a text or binary WebSocket message. If binary data follows the separator, the client retains those bytes as the first Hub payload. Production observed the handshake and first Hub record coalesced in one binary message. Text handshake data with trailing Hub bytes is rejected, because that framing shape is unsupported. The parser is [`consumeHandshake`](../../transport/signalr/client.go#L302-L321); its use and opcode checks are in [`Dial`](../../transport/signalr/client.go#L144-L176), with regression tests in [`transport/signalr/client_test.go`](../../transport/signalr/client_test.go#L163-L253).
 
 After the handshake, binary WebSocket messages are accepted and text messages are rejected. `ReadBinary` returns retained coalesced bytes before reading the socket again. WebSocket implementation details and masking tests are in [`transport/wsclient/`](../../transport/wsclient/).
 
@@ -94,13 +94,13 @@ The parser validates this shape and decodes nullable invocation IDs. See [`proto
 
 ## Hub Relay methods and trace context
 
-Normal DCG traffic uses `SendMessageAsync`, including normal PLATFORM traffic:
+Normal DCG traffic, including PLATFORM traffic, uses `SendMessageAsync`:
 
 ```text
 [1, {}, invocationId, "SendMessageAsync", [trace, targetDcgClientId, packet], []]
 ```
 
-Session-based traffic is separate:
+Session-based traffic uses a separate method:
 
 ```text
 [1, {}, invocationId, "SendSessionBasedMessageAsync",
@@ -128,13 +128,13 @@ TraceState  non-null map, normally empty
 
 `NewTraceContextPacket` generates 16 random bytes for `TraceId` and 8 random bytes for `ParentId`, encoded as lowercase hex. `NormalizeTraceContextPacket` fills missing or incorrectly sized IDs and replaces nil `TraceState` with an empty map. See [`protocol/signalr/trace.go`](../../protocol/signalr/trace.go#L9-L74) and [`protocol/signalr/trace_test.go`](../../protocol/signalr/trace_test.go#L5-L30).
 
-An empty trace object was an observed interoperability failure: the receiver could fail before processing the DCG packet, so no DCG ACK appeared. The project normalizes traces for fragments, ACKs, presence, and pre-wake presence flushes. This source-compatible requirement is recorded in [`research findings`](../research/findings.md#trace-context-shape).
+An empty trace object caused an observed interoperability failure: the receiver could fail before processing the DCG packet, leaving no DCG ACK. Traces are normalized for fragments, ACKs, presence, and pre-wake presence flushes. See [research findings](../research/findings.md#trace-context-shape) for the source-compatible requirement.
 
 ## Completion, ACK, and retry behavior
 
 Hub invocations carry an invocation ID. A SignalR `Completion` has result kind `Error=1`, `Void=2`, or `Value=3`; parsing is in [`protocol/signalr/completion.go`](../../protocol/signalr/completion.go#L8-L66).
 
-The relay tracks Hub Completion and peer ACK independently. A Hub rejection is reported as a Hub Relay error. If Hub Completion succeeds but peer ACK does not arrive before retries finish, diagnostics say the Hub accepted the send but peer DCG acknowledgement timed out. A timeout before either result is reported separately. This is implemented in [`transport/relay/client.go`](../../transport/relay/client.go#L337-L420) and exercised by [`transport/relay/client_test.go`](../../transport/relay/client_test.go#L509-L644).
+The relay tracks Hub Completion and peer ACK independently. A Hub rejection is reported as a Hub Relay error. If Hub Completion succeeds but peer ACK does not arrive before retries finish, diagnostics say the Hub accepted the send but peer DCG acknowledgement timed out. A timeout before either result is reported separately. This is implemented in [`transport/relay/client.go`](../../transport/relay/client.go#L347-L430) and exercised by [`transport/relay/client_test.go`](../../transport/relay/client_test.go#L520-L655).
 
 ## DCG envelope
 
@@ -159,7 +159,7 @@ Fragment property names are case-sensitive:
 | `FragmentCount` | Total fragments |
 | `MessageType` | Hub Relay transport type, `App=0`, `Platform=1`, or `Unknown=2` |
 
-An acknowledgement may carry `ErrorNo` and `ErrorMessage` when `Success` is false. `ErrorNo` is parsed into `Ack`; the current parser retains `ErrorMessage` only as a property name and does not expose it in `Ack`. These peer DCG details are distinct from a SignalR Completion error.
+An acknowledgement with `Success=false` may carry `ErrorNo` and `ErrorMessage`. `ErrorNo` is parsed into `Ack`; the parser retains `ErrorMessage` only as a property name and does not expose it in `Ack`. These peer DCG details are separate from a SignalR Completion error.
 
 DCG packet type values are separate from Hub Relay transport values:
 
@@ -174,7 +174,7 @@ DCG packet type values are separate from Hub Relay transport values:
 
 The ACK has `Version=1`, `Type=1`, `SessionId`, `SequenceNumber`, `Success`, and optional `ErrorNo`. A successful ACK has `Success=true` and `ErrorNo=0`. The parser requires handler type, version, packet type, sequence, success, and a non-empty session ID. See [`protocol/dcg/constants.go`](../../protocol/dcg/constants.go#L3-L30), [`protocol/dcg/fragment.go`](../../protocol/dcg/fragment.go#L10-L81), and [`protocol/dcg/packet.go`](../../protocol/dcg/packet.go#L11-L122).
 
-The `MessageType` property is a compatibility boundary. Hub Relay `TransportMessageType` is `App=0`, `Platform=1`, `Unknown=2`; a separate protobuf enum is `Unspecified=0`, `App=1`, `Platform=2`. Hub Relay packets use the first enum. Copying protobuf values into `Properties["MessageType"]` mislabels traffic. The wire-value test is [`protocol/dcg/packet_test.go`](../../protocol/dcg/packet_test.go#L48-L58).
+Hub Relay `TransportMessageType` is `App=0`, `Platform=1`, `Unknown=2`; the separate protobuf enum is `Unspecified=0`, `App=1`, `Platform=2`. Hub Relay packets use the first enum. Copying protobuf values into `Properties["MessageType"]` mislabels traffic. See the wire-value test in [`protocol/dcg/packet_test.go`](../../protocol/dcg/packet_test.go#L48-L58).
 
 ### Fragmentation, reassembly, and ordering
 
@@ -182,7 +182,7 @@ The `MessageType` property is a compatibility boundary. Hub Relay `TransportMess
 
 Reassembly keys on source DCG ID, DCG `SessionId`, `MessageId`, and transport message type. It accepts out-of-order fragments, rejects changed fragment counts and conflicting duplicate payloads, enforces total size/count limits, and deletes a completed message. See [`protocol/dcg/packet.go`](../../protocol/dcg/packet.go#L173-L257) and [`protocol/dcg/fragment_test.go`](../../protocol/dcg/fragment_test.go#L8-L70).
 
-When a complete incoming fragment arrives, the relay sends a successful DCG ACK before delivering the reassembled payload to the bounded application queue. The receive event contains source, DCG session ID, message ID, transport type, and payload. The relay read loop must run while sends wait for ACKs. A closed or malformed Hub read loop fails the relay; a full application queue fails fast rather than silently dropping traffic. See [`transport/relay/client.go`](../../transport/relay/client.go#L107-L196) and [`transport/relay/client.go`](../../transport/relay/client.go#L422-L475).
+When a complete incoming fragment arrives, the relay sends a successful DCG ACK before delivering the reassembled payload to the bounded application queue. The receive event contains source, DCG session ID, message ID, transport type, and payload. The relay read loop must run while sends wait for ACKs. A closed or malformed Hub read loop fails the relay; a full application queue fails fast rather than silently dropping traffic. See [`transport/relay/client.go`](../../transport/relay/client.go#L109-L198) and [`transport/relay/client.go`](../../transport/relay/client.go#L432-L485).
 
 ## Shared APP/PLATFORM framing
 
@@ -208,7 +208,7 @@ The parser bounds header count by actual input, validates payload length, and re
 | `_originalRequestId` | Request ID answered by `/internal/response` |
 | `_rejectedReason`    | Optional peer rejection reason              |
 
-Routes modeled in [`protocol/platform/message.go`](../../protocol/platform/message.go#L14-L29) are `/DeviceResourceManager`, `/internal/response`, `/Context/Publish`, and `/SessionValidation`. Constructors and exact layout are in [`protocol/platform/message.go`](../../protocol/platform/message.go#L33-L192), with layout, route, and rejection tests in [`protocol/platform/message_test.go`](../../protocol/platform/message_test.go#L9-L108).
+Routes modeled in [`protocol/platform/message.go`](../../protocol/platform/message.go#L14-L29) are `/DeviceResourceManager`, `/internal/response`, `/Context/Publish`, and `/SessionValidation`. Constructors and exact layout are in [`protocol/platform/message.go`](../../protocol/platform/message.go#L33-L193), with layout, route, and rejection tests in [`protocol/platform/message_test.go`](../../protocol/platform/message_test.go#L9-L108).
 
 A successful response is matched by route and `_originalRequestId`; neither the DCG ACK nor SignalR Completion replaces this application-level correlation.
 
@@ -221,7 +221,6 @@ A successful response is matched by route and `_originalRequestId`; neither the 
 Synthetic Go payloads were decoded by the supplied Windows 1.26072.257.0 PBValueSet assembly, and its independently serialized response was decoded by Go. The retained synthetic fixture verifies typed zero results, nested permissions, signed arrays and empty string positions. This is codec interoperability evidence, not evidence of a live notification subscription.
 
 Proto3 zero-valued Point/Size objects may have empty nested messages; these decode to zero geometry instead of being rejected. The original Windows serializer emitted the retained zero-Point fixture.
-
 
 ## MSAEP PubSub envelope
 
@@ -252,4 +251,4 @@ Use the first failing layer to classify a failure:
 | PLATFORM | Unsupported version, malformed headers, trailing bytes | Reject that payload |
 | Application response | Wrong route, source, request ID, or clipboard correlation | Ignore unrelated messages while explicitly waiting, or return a correlation error for its own response |
 
-The [session supervisor](../architecture/session-resilience.md) adds whole-session recovery to finite fragment retries and shard selection. A failed in-flight CONTENT exchange is not replayed into the next generation. Live reconnect, wake/re-presence and long-session token renewal still need validation.
+The [session supervisor](../architecture/session-resilience.md) adds whole-session recovery to finite fragment retries and shard selection. A failed in-flight CONTENT exchange is not replayed into the next generation. The [2026-10-03 S23/Wayland run](../research/validation.md#session-resilience-2026-10-03) recorded three recoveries after Linux network loss, phone network loss and suspend/resume, reaching PLATFORM readiness and successful clipboard transfers again. Scheduled renewal across token expiry, several-hour runs, interruption tests under the updated systemd unit and broader device coverage still need validation. This recovery report does not establish notification recovery under those interruptions.

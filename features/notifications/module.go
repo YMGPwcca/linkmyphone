@@ -18,8 +18,9 @@ import (
 )
 
 type Module struct {
-	session  *phonehost.Session
-	manifest kernel.Manifest
+	session    *phonehost.Session
+	manifest   kernel.Manifest
+	newDesktop func(context.Context) (client.NativeBackend, error)
 }
 
 func New(session *phonehost.Session) (*Module, error) {
@@ -30,7 +31,7 @@ func New(session *phonehost.Session) (*Module, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Module{session: session, manifest: manifest}, nil
+	return &Module{session: session, manifest: manifest, newDesktop: client.NewDesktop}, nil
 }
 func (m *Module) Manifest() kernel.Manifest                { return m.manifest }
 func (m *Module) ValidateConfig(raw json.RawMessage) error { _, err := DecodeConfig(raw); return err }
@@ -43,12 +44,17 @@ func (m *Module) Start(ctx context.Context, raw json.RawMessage, reporter kernel
 	if m.session.Profile.Canonical() != dcgheaders.ProfilePhoneLink {
 		return nil, errors.New("notifications module: full push requires a phonelink enrollment; existing CrossDevice identities cannot be reclassified")
 	}
-	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	native, err := client.NewDesktop(runCtx)
+	startupCtx, startupCancel := context.WithTimeout(ctx, cfg.RequestTimeout())
+	native, err := m.newDesktop(startupCtx)
+	startupCancel()
 	if err != nil {
-		cancel()
+		return nil, fmt.Errorf("notifications module: initialize desktop: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		_ = native.Close()
 		return nil, err
 	}
+	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	endpoint, err := m.session.Subscribe(m.manifest.ID, func(message relay.Received) bool {
 		return message.Source == m.session.Target.ID && message.TransportMessageType == dcg.TransportMessageTypeApp
 	}, phonehost.DefaultSubscriptionQueue)

@@ -13,7 +13,7 @@ import (
 
 const (
 	ManifestSchemaVersion = "1.0"
-	RuntimeAPIVersion      = "1.0"
+	RuntimeAPIVersion     = "1.0"
 
 	maxCapabilities = 128
 	maxDependencies = 64
@@ -89,10 +89,58 @@ func ParseManifestJSON(source []byte) (Manifest, error) {
 		}
 		return Manifest{}, fmt.Errorf("kernel: decode module manifest trailer: %w", err)
 	}
+	if err := validateManifestFields(source); err != nil {
+		return Manifest{}, err
+	}
 	if err := manifest.Validate(); err != nil {
 		return Manifest{}, err
 	}
 	return manifest, nil
+}
+
+// Validate field presence separately from Go zero values. Empty arrays and an
+// explicit null configuration_schema are valid; omitted fields are not.
+func validateManifestFields(source []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(source, &fields); err != nil {
+		return fmt.Errorf("kernel: decode manifest fields: %w", err)
+	}
+	requirements := []struct {
+		section string
+		names   []string
+	}{
+		{"", []string{"schema_version", "id", "version", "kind", "runtime", "capabilities", "dependencies", "permissions", "configuration_schema", "metadata"}},
+		{"runtime", []string{"api_version"}},
+		{"capabilities", []string{"potential"}},
+		{"dependencies", []string{"required", "optional"}},
+		{"permissions", []string{"requested"}},
+		{"metadata", []string{"display_name", "description", "diagnostic_label"}},
+	}
+	for _, requirement := range requirements {
+		object := fields
+		label := "manifest"
+		if requirement.section != "" {
+			label += "." + requirement.section
+			object = nil
+			if err := json.Unmarshal(fields[requirement.section], &object); err != nil {
+				return fmt.Errorf("kernel: decode %s: %w", label, err)
+			}
+		}
+		if object == nil {
+			return fmt.Errorf("kernel: %s must be a JSON object", label)
+		}
+		for _, name := range requirement.names {
+			value, exists := object[name]
+			if !exists {
+				return fmt.Errorf("kernel: %s is missing required field %s", label, name)
+			}
+			if bytes.Equal(bytes.TrimSpace(value), []byte("null")) &&
+				!(requirement.section == "" && name == "configuration_schema") {
+				return fmt.Errorf("kernel: %s.%s must not be null", label, name)
+			}
+		}
+	}
+	return nil
 }
 
 func (m Manifest) Validate() error {

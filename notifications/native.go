@@ -63,12 +63,26 @@ func NewDesktop(ctx context.Context) (NativeBackend, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	conn, err := dbus.ConnectSessionBus()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	backendCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	stopStartupCancel := context.AfterFunc(ctx, cancel)
+	defer stopStartupCancel()
+	conn, err := dbus.ConnectSessionBus(dbus.WithContext(backendCtx))
 	if err != nil {
+		cancel()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, fmt.Errorf("notifications: connect session bus: %w", err)
 	}
 	fail := func(err error) (NativeBackend, error) {
+		cancel()
 		_ = conn.Close()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, err
 	}
 
@@ -83,7 +97,6 @@ func NewDesktop(ctx context.Context) (NativeBackend, error) {
 
 	// The feature closes its rendered IDs before Close tears down this bus.
 	// Constructor cancellation bounds startup, not the backend lifetime.
-	backendCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	b := &desktopBackend{
 		conn:           conn,
 		object:         conn.Object(notificationService, notificationPath),
@@ -111,6 +124,9 @@ func NewDesktop(ctx context.Context) (NativeBackend, error) {
 		return fail(fmt.Errorf("notifications: subscribe to owner changes: %w", err))
 	}
 	conn.Signal(b.signals)
+	if !stopStartupCancel() || ctx.Err() != nil {
+		return fail(ctx.Err())
+	}
 	go b.run()
 	return b, nil
 }

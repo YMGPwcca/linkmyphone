@@ -2,11 +2,11 @@
 
 [Documentation index](../README.md)
 
-Use the groups below as an index. Terms with a protocol or lifecycle contract link to the page that carries the detailed rules.
+Terms are grouped by subsystem. Linked references describe their protocol and lifecycle rules.
 
 ## Accounts and trust
 
-| Term | Meaning in this client |
+| Term | Meaning in LinkMyPhone |
 | --- | --- |
 | MSA | Microsoft account. The Linux sign-in flow uses the personal-account `consumers` authority. |
 | Device-code flow | Sign-in in which the CLI prints a verification URL and code while polling for tokens. It avoids a local browser callback. |
@@ -22,7 +22,7 @@ See [authentication and bootstrap](../protocol/authentication.md) for routes, to
 
 ## Connection and delivery
 
-| Term | Meaning in this client |
+| Term | Meaning in LinkMyPhone |
 | --- | --- |
 | DCG | The Microsoft service and packet/identity layer used for discovery, enrollment, wake, and relay delivery. |
 | Hub Relay | The account relay reached through SignalR; its callbacks carry partner presence and multiplexed DCG packets. |
@@ -36,7 +36,7 @@ See [authentication and bootstrap](../protocol/authentication.md) for routes, to
 
 See [transport and framing](../protocol/transport.md) for packet layouts, routing, acknowledgement stages, and errors.
 
-## Identifiers that must stay separate
+## Identifier scopes
 
 | Identifier | Scope and purpose |
 | --- | --- |
@@ -54,7 +54,7 @@ The [clipboard protocol reference](../protocol/clipboard.md) explains how correl
 
 ## Runtime and desktop integration
 
-| Term | Meaning in this client |
+| Term | Meaning in LinkMyPhone |
 | --- | --- |
 | Feature definition | A built-in manifest and factory included through `features/catalog.go`. |
 | Feature record | Persisted desired state: feature ID, enabled flag, and configuration. A record can exist without a running instance. |
@@ -65,10 +65,10 @@ The [clipboard protocol reference](../protocol/clipboard.md) explains how correl
 | Control plane | The local, versioned JSON request/response protocol over a Unix socket used by `feature` commands to reconcile a running runtime. |
 | Auth state | `state.json`: enrollment, credentials, keys, certificates, trust, and account metadata. Treat it as a secret. |
 | Feature store | `features.json`: installed feature records and configuration. It is separate from authentication state. |
-| Native observer | The desktop source of clipboard-change events, MIME polling on rich backends; the legacy plain-text path can use `wl-paste --watch` on Wayland. |
+| Native observer | The source of desktop clipboard changes. Rich backends poll MIME offers; the legacy plain-text path can use `wl-paste --watch` on Wayland. |
 | Polling fallback | Repeated native reads used on X11 or when Wayland watching is unavailable or fails. |
 | Nil debounce | The 100 ms delay used to distinguish a genuine Wayland selection clear from a transient ownership handoff. |
 | Echo suppression | Avoiding a phone-originated or reflected clipboard update being published back as a new Linux change. The origin barrier tracks previous and incoming format-aware content hashes for three seconds; plain-text comparison normalizes line endings; it does not filter sensitive clipboard content. |
 | Graphical-session service | A systemd user unit enabled under and coupled to `graphical-session.target`. It follows the desktop login session. |
 
-For lifecycle, dependency, capability, and snapshot rules, see [architecture](../architecture/overview.md) and [feature modules](../architecture/modules.md). For socket reconciliation, see [control plane](../architecture/control-plane.md). For stored options, see [configuration](configuration.md), and for operational clipboard behavior, see [clipboard behavior](../user-guide/clipboard.md).
+See [architecture](../architecture/overview.md) and [feature modules](../architecture/modules.md) for lifecycle, dependency, capability, and snapshot rules; [control plane](../architecture/control-plane.md) for socket reconciliation; [configuration](configuration.md) for stored options; and [clipboard behavior](../user-guide/clipboard.md) for desktop behavior.
