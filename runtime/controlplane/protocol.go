@@ -27,6 +27,7 @@ const (
 	OperationCreate Operation = "create"
 	OperationUpdate Operation = "update"
 	OperationDelete Operation = "delete"
+	OperationPhoneFilesProbe Operation = "phone_files_probe"
 )
 
 var (
@@ -43,7 +44,19 @@ type Request struct {
 	Config    *json.RawMessage      `json:"config,omitempty"`
 }
 
+type PhoneFilesProbeResult struct {
+	DeviceResourceStatus uint64 `json:"drm_status"`
+	Status uint64 `json:"status"`
+	Files int `json:"files"`
+	HasMoreBatches bool `json:"has_more_batches"`
+	BatchIndex uint64 `json:"batch_index"`
+	EstimatedTotalItems uint64 `json:"estimated_total_items"`
+	PayloadBytes int `json:"payload_bytes"`
+	ElapsedMS int64 `json:"elapsed_ms"`
+}
+
 type Response struct {
+	PhoneFilesProbe *PhoneFilesProbeResult `json:"phone_files_probe,omitempty"`
 	Version   int                    `json:"version"`
 	OK        bool                   `json:"ok"`
 	Error     string                 `json:"error,omitempty"`

@@ -61,6 +61,8 @@ func main() {
 		err = runRuntime(ctx, os.Args[2:])
 	case "service":
 		err = runServiceCommand(os.Args[2:])
+	case "phone-files-probe":
+		err = runPhoneFilesProbe(ctx, os.Args[2:])
 	case "clipboard-sync":
 		err = runClipboardSync(ctx, os.Args[2:])
 	case "help", "-h", "--help":
@@ -87,7 +89,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  linkmyphone feature <subcommand> [options]")
 	fmt.Fprintln(os.Stderr, "  linkmyphone run [options]")
 	fmt.Fprintln(os.Stderr, "  linkmyphone service <subcommand> [options]")
-	fmt.Fprintln(os.Stderr, "  linkmyphone clipboard-sync [options]")
+	fmt.Fprintln(os.Stderr, "  linkmyphone clipboard-sync [options]\n  linkmyphone phone-files-probe --execute [options]")
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "bootstrap-probe validates Microsoft login, DCG enrollment/state,")
 	fmt.Fprintln(os.Stderr, "linked-peer trust, and the account-level SignalR relay connection.")

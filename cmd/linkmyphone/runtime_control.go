@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/YMGPwcca/linkmyphone/features"
+	phonefilesprobe "github.com/YMGPwcca/linkmyphone/phonefiles"
 	"github.com/YMGPwcca/linkmyphone/runtime/controlplane"
 	"github.com/YMGPwcca/linkmyphone/runtime/kernel"
 	"github.com/YMGPwcca/linkmyphone/runtime/phonehost"
@@ -83,6 +84,27 @@ func (c *runtimeController) HandleControl(request controlplane.Request) controlp
 	defer cancel()
 
 	switch request.Operation {
+	case controlplane.OperationPhoneFilesProbe:
+		// The request uses the existing host session and is never persisted.
+		probeCtx, cancel := context.WithTimeout(c.ctx, 12*time.Second)
+		defer cancel()
+		result, err := phonefilesprobe.Probe(probeCtx, c.session)
+		if err != nil {
+			return controlplane.Failure(err)
+		}
+		response := controlplane.Success()
+		response.PhoneFilesProbe = &controlplane.PhoneFilesProbeResult{
+			DeviceResourceStatus: result.DeviceResourceStatus,
+			Status: result.Status,
+			Files: result.Files,
+			HasMoreBatches: result.HasMoreBatches,
+			BatchIndex: result.BatchIndex,
+			EstimatedTotalItems: result.EstimatedTotalItems,
+			PayloadBytes: result.PayloadBytes,
+			ElapsedMS: result.Elapsed.Milliseconds(),
+		}
+		return response
+
 	case controlplane.OperationList:
 		response := controlplane.Success()
 		response.Records = c.store.List()
