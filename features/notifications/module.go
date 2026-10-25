@@ -88,7 +88,7 @@ func (m *Module) Start(ctx context.Context, raw json.RawMessage, reporter kernel
 			instance.errors <- err
 		}
 	}()
-	clipboardEnabled, _ := m.session.ClipboardState()
+	clipboardEnabled, clipboardState := m.session.ClipboardState()
 	status, err := protocolClient.ConnectWithClipboard(ctx, clipboardEnabled)
 	if err != nil {
 		stopCtx, stopCancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -106,6 +106,9 @@ func (m *Module) Start(ctx context.Context, raw json.RawMessage, reporter kernel
 	case <-instance.done:
 		return nil, errors.New("notifications module: client stopped during startup")
 	default:
+	}
+	if clipboardEnabled {
+		m.session.MarkClipboardConnected(clipboardState)
 	}
 	mode := "Phone actions are off."
 	if cfg.RemoteActions {
@@ -157,6 +160,9 @@ func watchClipboardConnection(
 		}
 		if err == nil {
 			applied = enabled
+			if enabled {
+				session.MarkClipboardConnected(changed)
+			}
 			kernel.Report(reporter, kernel.Event{ModuleID: moduleID, Level: "info", Message: "phone clipboard connection updated", Fields: map[string]string{"enabled": fmt.Sprint(enabled)}})
 			continue
 		}

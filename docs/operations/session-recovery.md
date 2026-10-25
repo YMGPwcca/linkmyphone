@@ -32,7 +32,7 @@ runtime is recovering; retry the feature command
 
 Retry after readiness. The new session loads changes saved before the interruption, including disabled modules and their configuration.
 
-The clipboard module sends FEATURE_ON each time it starts. With the default `publish_initial=false`, **copy a new selection after readiness** to send it. With `publish_initial=true`, the current selection is sent on every module start, including recovery. Interrupted requests and old snapshots are discarded.
+The clipboard module sends FEATURE_ON each time it starts. With the default `publish_initial=false`, **copy a new selection after readiness** to send it. With `publish_initial=true`, the current selection is sent on every module start, including recovery; Phone Link waits for its `/connect/v1` clipboard setting first. Interrupted requests and old snapshots are discarded.
 
 During teardown, `FEATURE_OFF synchronization failed` with `endpoint is closed` means the failed session's transport has already closed. The old module cannot send FEATURE_OFF. Check that the replacement sends FEATURE_ON and reaches readiness.
 

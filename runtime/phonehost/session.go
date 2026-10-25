@@ -41,24 +41,26 @@ type Config struct {
 }
 
 type Session struct {
-	clipboardMu      sync.Mutex
-	clipboardEnabled bool
-	clipboardChanged chan struct{}
-	cloud            *bootstrap.CloudRelay
-	router           *Router
-	runCtx           context.Context
-	cancel           context.CancelFunc
-	routingOnce      sync.Once
-	errors           chan error
-	closeOnce        sync.Once
-	closeErr         error
-	Target           servicedcg.DeviceInfo
-	SelfDcgClientID  string
-	Region           string
-	Profile          dcgheaders.Profile
-	AppVersion       string
-	RingName         string
-	InstallationID   string
+	clipboardMu        sync.Mutex
+	clipboardEnabled   bool
+	clipboardChanged   chan struct{}
+	clipboardReady     chan struct{}
+	clipboardConnected bool
+	cloud              *bootstrap.CloudRelay
+	router             *Router
+	runCtx             context.Context
+	cancel             context.CancelFunc
+	routingOnce        sync.Once
+	errors             chan error
+	closeOnce          sync.Once
+	closeErr           error
+	Target             servicedcg.DeviceInfo
+	SelfDcgClientID    string
+	Region             string
+	Profile            dcgheaders.Profile
+	AppVersion         string
+	RingName           string
+	InstallationID     string
 }
 
 func (s *Session) ClipboardState() (bool, <-chan struct{}) {
@@ -77,10 +79,36 @@ func (s *Session) SetClipboardEnabled(enabled bool) {
 		return
 	}
 	s.clipboardEnabled = enabled
+	s.clipboardConnected = false
+	s.clipboardReady = make(chan struct{})
 	if s.clipboardChanged != nil {
 		close(s.clipboardChanged)
 	}
 	s.clipboardChanged = make(chan struct{})
+}
+
+// ClipboardReady closes after the phone accepts the current clipboard-enabled
+// connection. A later disable/enable cycle gets a new readiness channel.
+func (s *Session) ClipboardReady() <-chan struct{} {
+	s.clipboardMu.Lock()
+	defer s.clipboardMu.Unlock()
+	if s.clipboardReady == nil {
+		s.clipboardReady = make(chan struct{})
+	}
+	return s.clipboardReady
+}
+
+func (s *Session) MarkClipboardConnected(state <-chan struct{}) {
+	s.clipboardMu.Lock()
+	defer s.clipboardMu.Unlock()
+	if !s.clipboardEnabled || s.clipboardChanged != state || s.clipboardConnected {
+		return
+	}
+	if s.clipboardReady == nil {
+		s.clipboardReady = make(chan struct{})
+	}
+	s.clipboardConnected = true
+	close(s.clipboardReady)
 }
 
 func (s *Session) Subscribe(name string, matcher Matcher, queueSize int) (*Endpoint, error) {

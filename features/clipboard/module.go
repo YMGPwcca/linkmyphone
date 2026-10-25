@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	clipclient "github.com/YMGPwcca/linkmyphone/clipboard"
+	"github.com/YMGPwcca/linkmyphone/dcgheaders"
 	clipproto "github.com/YMGPwcca/linkmyphone/protocol/clipboard"
 	"github.com/YMGPwcca/linkmyphone/runtime/kernel"
 	"github.com/YMGPwcca/linkmyphone/runtime/phonehost"
@@ -78,6 +80,7 @@ func (m *Module) Start(
 
 	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	remoteApplied := make(chan clipclient.RemoteApplyEvent, 8)
+	remoteSeen := &atomic.Bool{}
 	client := clipclient.New(endpoint, local, clipclient.Config{
 		Target:          m.session.Target.ID,
 		SelfDcgClientID: m.session.SelfDcgClientID,
@@ -86,6 +89,7 @@ func (m *Module) Start(
 			kernel.Report(reporter, kernel.Event{ModuleID: m.manifest.ID, Level: "warning", Message: "remote clipboard content skipped", Fields: map[string]string{"reason": err.Error()}})
 		},
 		OnRemoteApplied: func(event clipclient.RemoteApplyEvent) {
+			remoteSeen.Store(true)
 			queueLatestRemoteApply(remoteApplied, event)
 		},
 	})
@@ -100,6 +104,7 @@ func (m *Module) Start(
 		localUnavailable:  !initialAvailable,
 		endpoint:          endpoint,
 		remoteApplied:     remoteApplied,
+		remoteSeen:        remoteSeen,
 		cancel:            cancel,
 		done:              make(chan struct{}),
 		errors:            make(chan error, 1),
@@ -143,7 +148,8 @@ func (m *Module) Start(
 		})
 	}
 
-	if cfg.PublishInitial && initialAvailable {
+	deferInitial := cfg.PublishInitial && initialAvailable && m.session.Profile.Canonical() == dcgheaders.ProfilePhoneLink
+	if cfg.PublishInitial && initialAvailable && !deferInitial {
 		generation := client.ReserveLocalGeneration()
 		correlationID, err := client.PublishLocalContentGeneration(
 			ctx,
@@ -175,6 +181,9 @@ func (m *Module) Start(
 	instance.publishQueue, instance.publishResults = startClipboardPublisher(runCtx, client)
 	instance.session = m.session
 	m.session.SetClipboardEnabled(true)
+	if deferInitial {
+		instance.initialReady = m.session.ClipboardReady()
+	}
 	go instance.run(runCtx, clientErr)
 
 	return instance, nil
@@ -193,6 +202,8 @@ type instance struct {
 	localUnavailable bool
 	endpoint         *phonehost.Endpoint
 	remoteApplied    chan clipclient.RemoteApplyEvent
+	remoteSeen       *atomic.Bool
+	initialReady     <-chan struct{}
 
 	publishQueue   chan publishJob
 	publishResults <-chan publishResult

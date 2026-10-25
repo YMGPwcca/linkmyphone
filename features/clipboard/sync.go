@@ -387,6 +387,23 @@ func (i *instance) run(ctx context.Context, clientErr <-chan error) {
 		case <-ctx.Done():
 			return
 
+		case <-i.initialReady:
+			i.initialReady = nil
+			if ctx.Err() != nil || i.remoteSeen.Load() || len(i.remoteApplied) != 0 {
+				continue
+			}
+			content, err := i.local.ReadContent(ctx)
+			if err != nil {
+				if errors.Is(err, clipclient.ErrUnsupportedContent) || errors.Is(err, clipclient.ErrContentTooLarge) || errors.Is(err, clipclient.ErrContentUnavailable) {
+					i.reportSkip(err)
+					continue
+				}
+				i.fail(fmt.Errorf("clipboard module: read initial Linux clipboard: %w", err))
+				return
+			}
+			generation := i.client.ReserveLocalGeneration()
+			queueLatestPublish(i.publishQueue, publishJob{generation: generation, content: &content})
+
 		case err := <-clientErr:
 			if err == nil || errors.Is(err, context.Canceled) {
 				return
