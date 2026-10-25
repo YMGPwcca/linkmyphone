@@ -756,7 +756,7 @@ func (c *Client) handleIncomingRequest(ctx context.Context, msg relay.Received, 
 		return err
 	}
 	if drm.ResourcePath != proto.ResourcePath || drm.RequestType != proto.DeviceResourceRequestGET {
-		return c.sendResponse(ctx, msg.Source, requestID, proto.DeviceResourceResponse{
+		return c.sendResponse(ctx, msg.Source, msg.SessionID, requestID, proto.DeviceResourceResponse{
 			ResponseType: proto.DeviceResourceResponseResourceHandlerNotRegistered,
 		})
 	}
@@ -812,13 +812,13 @@ func (c *Client) handleIncomingRequest(ctx context.Context, msg relay.Received, 
 	default:
 		response = proto.Response{Status: proto.ResponseInvalidClipboardRequestType, CorrelationID: req.CorrelationID, ErrorType: proto.ErrorReject}
 	}
-	return c.sendResponse(ctx, msg.Source, requestID, proto.DeviceResourceResponse{
+	return c.sendResponse(ctx, msg.Source, msg.SessionID, requestID, proto.DeviceResourceResponse{
 		ResponseType: proto.DeviceResourceResponseSuccess,
 		Payload:      proto.MarshalResponse(response),
 	})
 }
 
-func (c *Client) sendResponse(ctx context.Context, target, requestID string, response proto.DeviceResourceResponse) error {
+func (c *Client) sendResponse(ctx context.Context, target, sessionID, requestID string, response proto.DeviceResourceResponse) error {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.RequestTimeout)
 	defer cancel()
 	pm := platform.NewInternalResponse(proto.MarshalDeviceResourceResponse(response), requestID)
@@ -826,7 +826,7 @@ func (c *Client) sendResponse(ctx context.Context, target, requestID string, res
 	if err != nil {
 		return err
 	}
-	return c.relay.Send(ctx, target, "", dcg.TransportMessageTypePlatform, wire)
+	return c.relay.Send(ctx, target, sessionID, dcg.TransportMessageTypePlatform, wire)
 }
 
 func newID() string {

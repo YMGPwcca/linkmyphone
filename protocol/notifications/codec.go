@@ -147,10 +147,11 @@ func DecodeBatch(values app.ValueSet) (Batch, error) {
 }
 
 type LocalInfo struct {
-	DisplayName    string
-	AppVersion     string
-	InstallationID string
-	RingName       string
+	DisplayName      string
+	AppVersion       string
+	InstallationID   string
+	RingName         string
+	ClipboardEnabled bool
 }
 
 func BaseValues(info LocalInfo, correlationVector string) app.ValueSet {
@@ -169,7 +170,7 @@ func ConnectRequest(info LocalInfo, correlationVector string, keys []string, pos
 	}
 	v := BaseValues(info, correlationVector)
 	v["contentType"] = "connect"
-	v["configuration"] = app.ValueSet{"AudioInfoSyncEnabled": false}
+	v["configuration"] = app.ValueSet{"AudioInfoSyncEnabled": false, "ContentTransferCopyPaste": info.ClipboardEnabled}
 	v["attributes"] = app.ValueSet{
 		"displayName":    info.DisplayName,
 		"appVersion":     info.AppVersion,

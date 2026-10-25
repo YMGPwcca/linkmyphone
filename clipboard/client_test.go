@@ -115,7 +115,7 @@ func TestGetTextMatchesInternalResponse(t *testing.T) {
 func TestIncomingContentRequestReturnsLocalClipboard(t *testing.T) {
 	fr := newFakeRelay()
 	local := &fakeLocal{text: "desktop text"}
-	c := New(fr, local, Config{Target: "phone", SessionID: "s"})
+	c := New(fr, local, Config{Target: "phone", SessionID: "local-session"})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go c.Run(ctx)
@@ -124,7 +124,7 @@ func TestIncomingContentRequestReturnsLocalClipboard(t *testing.T) {
 	pm := platform.NewDeviceResourceRequest(req, "req-1")
 	wire, _ := platform.Marshal(pm)
 	fr.recv <- relay.Received{
-		Source: "phone", SessionID: "s",
+		Source: "phone", SessionID: "phone-session",
 		TransportMessageType: dcg.TransportMessageTypePlatform, Payload: wire,
 	}
 
@@ -134,6 +134,9 @@ func TestIncomingContentRequestReturnsLocalClipboard(t *testing.T) {
 		if len(fr.sent) > 0 {
 			sent := fr.sent[0]
 			fr.mu.Unlock()
+			if sent.SessionID != "phone-session" {
+				t.Fatalf("response session=%q, want incoming phone session", sent.SessionID)
+			}
 			rpm, err := platform.Unmarshal(sent.Payload)
 			if err != nil {
 				t.Fatal(err)
