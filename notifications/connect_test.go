@@ -27,12 +27,16 @@ func TestConnectRequiresCorrelatedPermissionAndTypedCapabilities(t *testing.T) {
 				}
 			}()
 			connected := make(chan error, 1)
-			go func() { _, err := c.Connect(ctx); connected <- err }()
+			go func() { _, err := c.ConnectWithClipboard(ctx, permission); connected <- err }()
 			var request sentMessage
 			select {
 			case request = <-transport.sent:
 			case <-time.After(time.Second):
 				t.Fatal("connect not sent")
+			}
+			configuration, ok := request.message.Values["configuration"].(app.ValueSet)
+			if !ok || configuration["ContentTransferCopyPaste"] != permission {
+				t.Fatalf("clipboard=%t configuration=%#v", permission, request.message.Values["configuration"])
 			}
 			id, _ := request.message.Header(platform.HeaderRequestID)
 			values := app.ValueSet{"result": int32(0), "permissions": app.ValueSet{"notifications": permission}, "capabilities": app.ValueSet{"notifications": int32(2)}}

@@ -308,12 +308,18 @@ func (c *Client) request(ctx context.Context, route string, values app.ValueSet,
 }
 
 func (c *Client) Connect(ctx context.Context) (ConnectStatus, error) {
+	return c.ConnectWithClipboard(ctx, c.cfg.Info.ClipboardEnabled)
+}
+
+func (c *Client) ConnectWithClipboard(ctx context.Context, clipboardEnabled bool) (ConnectStatus, error) {
 	keys, times := c.reconcileState()
 	cv, err := requestID()
 	if err != nil {
 		return ConnectStatus{}, err
 	}
-	values, err := wire.ConnectRequest(c.cfg.Info, cv, keys, times)
+	info := c.cfg.Info
+	info.ClipboardEnabled = clipboardEnabled
+	values, err := wire.ConnectRequest(info, cv, keys, times)
 	if err != nil {
 		return ConnectStatus{}, err
 	}

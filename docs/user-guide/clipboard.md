@@ -27,6 +27,8 @@ linkmyphone run
 
 Enable an existing record rather than creating it twice. See [first run](../getting-started/first-run.md) for authentication and target selection, and [configuration](../reference/configuration.md) for commands and timing ranges.
 
+With a Phone Link enrollment, also enable `linkmyphone.notifications`. Its `/connect/v1` exchange advertises `ContentTransferCopyPaste` while the clipboard module is active. The CrossDevice enrollment keeps its clipboard-only path. Turning off the clipboard module updates the Phone Link connection setting and stops local clipboard processing. Android may retain its listener after that update.
+
 `publish_initial` defaults to false: the clipboard present at startup is not sent. When enabled, supported initial content is published on every module start, including recovery. `request_timeout_ms` bounds sending and waiting for protocol responses. Oversized, malformed, unavailable or unsupported content is skipped with a diagnostic that contains no clipboard content; a later valid copy can continue syncing.
 
 ## Limits and ordering

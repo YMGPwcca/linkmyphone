@@ -88,7 +88,8 @@ func (m *Module) Start(ctx context.Context, raw json.RawMessage, reporter kernel
 			instance.errors <- err
 		}
 	}()
-	status, err := protocolClient.Connect(ctx)
+	clipboardEnabled, _ := m.session.ClipboardState()
+	status, err := protocolClient.ConnectWithClipboard(ctx, clipboardEnabled)
 	if err != nil {
 		stopCtx, stopCancel := context.WithTimeout(context.Background(), 2*time.Second)
 		_ = instance.Stop(stopCtx)
@@ -121,7 +122,55 @@ func (m *Module) Start(ctx context.Context, raw json.RawMessage, reporter kernel
 		readyMessage += " Synced existing items."
 	}
 	kernel.Report(reporter, kernel.Event{ModuleID: m.manifest.ID, Level: "info", Message: readyMessage})
+	instance.watchDone = make(chan struct{})
+	go func() {
+		defer close(instance.watchDone)
+		watchClipboardConnection(runCtx, m.session, protocolClient, reporter, m.manifest.ID, cfg.RequestTimeout(), clipboardEnabled)
+	}()
 	return instance, nil
+}
+
+func watchClipboardConnection(
+	ctx context.Context,
+	session *phonehost.Session,
+	protocolClient *client.Client,
+	reporter kernel.Reporter,
+	moduleID string,
+	requestTimeout time.Duration,
+	applied bool,
+) {
+	for {
+		enabled, changed := session.ClipboardState()
+		if enabled == applied {
+			select {
+			case <-changed:
+				continue
+			case <-ctx.Done():
+				return
+			}
+		}
+		requestCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+		_, err := protocolClient.ConnectWithClipboard(requestCtx, enabled)
+		cancel()
+		if ctx.Err() != nil {
+			return
+		}
+		if err == nil {
+			applied = enabled
+			kernel.Report(reporter, kernel.Event{ModuleID: moduleID, Level: "info", Message: "phone clipboard connection updated", Fields: map[string]string{"enabled": fmt.Sprint(enabled)}})
+			continue
+		}
+		kernel.Report(reporter, kernel.Event{ModuleID: moduleID, Level: "warning", Message: "phone clipboard connection update failed", Fields: map[string]string{"error": err.Error()}})
+		timer := time.NewTimer(5 * time.Second)
+		select {
+		case <-changed:
+		case <-timer.C:
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		}
+		timer.Stop()
+	}
 }
 
 // notificationLogText renders feature events for the journal. The client keeps
@@ -191,6 +240,7 @@ type instance struct {
 	cancel                        context.CancelFunc
 	endpoint                      *phonehost.Endpoint
 	done                          chan struct{}
+	watchDone                     chan struct{}
 	errors                        chan error
 	once                          sync.Once
 	remoteActions, actions, reply bool
@@ -218,7 +268,15 @@ func (i *instance) Stop(ctx context.Context) error {
 	i.once.Do(func() { i.cancel(); i.endpoint.Close() })
 	select {
 	case <-i.done:
-		return nil
+		if i.watchDone == nil {
+			return nil
+		}
+		select {
+		case <-i.watchDone:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	case <-ctx.Done():
 		return ctx.Err()
 	}

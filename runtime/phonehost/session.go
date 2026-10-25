@@ -41,21 +41,46 @@ type Config struct {
 }
 
 type Session struct {
-	cloud           *bootstrap.CloudRelay
-	router          *Router
-	runCtx          context.Context
-	cancel          context.CancelFunc
-	routingOnce     sync.Once
-	errors          chan error
-	closeOnce       sync.Once
-	closeErr        error
-	Target          servicedcg.DeviceInfo
-	SelfDcgClientID string
-	Region          string
-	Profile         dcgheaders.Profile
-	AppVersion      string
-	RingName        string
-	InstallationID  string
+	clipboardMu      sync.Mutex
+	clipboardEnabled bool
+	clipboardChanged chan struct{}
+	cloud            *bootstrap.CloudRelay
+	router           *Router
+	runCtx           context.Context
+	cancel           context.CancelFunc
+	routingOnce      sync.Once
+	errors           chan error
+	closeOnce        sync.Once
+	closeErr         error
+	Target           servicedcg.DeviceInfo
+	SelfDcgClientID  string
+	Region           string
+	Profile          dcgheaders.Profile
+	AppVersion       string
+	RingName         string
+	InstallationID   string
+}
+
+func (s *Session) ClipboardState() (bool, <-chan struct{}) {
+	s.clipboardMu.Lock()
+	defer s.clipboardMu.Unlock()
+	if s.clipboardChanged == nil {
+		s.clipboardChanged = make(chan struct{})
+	}
+	return s.clipboardEnabled, s.clipboardChanged
+}
+
+func (s *Session) SetClipboardEnabled(enabled bool) {
+	s.clipboardMu.Lock()
+	defer s.clipboardMu.Unlock()
+	if s.clipboardEnabled == enabled {
+		return
+	}
+	s.clipboardEnabled = enabled
+	if s.clipboardChanged != nil {
+		close(s.clipboardChanged)
+	}
+	s.clipboardChanged = make(chan struct{})
 }
 
 func (s *Session) Subscribe(name string, matcher Matcher, queueSize int) (*Endpoint, error) {

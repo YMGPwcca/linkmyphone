@@ -173,6 +173,8 @@ func (m *Module) Start(
 	}
 
 	instance.publishQueue, instance.publishResults = startClipboardPublisher(runCtx, client)
+	instance.session = m.session
+	m.session.SetClipboardEnabled(true)
 	go instance.run(runCtx, clientErr)
 
 	return instance, nil
@@ -182,6 +184,7 @@ type instance struct {
 	moduleID string
 	cfg      Config
 	reporter kernel.Reporter
+	session  *phonehost.Session
 
 	client           *clipclient.Client
 	local            *trackedLocalClipboard

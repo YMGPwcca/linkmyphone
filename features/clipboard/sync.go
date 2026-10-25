@@ -307,6 +307,9 @@ func queueLatestRemoteApply(
 
 func (i *instance) run(ctx context.Context, clientErr <-chan error) {
 	defer close(i.done)
+	if i.session != nil {
+		defer i.session.SetClipboardEnabled(false)
+	}
 	defer close(i.errors)
 	defer i.cancel()
 	if i.endpoint != nil {

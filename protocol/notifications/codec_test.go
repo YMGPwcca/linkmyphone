@@ -59,3 +59,16 @@ func TestMutationRequestsCannotClearAllOrLoseReplyUnicode(t *testing.T) {
 		t.Fatalf("reply contract=%s", b)
 	}
 }
+
+func TestConnectRequestAdvertisesClipboardState(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		values, err := ConnectRequest(LocalInfo{ClipboardEnabled: enabled}, "cv", nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		configuration, ok := values["configuration"].(app.ValueSet)
+		if !ok || configuration["ContentTransferCopyPaste"] != enabled {
+			t.Fatalf("enabled=%t configuration=%#v", enabled, values["configuration"])
+		}
+	}
+}
